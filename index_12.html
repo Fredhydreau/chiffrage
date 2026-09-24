@@ -277,7 +277,7 @@ const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){retu
 
 /* ---------- formula engine ---------- */
 const FN={ceil:Math.ceil,floor:Math.floor,round:Math.round,max:Math.max,min:Math.min};
-const VARS=['N','P','M','L','J','E','D1','D2','LF','LC','T','JR'];
+const VARS=['N','P','M','L','J','E','D1','D2','LF','LC','T','JR','VR','GLY'];
 const ruleCache=new Map();
 function compile(rule){
   if(ruleCache.has(rule))return ruleCache.get(rule);
@@ -296,7 +296,7 @@ function evalRule(rule,v){
 }
 
 /* ---------- state ---------- */
-let catalog=clone(DATA.catalog);
+let catalog=migrateCat(clone(DATA.catalog));
 let quote=null;
 let savedList=[];
 let db=null, dlApi=null, canWrite=true, catFromDb=false;
@@ -314,7 +314,9 @@ function baseVars(){const N=+quote.N||0,P=+quote.P||0,L=+quote.L||0,mpj=+quote.m
   /* tranchée : ligne des forages + collecteur → chaufferie */
   const T=E*N+L;
   return {N,P,L,M,J:mpj>0?Math.ceil(M/mpj):0,E,D1,D2,LF,LC,T,JR:+quote.jr||0}}
-function vars(){const v=baseVars();v.D1auto=!v.D1;if(!v.D1)v.D1=v.P>150?50:40;v.D2auto=!v.D2;if(!v.D2)v.D2=autoD2(v).D;return v}
+/* Glycol : ancienne règle forfaitaire (M+L)/25*20 remplacée par le volume réel du réseau */
+function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String(i.rule||'').replace(/\s/g,'')==='(M+L)/25*20')i.rule='GLY'});return items}
+function vars(){const v=baseVars();v.D1auto=!v.D1;if(!v.D1)v.D1=v.P>150?50:40;v.D2auto=!v.D2;if(!v.D2)v.D2=autoD2(v).D;const vr=volumeReseau(v);v.VR=Math.ceil(vr.tot);v.GLY=Math.ceil(vr.gly);return v}
 /* Ø collecteur → chaufferie choisi selon le débit : vitesse ≤ 1 m/s, perte ≤ 150 Pa/m,
    et si la pression disponible de la PAC est connue, réseau ≤ 90 % de celle-ci */
 /* Diamètres PE proposés : liste de base + tout « ØNNN » trouvé dans les catégories PE des Tarifs */
@@ -677,7 +679,7 @@ function pt(s){s=String(s??'').replace(/[   ]/g,' ').replace(/→/g,'->').r
 const PDF_MODES={devis:{title:'Devis',file:'devis'},descriptif:{title:'Descriptif technique',file:'descriptif'},hydro:{title:'Note de calcul hydraulique',file:'perte-de-charge'},materiel:{title:'Liste matériel et locations',file:'materiel'}};
 function volumeReseau(v,hr){const A=(D)=>{const di=(D-2*(PE_E[D]||D/11))/1000;return Math.PI*di*di/4*1000};/* L/m */
   const Ds=v.P>150?40:32;const vs=4*v.P*v.N*A(Ds),vl=v.LF*A(v.D1||40),vc=v.LC*A(v.D2||63);const tot=vs+vl+vc;
-  return {vs,vl,vc,tot,gly:tot*(+quote.h.conc||0)/100}}
+  return {vs,vl,vc,tot,gly:tot*(+(quote.h&&quote.h.conc)||0)/100}}
 async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='hydro',matOnly=mode==='materiel';
   const {PDFDocument,StandardFonts,rgb}=await getPdfLib();
   const doc=await PDFDocument.create();const F=await doc.embedFont(StandardFonts.Helvetica),B=await doc.embedFont(StandardFonts.HelveticaBold);
@@ -808,7 +810,7 @@ function renderTarifs(){
     <button class="btn primary" id="t-save" ${catDraft&&db&&canWrite?'':'disabled'}>Enregistrer les tarifs</button></div>
   <div class="card" style="margin-bottom:18px"><div class="card-b help">
     Les prix sont en € HT. Chaque catégorie a son bouton <b>+ Article</b> ; renommez une catégorie en cliquant sur son titre, ou créez-en une avec <b>+ Nouvelle catégorie</b>. <b>Qté défaut</b> est reprise dans chaque nouveau chiffrage ; la <b>Règle</b>, si elle est remplie, la calcule à la place. Dans le chiffrage, toute quantité reste modifiable ligne par ligne.
-    Variables : <code>N</code> nombre de forages · <code>P</code> profondeur par forage · <code>M</code> mètres forés (N×P) · <code>J</code> jours de forage · <code>E</code> espacement entre forages · <code>LF</code> PE forages → collecteur, aller-retour (E×N×(N+1)) · <code>D1</code> son diamètre · <code>L</code> distance collecteur → chaufferie · <code>LC</code> PE collecteur → chaufferie, aller-retour (2×L) · <code>D2</code> son diamètre · <code>T</code> longueur de tranchée (E×N + L) · <code>JR</code> temps de raccordement en jours (saisi dans le chiffrage).
+    Variables : <code>N</code> nombre de forages · <code>P</code> profondeur par forage · <code>M</code> mètres forés (N×P) · <code>J</code> jours de forage · <code>E</code> espacement entre forages · <code>LF</code> PE forages → collecteur, aller-retour (E×N×(N+1)) · <code>D1</code> son diamètre · <code>L</code> distance collecteur → chaufferie · <code>LC</code> PE collecteur → chaufferie, aller-retour (2×L) · <code>D2</code> son diamètre · <code>T</code> longueur de tranchée (E×N + L) · <code>JR</code> temps de raccordement en jours (saisi dans le chiffrage) · <code>VR</code> volume total du réseau en litres (sondes + liaisons + chaufferie, selon les Ø) · <code>GLY</code> litres de glycol pur pour ce volume, à la dilution choisie dans « Perte de charge ».
     Exemples : <code>2*N</code>, <code>ceil(M/100)</code>, <code>P&gt;130&amp;&amp;P&lt;=140?N:0</code>, <code>(D1==40?LF:0)+(D2==40?LC:0)</code>. La colonne « Test » montre le résultat pour le chiffrage en cours (${v.N} × ${nf(v.P)} m).
     ${!db?'<br><b>Enregistrement indisponible sur cette vue : tarifs par défaut affichés.</b>':''}
   </div></div>
@@ -887,7 +889,7 @@ let started=false;
 function startSession(user){fbUser=user;$('#login').hidden=true;$('#who').textContent=user.email;$('#who-box').hidden=false;if(started)return;started=true;
   db=makeDb();if(view==='devis')renderDevis();
   db.doc('config/catalogue').onSnapshot(s=>{
-    if(s.exists&&Array.isArray(s.data().items)){catalog=clone(s.data().items);catFromDb=true;ruleCache.clear();
+    if(s.exists&&Array.isArray(s.data().items)){catalog=migrateCat(clone(s.data().items));catFromDb=true;ruleCache.clear();
       if(view==='devis'&&!document.activeElement?.closest('#v-devis input,#v-devis textarea'))renderDevisKeepScroll();
       if(view==='tarifs'&&!catDraft)renderTarifs();}
     else if(!s.exists){toast('Aucun tarif en base : onglet Tarifs → Importer le fichier de tarifs, puis Enregistrer.')}});
