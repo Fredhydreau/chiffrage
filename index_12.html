@@ -315,7 +315,7 @@ function baseVars(){const N=+quote.N||0,P=+quote.P||0,L=+quote.L||0,mpj=+quote.m
   const T=E*N+L;
   return {N,P,L,M,J:mpj>0?Math.ceil(M/mpj):0,E,D1,D2,LF,LC,T,JR:+quote.jr||0}}
 /* Glycol : ancienne règle forfaitaire (M+L)/25*20 remplacée par le volume réel du réseau */
-function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String(i.rule||'').replace(/\s/g,'')==='(M+L)/25*20')i.rule='GLY'});return items}
+function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String(i.rule||'').replace(/\s/g,'')==='(M+L)/25*20')i.rule='GLY';if(i&&i.id==='glycol'&&i.name==='Glycol')i.name='Glycol pur'});return items}
 function vars(){const v=baseVars();v.D1auto=!v.D1;if(!v.D1)v.D1=v.P>150?50:40;v.D2auto=!v.D2;if(!v.D2)v.D2=autoD2(v).D;const vr=volumeReseau(v);v.VR=Math.ceil(vr.tot);v.GLY=Math.ceil(vr.gly);return v}
 /* Ø collecteur → chaufferie choisi selon le débit : vitesse ≤ 1 m/s, perte ≤ 150 Pa/m,
    et si la pression disponible de la PAC est connue, réseau ≤ 90 % de celle-ci */
@@ -386,7 +386,7 @@ function segment(name,D,L,Qm3h,fl,note){const DI=(D-2*(PE_E[D]||D/11))/1000;cons
   const Re=v*DI*fl.rho/fl.mu;const f=friction(Re,DI);const dp=f*(L/DI)*fl.rho*v*v/2/1000;return {name,D,DI:DI*1000,L,Q:Qm3h,v,Re,dp,note}}
 function hydro(){return hydroFor(vars())}
 function hydroFor(v){
-  const h=quote.h,fl=fluid(h.conc);const N=Math.max(1,v.N);
+  const h=quote.h,fl=fluid(concGly());const N=Math.max(1,v.N);
   const kwAuto=Math.round(v.M*0.045*10)/10;const kw=h.kw!=null?+h.kw:kwAuto;const dT=+h.dT||3;
   const qCalc=kw/(fl.rho*fl.cp*dT)*3600; /* m³/h */
   const Q=+h.qPac>0?+h.qPac:qCalc;
@@ -404,7 +404,7 @@ function hydroFor(v){
 function hfield(k,label,unit,ph){const val=quote.h[k];return `<div class="f"><label for="h-${k}">${label}</label><div class="unit-in"><input id="h-${k}" data-h="${k}" inputmode="decimal" value="${val==null?'':esc(val)}" placeholder="${ph??''}"><span>${unit}</span></div></div>`}
 function hydroHTML(){
   return `<div class="card" id="perte-de-charge" style="margin-top:18px;scroll-margin-top:80px"><div class="card-h"><h2>Perte de charge du réseau</h2><span class="status" style="margin-left:auto">PE100 SDR11</span><button class="btn sm" id="b-pdfh">PDF pour le chauffagiste</button></div><div class="card-b">
-  <div class="pgrid hgrid">${hfield('kw','Puissance extraite (vide = 45 W/m)','kW','')}${hfield('dT','Écart aller / retour','K')}${hfield('conc','Glycol (dilution)','%')}${hfield('pac','Échangeur PAC (fiche)','kPa')}${hfield('sing','Pertes singulières','% linéaire')}</div>
+  <div class="pgrid hgrid">${hfield('kw','Puissance extraite (vide = 45 W/m)','kW','')}${hfield('dT','Écart aller / retour','K')}${hfield('conc','Dosage glycol (vide = 30 %)','%','30')}${hfield('pac','Échangeur PAC (fiche)','kPa')}${hfield('sing','Pertes singulières','% linéaire')}</div>
   <div class="pgrid hgrid" style="margin-top:10px"><div class="f"><label for="h-model">Modèle de PAC</label><input id="h-model" data-ht="model" value="${esc(quote.h.model||'')}" placeholder="Marque, modèle, puissance"></div>${hfield('qPac','Débit nominal PAC (vide = calculé)','m³/h','')}${hfield('dispo','Pression disponible PAC','kPa','')}</div>
   <div id="h-alerts" class="alerts"></div>
   <div class="tbl-wrap" style="margin-top:14px"><table class="htbl"><thead><tr><th>Tronçon</th><th class="r">Ø ext / int</th><th class="r">Longueur</th><th class="r">Débit</th><th class="r">Vitesse</th><th class="r">Reynolds</th><th class="r">Perte</th></tr></thead><tbody id="h-body"></tbody></table></div>
@@ -444,7 +444,7 @@ function updateHydro(){
   const sonde=r.segs[0];
   $('#h-res').innerHTML=`<div><span class="k">Débit total</span><b class="num">${nf(r.Q)} m³/h</b><small>${nf(r.Q*1000/60)} L/min</small></div>
     <div><span class="k">Perte de charge totale</span><b class="num">${nf(r.tot)} kPa</b><small>${nf(r.mce)} mCE</small></div>
-    <div><span class="k">Volume du réseau</span><b class="num">${nf(Math.round(volumeReseau(vars(),r).tot))} L</b><small>dont ${nf(Math.round(volumeReseau(vars(),r).gly))} L de glycol pur</small></div>
+    <div><span class="k">Volume du réseau</span><b class="num">${nf(Math.round(volumeReseau(vars(),r).tot))} L</b><small>dont ${nf(Math.round(volumeReseau(vars(),r).gly))} L de glycol pur (dosage ${nf(concGly())} %)</small></div>
     <div><span class="k">Réseau hors PAC</span><b class="num">${nf(r.reseau)} kPa</b><small>à comparer à la pression disponible de la PAC</small></div>
     <div><span class="k">Pompe de captage</span><b class="num">${nf(Math.ceil(r.mce*10)/10)} mCE</b><small>HMT minimale à ${nf(r.Q)} m³/h</small></div>
     ${r.verdict?`<div class="hwarn ${r.verdict.ok?'hok':''}">${r.verdict.txt}</div>`:''}
@@ -677,9 +677,10 @@ const WIN_EXTRA='€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š�
 function pt(s){s=String(s??'').replace(/[   ]/g,' ').replace(/→/g,'->').replace(/″/g,'"').replace(/≈/g,'env.').replace(/≤/g,'<=').replace(/≥/g,'>=').replace(/−/g,'-').replace(/³/g,'3').replace(/²/g,'2').replace(/\n/g,' ');
   let o='';for(const ch of s){const c=ch.codePointAt(0);o+=((c>=32&&c<127)||(c>=160&&c<256)||WIN_EXTRA.includes(ch))?ch:'?'}return o}
 const PDF_MODES={devis:{title:'Devis',file:'devis'},descriptif:{title:'Descriptif technique',file:'descriptif'},hydro:{title:'Note de calcul hydraulique',file:'perte-de-charge'},materiel:{title:'Liste matériel et locations',file:'materiel'}};
+function concGly(){const c=quote.h&&quote.h.conc;return (c==null||c==='')?30:(+c||0)}
 function volumeReseau(v,hr){const A=(D)=>{const di=(D-2*(PE_E[D]||D/11))/1000;return Math.PI*di*di/4*1000};/* L/m */
   const Ds=v.P>150?40:32;const vs=4*v.P*v.N*A(Ds),vl=v.LF*A(v.D1||40),vc=v.LC*A(v.D2||63);const tot=vs+vl+vc;
-  return {vs,vl,vc,tot,gly:tot*(+(quote.h&&quote.h.conc)||0)/100}}
+  return {vs,vl,vc,tot,gly:tot*concGly()/100}}
 async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='hydro',matOnly=mode==='materiel';
   const {PDFDocument,StandardFonts,rgb}=await getPdfLib();
   const doc=await PDFDocument.create();const F=await doc.embedFont(StandardFonts.Helvetica),B=await doc.embedFont(StandardFonts.HelveticaBold);
@@ -744,12 +745,12 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
   if(!matOnly){
   h2(hydroOnly?'Hypothèses de calcul':'Perte de charge du réseau de captage');
   kv([['Pompe à chaleur',hq.model||'—'],['Débit de dimensionnement',`${nf(hr.Q)} m³/h${+hq.qPac>0?' (fiche PAC)':` (${nf(hr.kw)} kW, écart ${nf(+hq.dT||3)} K)`}`],
-      ['Fluide',`Eau + monopropylène glycol ${nf(+hq.conc||0)} %`],['Pertes singulières',`${nf(+hq.sing||0)} % des pertes linéaires`],
+      ['Fluide',`Eau + monopropylène glycol ${nf(concGly())} %`],['Pertes singulières',`${nf(+hq.sing||0)} % des pertes linéaires`],
       ...(hydroOnly?[['Puissance extraite du sol',`${nf(hr.kw)} kW`],['Pression disponible PAC',hr.dispo>0?`${nf(hr.dispo)} kPa`:'non renseignée']]:[])]);
   if(hydroOnly){const vr=volumeReseau(v,hr);h2('Résultats pour le chauffagiste');
     kv([['Débit à assurer',`${nf(hr.Q)} m3/h (${nf(hr.Q*1000/60)} L/min)`],['Perte de charge réseau (hors PAC)',`${nf(hr.reseau)} kPa (${nf(hr.reseau*1000/(hr.fl.rho*9.81))} mCE)`],
         ['Perte avec échangeur PAC',`${nf(hr.tot)} kPa (${nf(hr.mce)} mCE)`],['HMT minimale circulateur de captage',`${nf(Math.ceil(hr.mce*10)/10)} mCE à ${nf(hr.Q)} m3/h`],
-        ['Volume de fluide du réseau',`${nf(Math.round(vr.tot))} L (sondes ${nf(Math.round(vr.vs))} L, liaisons ${nf(Math.round(vr.vl+vr.vc))} L)`],['Glycol pur nécessaire',`${nf(Math.round(vr.gly))} L à ${nf(+hq.conc||0)} %`]])}
+        ['Volume de fluide du réseau',`${nf(Math.round(vr.tot))} L (sondes ${nf(Math.round(vr.vs))} L, liaisons ${nf(Math.round(vr.vl+vr.vc))} L)`],['Glycol pur nécessaire',`${nf(Math.round(vr.gly))} L pour un dosage à ${nf(concGly())} %`]])}
   if(hydroOnly&&hr.verdict){ensure(30);for(const l of wrap(hr.verdict.txt,CW,9.5,B)){text(l,M,y-10,{size:9.5,f:B,color:hr.verdict.ok?GRN:RED});y-=13}y-=4}
   if(hydroOnly)h2('Pertes de charge par tronçon');
   table([{t:'Tronçon',w:165},{t:'Ø ext / int',w:62,a:'right'},{t:'Longueur',w:55,a:'right'},{t:'Débit',w:62,a:'right'},{t:'Vitesse',w:52,a:'right'},{t:'Reynolds',w:55,a:'right'},{t:'Perte',w:64.28,a:'right'}],
