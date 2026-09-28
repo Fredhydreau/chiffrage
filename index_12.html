@@ -132,11 +132,16 @@ td.qty{width:170px}
 .qin.is-over{border-color:var(--ink3);font-weight:500}
 .chip{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:2px 5px;border-radius:3px;white-space:nowrap}
 .chip.auto{color:var(--auto);background:color-mix(in srgb,var(--auto) 13%,transparent)}
+.chip.man{color:var(--ink2);background:var(--panel2)}
 .reset{border:0;background:none;color:var(--ink3);cursor:pointer;font-size:13px;padding:2px 4px;border-radius:4px}
 .reset:hover{color:var(--ink);background:var(--panel2)}
 .pchg{color:var(--warn);font-size:11px;margin-left:4px}
 .dvt{display:block;margin-top:4px;field-sizing:content;min-height:2.2em;font-size:13px;color:var(--ink2);resize:vertical;line-height:1.35}
 .xin.r{text-align:right}
+.pbreak{border-top:2px dashed var(--ink3);text-align:center;color:var(--ink3);font-size:12px;padding:5px 0 2px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.dimg{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;padding:4px 0}
+.dimg img{max-width:220px;max-height:160px;border:1px solid var(--line);border-radius:4px;background:#fff}
+.dimg-f{display:flex;flex-direction:column;gap:6px;flex:1;min-width:200px}
 .xin{width:100%;background:var(--ground);border:1px solid var(--line);border-radius:5px;padding:4px 7px;min-width:0}
 .sec-f{padding:10px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 
@@ -493,7 +498,7 @@ function lineRow(l,v){
   const pch=l.src==='cat'&&quote.snap[l.id]&&Math.abs(quote.snap[l.id].price-l.catPrice)>0.0001;
   return `<tr class="line ${q?'':'zero'}" data-id="${l.id}"><td class="name">${esc(l.name)}${l.src==='old'?' <span class="pchg">(retiré des tarifs)</span>':''}</td>
   <td class="unit">${esc(l.unit)}</td>
-  <td class="qty"><div class="qwrap">${hasAuto&&!over&&a?'<span class="chip auto" title="'+(l.rule?'Calculé : '+esc(l.rule):'Quantité par défaut (Tarifs)')+'">'+(l.rule?'auto':'défaut')+'</span>':''}${hasAuto&&over?`<button class="reset" data-reset="${l.id}" title="Revenir au calcul auto (${nf(a)})">↺ ${nf(a)}</button>`:''}<input class="qin ${hasAuto&&!over&&a?'is-auto':''} ${over?'is-over':''}" data-q="${l.id}" inputmode="decimal" value="${over?esc(quote.q[l.id]):(hasAuto&&a?nf(a).replace(/\s/g,''):'')}" placeholder="0" aria-label="Quantité ${esc(l.name)}"></div></td>
+  <td class="qty"><div class="qwrap">${hasAuto&&!over&&a?'<span class="chip auto" title="'+(l.rule?'Calculé : '+esc(l.rule):'Quantité par défaut (Tarifs)')+'">'+(l.rule?'auto':'défaut')+'</span>':''}${over?'<span class="chip man" title="Quantité saisie à la main : elle ne suit plus le calcul">manuel</span>':''}${hasAuto&&over?`<button class="reset" data-reset="${l.id}" title="Revenir au calcul auto (${nf(a)})">↺ ${nf(a)}</button>`:''}<input class="qin ${hasAuto&&!over&&a?'is-auto':''} ${over?'is-over':''}" data-q="${l.id}" inputmode="decimal" value="${over?esc(quote.q[l.id]):(hasAuto&&a?nf(a).replace(/\s/g,''):'')}" placeholder="0" aria-label="Quantité ${esc(l.name)}"></div></td>
   <td class="pu r num">${eur(l.price)}${pch?`<span class="pchg" title="Tarif actuel : ${eur(l.catPrice)}">●</span>`:''}</td>
   <td class="tot r">${eur(q*(+l.price||0))}</td><td></td></tr>`;
 }
@@ -624,8 +629,8 @@ function onDevisInput(e){
   if(tg.dataset.k){const k=tg.dataset.k;quote[k]=tg.dataset.n?(pnum(tg.value)??0):tg.value;markDirty();
     if(k==='nom')$('.toolbar .title').textContent=quote.nom||'Nouveau chiffrage';
     if(tg.dataset.n)refreshLines();return}
-  if(tg.dataset.q){const id=tg.dataset.q;const n=pnum(tg.value);if(n==null)delete quote.q[id];else quote.q[id]=n;markDirty();
-    tg.classList.toggle('is-over',n!=null);tg.classList.remove('is-auto');refreshLines();return}
+  if(tg.dataset.q){const id=tg.dataset.q;const n=pnum(tg.value);quote.q[id]=n==null?0:n;markDirty();
+    tg.classList.add('is-over');tg.classList.remove('is-auto');refreshLines();return}
   if(tg.dataset.x){const id=tg.closest('tr').dataset.id;const x=quote.extra.find(o=>o.id===id);if(!x)return;
     x[tg.dataset.x]=(tg.dataset.x==='qty'||tg.dataset.x==='price')?(pnum(tg.value)??0):tg.value;markDirty();refreshLines();return}
   if(tg.dataset.coef){const n=pnum(tg.value);quote.coef[tg.dataset.coef]=n??0;markDirty();updateSummary();return}
@@ -821,8 +826,8 @@ async function buildDevisPdf(){
   const CY=rgb(.494,.839,.925),CYS=rgb(.906,.965,.984),BL=rgb(.137,.588,.816),INK=rgb(.1,.1,.1),GR=rgb(.45,.47,.48),LG=rgb(.94,.945,.95),LN=rgb(.85,.87,.88),RED=rgb(.75,.16,.1);
   const soc=socInfo(),d=quote.dvs;
   const G=[];let cur=null;for(const l of d.lines){if(l.type==='sec'){cur={label:l.name||'',items:[]};G.push(cur);continue}
-    if(!cur){cur={label:'',items:[]};G.push(cur)}const q=+l.q||0,pu=+l.pu||0;cur.items.push({name:l.name||'',desc:String(l.desc||'').split('\n').filter(x=>x.trim()),q,unit:l.unit||'',pu,tva:+l.tva||0,tot:r2(q*pu)})}
-  const ps=G.flatMap(g=>g.items);
+    if(!cur){cur={label:'',items:[]};G.push(cur)}if(l.type==='img'||l.type==='break'){if(l.type==='break'||l.src)cur.items.push({type:l.type,src:l.src,legend:l.legend||'',w:+l.w||100});continue}const q=+l.q||0,pu=+l.pu||0;cur.items.push({name:l.name||'',desc:String(l.desc||'').split('\n').filter(x=>x.trim()),q,unit:l.unit||'',pu,tva:+l.tva||0,tot:r2(q*pu)})}
+  const ps=G.flatMap(g=>g.items).filter(p=>!p.type);
   const dt=d.date?new Date(d.date):new Date();const dstr=dt.toLocaleDateString('fr-FR').replace(/\//g,'-');
   const numero=d.numero||nextNumero(),val=+d.validite||+soc.validite||30;
   let page,y;
@@ -871,23 +876,28 @@ async function buildDevisPdf(){
   for(const l of wrap(d.objet||'',CW-40,11.5,B)){text(l,M,y,{size:11.5,f:B,color:BL,align:'center',w:CW});y-=15}
   y-=8;
   /* ----- tableau ----- */
+  let afterHead=0;
   const C={d:M,dw:286,q:M+286,qw:76,p:M+362,pw:58,t:M+420,tw:44,x:M+464,xw:CW-464};
   const head=()=>{page.drawRectangle({x:M,y:y-22,width:C.x+C.xw-M-0,height:22,color:CY});
     text('DÉSIGNATION',C.d+6,y-14.5,{size:7.5,f:B});text('QTÉ',C.q,y-14.5,{size:7.5,f:B,align:'right',w:C.qw-4});text('PU HT',C.p,y-14.5,{size:7.5,f:B,align:'right',w:C.pw-4});
-    text('TVA',C.t,y-14.5,{size:7.5,f:B,align:'right',w:C.tw-4});text('TOTAL HT',C.x,y-14.5,{size:7.5,f:B,align:'right',w:C.xw-6});y-=30};
+    text('TVA',C.t,y-14.5,{size:7.5,f:B,align:'right',w:C.tw-4});text('TOTAL HT',C.x,y-14.5,{size:7.5,f:B,align:'right',w:C.xw-6});y-=30;afterHead=y};
   head();
-  let totHT=0;
+  let totHT=0,needHead=false;const IMGS=new Map();
+  for(const p of G.flatMap(g=>g.items))if(p.type==='img'&&!IMGS.has(p.src)){try{IMGS.set(p.src,/^data:image\/png/.test(p.src)?await doc.embedPng(b64u8(p.src)):await doc.embedJpg(b64u8(p.src)))}catch(e){IMGS.set(p.src,null)}}
+  const imgDim=p=>{const im=IMGS.get(p.src);if(!im)return null;let w=CW*Math.min(100,Math.max(20,p.w||100))/100,h=w*im.height/im.width;const maxH=H-M-FOOT-80;if(h>maxH){w=w*maxH/h;h=maxH}const lg=p.legend?wrap(p.legend,CW-20,8,I):[];return {im,w,h,lg,tot:h+lg.length*10+14}};
   for(const g of G){const xs=g.items;if(!xs.length&&!g.label)continue;
     /* une section entière (ex. Raccordement) ne se coupe pas : si elle ne tient pas en bas de page, elle passe sur la page suivante */
-    const hSec=32+26+xs.reduce((a,p)=>a+wrap(p.name,C.dw-12,10,B).length*12.5+p.desc.flatMap(d=>wrap('- '+d,C.dw-14,7.8)).length*10.5+8,0);
-    if(y-hSec<FOOT+6&&hSec<H-M-FOOT-40){newPage();head()}else if(ensure(70))head();if(g.label){y-=10;text(g.label,C.d+6,y-10,{size:11.5,f:BI,color:BL,u:true});y-=22}else y-=4;let st=0;
-    for(const p of xs){const nl=wrap(p.name,C.dw-12,10,B),dl=p.desc.flatMap(d=>wrap('- '+d,C.dw-14,7.8));const need=nl.length*12.5+dl.length*10.5+10;
+    const hSec=32+26+xs.reduce((a,p)=>a+(p.type==='break'?1e5:p.type==='img'?((imgDim(p)||{tot:0}).tot):wrap(p.name,C.dw-12,10,B).length*12.5+p.desc.flatMap(d=>wrap('- '+d,C.dw-14,7.8)).length*10.5+8),0);
+    if(y-hSec<FOOT+6&&hSec<H-M-FOOT-40&&y<afterHead-1){newPage();head();needHead=false}else if(ensure(70)){head();needHead=false}if(needHead&&(g.label||xs.length)&&xs[0]?.type!=='break'){head();needHead=false}if(g.label){y-=10;text(g.label,C.d+6,y-10,{size:11.5,f:BI,color:BL,u:true});y-=22}else y-=4;let st=0;
+    for(const p of xs){if(p.type==='break'){newPage();needHead=true;continue}
+      if(p.type==='img'){const dm=imgDim(p);if(!dm)continue;if(ensure(dm.tot))needHead=true;y-=6;page.drawImage(dm.im,{x:M+(CW-dm.w)/2,y:y-dm.h,width:dm.w,height:dm.h});y-=dm.h+4;for(const l of dm.lg){text(l,M,y-8,{size:8,f:I,color:GR,align:'center',w:CW});y-=10}y-=4;continue}
+      if(needHead){head();needHead=false}const nl=wrap(p.name,C.dw-12,10,B),dl=p.desc.flatMap(d=>wrap('- '+d,C.dw-14,7.8));const need=nl.length*12.5+dl.length*10.5+10;
       if(ensure(need))head();
       const ty=y-10;nl.forEach((l,j)=>text(l,C.d+6,ty-j*12.5,{size:10,f:B}));
       text(`${n2(p.q)} ${p.unit}`,C.q,ty,{size:8.5,align:'right',w:C.qw-4});text(n2(p.pu),C.p,ty,{size:8.5,align:'right',w:C.pw-4});
       text(`${n2(p.tva)} %`,C.t,ty,{size:8.5,align:'right',w:C.tw-4});text(eur(p.tot),C.x,ty,{size:8.5,align:'right',w:C.xw-6});
       y-=nl.length*12.5+2;for(const l of dl){text(l,C.d+6,y-8,{size:7.8});y-=10.5}y-=6;st+=p.tot}
-    if(g.label&&xs.length){ensure(22);y-=4;const lab='Sous-total '+g.label+' HT';text(lab,M,y-10,{size:10,f:B,color:BL,u:true,align:'right',w:C.x-M-6});text(eur(st),C.x,y-10,{size:9,f:B,align:'right',w:C.xw-6});y-=26}else y-=8;totHT+=st}
+    if(g.label&&xs.some(p=>!p.type)){ensure(22);y-=4;const lab='Sous-total '+g.label+' HT';text(lab,M,y-10,{size:10,f:B,color:BL,u:true,align:'right',w:C.x-M-6});text(eur(st),C.x,y-10,{size:9,f:B,align:'right',w:C.xw-6});y-=26}else y-=8;totHT+=st}
   const TT=devisTotaux(ps);totHT=TT.ht;const totTVA=TT.tva,ttc=TT.ttc;
   /* ----- bloc final gardé ensemble sur une même page : totaux, conditions, bon pour accord ----- */
   const condTxt=[['Mise à disposition : ',d.miseDispo],['Non compris dans le devis : ',d.nonCompris],...String(d.paiement||'').split('\n').map(l=>['',l])].filter(x=>String(x[1]||'').trim());
@@ -969,9 +979,23 @@ function devisFromChiffrage(){const t=totals(),v=t.v,ps=devisPostes(t),soc=socIn
     clientType:o.clientType||'pro',client:o.client??quote.client??'',clientAdr:o.clientAdr||'',clientTva:o.clientTva||'',clientSiret:o.clientSiret||'',tel:o.tel??quote.tel??'',mail:o.mail??quote.mail??'',
     chantier:o.chantier||[quote.nom,quote.lieu].filter(Boolean).join(' – '),objet:defObjet(v),delai:defDelai(v),
     miseDispo:o.miseDispo??soc.miseDispo,nonCompris:o.nonCompris??soc.nonCompris,paiement:o.paiement??soc.paiement,lines}}
-function dvsItems(d){return d.lines.filter(l=>l.type!=='sec').map(l=>({tva:+l.tva||0,tot:r2((+l.q||0)*(+l.pu||0))}))}
-let dvpConfirm=false;
-function dvpRow(l,i,n){const mv=`<button class="reset" data-up="${i}" title="Monter" ${i?'':'disabled'}>↑</button><button class="reset" data-down="${i}" title="Descendre" ${i<n-1?'':'disabled'}>↓</button><button class="reset" data-ins="${i}" title="Insérer une ligne dessous">+</button><button class="reset" data-del="${i}" title="Supprimer">✕</button>`;
+function dvsItems(d){return d.lines.filter(l=>l.type!=='sec'&&l.type!=='img'&&l.type!=='break').map(l=>({tva:+l.tva||0,tot:r2((+l.q||0)*(+l.pu||0))}))}
+let dvpConfirm=false,imgTarget=null;
+function pickImg(pos,insert){imgTarget={pos,insert};let f=document.getElementById('p-file');
+  if(!f){f=document.createElement('input');f.type='file';f.accept='image/*';f.id='p-file';f.hidden=true;document.body.appendChild(f);f.addEventListener('change',onImgFile)}f.value='';f.click()}
+function compressImg(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file);const im=new Image();
+  im.onload=()=>{const mx=1400;let w=im.naturalWidth,h=im.naturalHeight;const k=Math.min(1,mx/Math.max(w,h));w=Math.max(1,Math.round(w*k));h=Math.max(1,Math.round(h*k));
+    const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(im,0,0,w,h);URL.revokeObjectURL(u);
+    let q=.82,url=c.toDataURL('image/jpeg',q);while(url.length>280000&&q>.4){q-=.1;url=c.toDataURL('image/jpeg',q)}res(url)};
+  im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('img'))};im.src=u})}
+async function onImgFile(e){const file=e.target.files&&e.target.files[0];const t=imgTarget;const d=quote.dvs;if(!file||!t||!d)return;
+  try{const src=await compressImg(file);
+    if(t.insert)d.lines.splice(t.pos,0,{id:lid(),type:'img',src,legend:'',w:100});else{const l=d.lines[t.pos];if(l)l.src=src}
+    dvpDirty();dvpRerender();const kb=Math.round(JSON.stringify(quote).length/1024);if(kb>750)toast('Attention : chiffrage lourd ('+kb+' Ko) – limitez le nombre d’images');}
+  catch(err){toast('Image illisible : utilisez une photo JPG ou PNG')}}
+function dvpRow(l,i,n){const mv=`<button class="reset" data-up="${i}" title="Monter" ${i?'':'disabled'}>↑</button><button class="reset" data-down="${i}" title="Descendre" ${i<n-1?'':'disabled'}>↓</button><button class="reset" data-ins="${i}" title="Insérer une ligne dessous">+</button><button class="reset" data-insimg="${i}" title="Insérer une image dessous">▣</button><button class="reset" data-insbrk="${i}" title="Insérer un saut de page dessous">⤓</button><button class="reset" data-del="${i}" title="Supprimer">✕</button>`;
+  if(l.type==='break')return `<tr data-i="${i}"><td colspan="6"><div class="pbreak">Saut de page dans le PDF</div></td><td class="r" style="white-space:nowrap">${mv}</td></tr>`;
+  if(l.type==='img')return `<tr data-i="${i}"><td colspan="6"><div class="dimg">${l.src?`<img src="${l.src}" alt="${esc(l.legend||'Image du devis')}">`:'<span class="help">Aucune image</span>'}<div class="dimg-f"><input class="xin" data-lf="legend" value="${esc(l.legend||'')}" placeholder="Légende sous l’image (facultatif)"><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="help">Largeur</span><select class="xin" data-lf="w" style="width:auto">${[100,75,50,33].map(v=>`<option value="${v}" ${(+l.w||100)===v?'selected':''}>${v} %</option>`).join('')}</select><button class="btn sm" data-imgpick="${i}">Changer l’image</button><span class="help">${l.src?Math.round(l.src.length*0.75/1024)+' Ko':''}</span></span></div></div></td><td class="r" style="white-space:nowrap">${mv}</td></tr>`;
   if(l.type==='sec')return `<tr class="grp" data-i="${i}"><td colspan="6"><input class="xin" data-lf="name" value="${esc(l.name)}" placeholder="Titre de section" style="font-weight:700"></td><td class="r" style="white-space:nowrap">${mv}</td></tr>`;
   const tot=r2((+l.q||0)*(+l.pu||0));
   return `<tr data-i="${i}"><td><input class="xin" data-lf="name" value="${esc(l.name)}" placeholder="Désignation" style="font-weight:600"><textarea class="xin dvt" data-lf="desc" rows="${Math.max(1,String(l.desc||'').split('\n').length)}" placeholder="Détail (une ligne par tiret)">${esc(l.desc||'')}</textarea></td>
@@ -986,7 +1010,18 @@ function dvpTotalsHTML(){const d=quote.dvs;const T=devisTotaux(dvsItems(d));cons
     ${T.rates.map(o=>`<span class="k">TVA ${o.r?nf(o.r)+' %':'0 % (autoliquidation)'}</span><span class="v">${eur(o.tva)}</span>`).join('')}
     <span class="k strong">Total TTC</span><span class="v strong">${eur(T.ttc)}</span>
     <span class="k">Prix retenu dans le chiffrage</span><span class="v">${eur(pe)}</span>
-    <span class="k">Écart devis / chiffrage</span><span class="v ${Math.abs(ec)<0.01?'':ec>0?'good':'bad'}">${Math.abs(ec)<0.01?'aucun':(ec>0?'+':'')+eur(ec)}</span></div>`}
+    <span class="k">Écart devis / chiffrage</span><span class="v ${Math.abs(ec)<0.01?'':ec>0?'good':'bad'}">${Math.abs(ec)<0.01?'aucun':(ec>0?'+':'')+eur(ec)}</span>
+    <span class="k strong">Prix souhaité HT</span><span class="v"><input id="p-cible" inputmode="decimal" value="${esc(String(d.cible??dvpObjectif()).replace('.',','))}" aria-label="Prix souhaité HT"></span>
+    <span class="k" style="font-size:12px">Par défaut : objectif ${nf(+quote.obj||0)} €/m × ${nf(totals().v.M)} m forés</span><span class="v" style="font-size:12px">${totals().v.M?nf(r2((d.cible??dvpObjectif())/totals().v.M))+' €/m':''}</span>
+    <span class="k" style="font-size:12px">Les prix unitaires sont recalculés en proportion ; le prix retenu du chiffrage suit.</span><span class="v"><button class="btn sm primary" id="p-ajust">Ajuster le devis à ce prix</button></span></div>`}
+function dvpObjectif(){const t=totals();const o=Math.round((+quote.obj||0)*t.v.M);return o>0?o:r2(prixEff(t))}
+function ajusterDevis(){const d=quote.dvs;if(!d)return;const target=r2(d.cible!=null?d.cible:dvpObjectif());
+  const ls=d.lines.filter(l=>l.type!=='sec'&&r2((+l.q||0)*(+l.pu||0))!==0);const cur=ls.reduce((s,l)=>s+r2((+l.q||0)*(+l.pu||0)),0);
+  if(!(target>0)||!(cur>0)){toast('Rien à ajuster : saisissez un prix et des lignes chiffrées');return}
+  const k=target/cur;for(const l of ls)l.pu=r2((+l.pu||0)*k);
+  const sum=ls.reduce((s,l)=>s+r2((+l.q||0)*(+l.pu||0)),0);const diff=r2(target-sum);
+  if(Math.abs(diff)>=0.01){const f=ls.filter(l=>+l.q===1&&+l.pu>0).sort((a,b)=>b.pu-a.pu)[0];if(f)f.pu=r2(+f.pu+diff)}
+  const t0=totals(),isObj=Math.abs(target-Math.round((+quote.obj||0)*t0.v.M))<0.01;quote.prixRetenu=isObj?null:target;if(isObj)delete d.cible;else d.cible=target;dvpDirty();dvpRerender();toast('Devis ajusté à '+eur(target)+' HT')}
 function renderDvp(){const el=$('#v-dvp');const d=quote.dvs;
   if(!d){el.innerHTML=`<div class="toolbar"><div class="title">Devis${quote.nom?' – '+esc(quote.nom):''}</div></div>
     <div class="card"><div class="empty">Pas encore de devis pour ce chiffrage.<br><br><button class="btn primary" id="p-create">Créer le devis à partir du chiffrage</button>
@@ -1005,16 +1040,17 @@ function renderDvp(){const el=$('#v-dvp');const d=quote.dvs;
   <div class="card sec"><div class="sec-h"><span class="sw" style="background:var(--accent)"></span><div><h2>Lignes du devis</h2><div class="sub">Tout est modifiable ; les sous-totaux sont calculés par section</div></div></div>
     <div class="tbl-wrap"><table><thead><tr><th>Désignation et détail</th><th class="r">Qté</th><th>Unité</th><th class="r">PU HT</th><th>TVA</th><th class="r">Total HT</th><th></th></tr></thead>
     <tbody id="p-body">${d.lines.map((l,i)=>dvpRow(l,i,d.lines.length)).join('')||'<tr><td colspan="7" class="empty">Aucune ligne</td></tr>'}</tbody></table></div>
-    <div class="sec-f"><span style="display:flex;gap:8px"><button class="btn sm" id="p-addsec">+ Section</button><button class="btn sm" id="p-addline">+ Ligne</button></span></div>
+    <div class="sec-f"><span style="display:flex;gap:8px"><button class="btn sm" id="p-addsec">+ Section</button><button class="btn sm" id="p-addline">+ Ligne</button><button class="btn sm" id="p-addimg">+ Image</button><button class="btn sm" id="p-addbrk">+ Saut de page</button></span></div>
     <div id="p-tot">${dvpTotalsHTML()}</div></div>
   <div class="card" style="margin-top:18px"><div class="card-h"><h2>Conditions</h2></div><div class="card-b"><div class="fields">
     ${ta('miseDispo','Mise à disposition par le client')}${ta('nonCompris','Non compris dans le devis')}${ta('paiement','Conditions de paiement',3)}
   </div><p class="help" style="margin:10px 0 0">Mentions légales (assurance, médiateur…) et CGV : onglet <b>Entreprise</b>. Elles s’ajoutent automatiquement au PDF.</p></div></div>`}
 function dvpDirty(){markDirty();const s=$('#st2');if(s){s.textContent='Modifications non enregistrées';s.className='status dirty'}}
 function onDvpInput(e){const tg=e.target,d=quote.dvs;if(!d)return;
+  if(tg.id==='p-cible'){d.cible=pnum(tg.value);dvpDirty();return}
   if(tg.dataset.p){d[tg.dataset.p]=tg.value;if(tg.dataset.p==='numero')$('#v-dvp .toolbar .title').textContent='Devis '+tg.value;dvpDirty();return}
   if(tg.dataset.lf){const tr=tg.closest('tr');const l=d.lines[+tr.dataset.i];if(!l)return;const f=tg.dataset.lf;
-    l[f]=(f==='q'||f==='pu')?(pnum(tg.value)??0):f==='tva'?+tg.value:tg.value;dvpDirty();
+    l[f]=(f==='q'||f==='pu')?(pnum(tg.value)??0):(f==='tva'||f==='w')?+tg.value:tg.value;dvpDirty();
     if(f==='q'||f==='pu'||f==='tva'){const c=tr.querySelector('td.tot');if(c)c.textContent=eur(r2((+l.q||0)*(+l.pu||0)));$('#p-tot').innerHTML=dvpTotalsHTML()}}}
 function dvpRerender(){const y=window.scrollY;renderDvp();window.scrollTo(0,y)}
 async function onDvpClick(e){const b=e.target.closest('button');if(!b)return;const d=quote.dvs;
@@ -1024,9 +1060,15 @@ async function onDvpClick(e){const b=e.target.closest('button');if(!b)return;con
   if(b.id==='p-regen-ok'){dvpConfirm=false;quote.dvs=devisFromChiffrage();dvpDirty();dvpRerender();toast('Lignes recréées depuis le chiffrage');return}
   if(b.id==='p-pdf'){exportPDF('devis');return}
   if(b.id==='p-save'){await saveQuote();renderDvp();return}
+  if(b.id==='p-ajust'){ajusterDevis();return}
   if(!d)return;const n=d.lines.length;
   if(b.id==='p-addsec'){d.lines.push({id:lid(),type:'sec',name:'Nouvelle section'});dvpDirty();dvpRerender();$(`#p-body tr[data-i="${n}"] input`)?.select();return}
   if(b.id==='p-addline'){d.lines.push({id:lid(),type:'line',name:'',desc:'',q:1,unit:'forfait',pu:0,tva:tvaDef()});dvpDirty();dvpRerender();$(`#p-body tr[data-i="${n}"] input`)?.focus();return}
+  if(b.id==='p-addimg'){pickImg(n,true);return}
+  if(b.id==='p-addbrk'){d.lines.push({id:lid(),type:'break'});dvpDirty();dvpRerender();return}
+  if(b.dataset.insimg){pickImg(+b.dataset.insimg+1,true);return}
+  if(b.dataset.insbrk){d.lines.splice(+b.dataset.insbrk+1,0,{id:lid(),type:'break'});dvpDirty();dvpRerender();return}
+  if(b.dataset.imgpick){pickImg(+b.dataset.imgpick,false);return}
   const mv=(i,j)=>{const x=d.lines.splice(i,1)[0];d.lines.splice(j,0,x);dvpDirty();dvpRerender()};
   if(b.dataset.up){const i=+b.dataset.up;if(i>0)mv(i,i-1);return}
   if(b.dataset.down){const i=+b.dataset.down;if(i<n-1)mv(i,i+1);return}
