@@ -898,13 +898,13 @@ async function buildDevisPdf(){
   head();
   let totHT=0,needHead=false;const IMGS=new Map();
   for(const p of G.flatMap(g=>g.items))if(p.type==='img'&&!IMGS.has(p.src)){try{IMGS.set(p.src,/^data:image\/png/.test(p.src)?await doc.embedPng(b64u8(p.src)):await doc.embedJpg(b64u8(p.src)))}catch(e){IMGS.set(p.src,null)}}
-  const imgDim=p=>{const im=IMGS.get(p.src);if(!im)return null;let w=CW*Math.min(100,Math.max(20,p.w||100))/100,h=w*im.height/im.width;const maxH=H-M-FOOT-80;if(h>maxH){w=w*maxH/h;h=maxH}const lg=p.legend?wrap(p.legend,CW-20,8,I):[];return {im,w,h,lg,tot:h+lg.length*10+14}};
+  const imgDim=p=>{const im=IMGS.get(p.src);if(!im)return null;let w=CW*Math.min(100,Math.max(20,p.w||100))/100,h=w*im.height/im.width;const maxH=H-M-FOOT-80;if(h>maxH){w=w*maxH/h;h=maxH}const lg=p.legend?wrap(p.legend,CW-12,8,I):[];return {im,w,h,lg,tot:h+lg.length*10+14}};
   for(const g of G){const xs=g.items;if(!xs.length&&!g.label)continue;
     /* une section entière (ex. Raccordement) ne se coupe pas : si elle ne tient pas en bas de page, elle passe sur la page suivante */
     const hSec=32+26+xs.reduce((a,p)=>a+(p.type==='break'?1e5:p.type==='img'?((imgDim(p)||{tot:0}).tot):wrap(p.name,C.dw-12,10,B).length*12.5+p.desc.flatMap(d=>wrap('- '+d,C.dw-14,7.8)).length*10.5+8),0);
     if(y-hSec<FOOT+6&&hSec<H-M-FOOT-40&&y<afterHead-1){newPage();head();needHead=false}else if(ensure(70)){head();needHead=false}if(needHead&&(g.label||xs.length)&&xs[0]?.type!=='break'){head();needHead=false}if(g.label){y-=10;text(g.label,C.d+6,y-10,{size:11.5,f:BI,color:BL,u:true});y-=22}else y-=4;let st=0;
     for(const p of xs){if(p.type==='break'){newPage();needHead=true;continue}
-      if(p.type==='img'){const dm=imgDim(p);if(!dm)continue;if(ensure(dm.tot))needHead=true;y-=6;page.drawImage(dm.im,{x:M+(CW-dm.w)/2,y:y-dm.h,width:dm.w,height:dm.h});y-=dm.h+4;for(const l of dm.lg){text(l,M,y-8,{size:8,f:I,color:GR,align:'center',w:CW});y-=10}y-=4;continue}
+      if(p.type==='img'){const dm=imgDim(p);if(!dm)continue;if(ensure(dm.tot))needHead=true;y-=6;page.drawImage(dm.im,{x:M+6,y:y-dm.h,width:dm.w,height:dm.h});y-=dm.h+4;for(const l of dm.lg){text(l,M+6,y-8,{size:8,f:I,color:GR});y-=10}y-=4;continue}
       if(needHead){head();needHead=false}const nl=wrap(p.name,C.dw-12,10,B),dl=p.desc.flatMap(d=>wrap('- '+d,C.dw-14,7.8));const need=nl.length*12.5+dl.length*10.5+10;
       if(ensure(need))head();
       const ty=y-10;nl.forEach((l,j)=>text(l,C.d+6,ty-j*12.5,{size:10,f:B}));
