@@ -140,7 +140,7 @@ td.qty{width:170px}
 .xin.r{text-align:right}
 .pbreak{border-top:2px dashed var(--ink3);text-align:center;color:var(--ink3);font-size:12px;padding:5px 0 2px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
 .dimg{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;padding:4px 0}
-.dimg img{max-width:220px;max-height:160px;border:1px solid var(--line);border-radius:4px;background:#fff}
+.dimg img{max-width:160px;max-height:120px;border:1px solid var(--line);border-radius:4px;background:#fff}
 .dimg-f{display:flex;flex-direction:column;gap:6px;flex:1;min-width:200px}
 .xin{width:100%;background:var(--ground);border:1px solid var(--line);border-radius:5px;padding:4px 7px;min-width:0}
 .sec-f{padding:10px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
@@ -288,7 +288,7 @@ const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){retu
 
 /* ---------- formula engine ---------- */
 const FN={ceil:Math.ceil,floor:Math.floor,round:Math.round,max:Math.max,min:Math.min};
-const VARS=['N','P','M','L','J','E','D1','D2','LF','LC','T','JR','VR','GLY'];
+const VARS=['N','P','M','L','J','E','D1','D2','LF','LC','T','JR','VR','GLY','ZO'];
 const ruleCache=new Map();
 function compile(rule){
   if(ruleCache.has(rule))return ruleCache.get(rule);
@@ -324,9 +324,11 @@ function baseVars(){const N=+quote.N||0,P=+quote.P||0,L=+quote.L||0,mpj=+quote.m
   const LF=E*N*(N+1),LC=2*L;
   /* tranchée : ligne des forages + collecteur → chaufferie */
   const T=E*N+L;
-  return {N,P,L,M,J:mpj>0?Math.ceil(M/mpj):0,E,D1,D2,LF,LC,T,JR:+quote.jr||0}}
+  return {N,P,L,M,J:mpj>0?Math.ceil(M/mpj):0,E,D1,D2,LF,LC,T,JR:+quote.jr||0,ZO:quote.zone==='orange'?1:0}}
 /* Glycol : ancienne règle forfaitaire (M+L)/25*20 remplacée par le volume réel du réseau */
-function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String(i.rule||'').replace(/\s/g,'')==='(M+L)/25*20')i.rule='GLY';if(i&&i.id==='glycol'&&i.name==='Glycol')i.name='Glycol pur'});if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='decl')){const k=items.findIndex(i=>i.id==='trt');items.splice(k,0,{id:'decl',sec:'loc',grp:'Administratif',name:'Déclarations (BRGM, DICT, rapport de fin de travaux)',unit:'forfait',price:0,qty:1,rule:'',kind:'frais'})}return items}
+function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String(i.rule||'').replace(/\s/g,'')==='(M+L)/25*20')i.rule='GLY';if(i&&i.id==='glycol'&&i.name==='Glycol')i.name='Glycol pur'});if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='decl')){const k=items.findIndex(i=>i.id==='trt');items.splice(k,0,{id:'decl',sec:'loc',grp:'Administratif',name:'Déclarations (BRGM, DICT, rapport de fin de travaux)',unit:'forfait',price:0,qty:1,rule:'',kind:'frais'})}
+  if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='zo')){const k=items.findIndex(i=>i.id==='trt');items.splice(k+1,0,{id:'zo',sec:'loc',grp:'Sous-traitance',name:'Déclaration zone orange (avis d’expert agréé)',unit:'forfait',price:0,rule:'ZO',kind:'st',poste:'zoneorange'})}
+  (items||[]).forEach(i=>{if(i&&i.id==='zo'&&!i.poste)i.poste='zoneorange'});return items}
 function vars(){const v=baseVars();v.D1auto=!v.D1;if(!v.D1)v.D1=v.P>150?50:40;v.D2auto=!v.D2;if(!v.D2)v.D2=autoD2(v).D;const vr=volumeReseau(v);v.VR=Math.ceil(vr.tot);v.GLY=Math.ceil(vr.gly);return v}
 /* Ø collecteur → chaufferie choisi selon le débit : vitesse ≤ 1 m/s, perte ≤ 150 Pa/m,
    et si la pression disponible de la PAC est connue, réseau ≤ 90 % de celle-ci */
@@ -359,8 +361,9 @@ function qtyOf(l,v){
 }
 function totals(){
   const v=vars();const cost={racc:0,forage:0,loc:0};
-  for(const l of lines()){const q=qtyOf(l,v);if(cost[l.sec]!=null)cost[l.sec]+=q*(+l.price||0)}
-  const pv={};let tc=0,tp=0;for(const s of SECS){cost[s.id]=Math.round(cost[s.id]*100)/100;pv[s.id]=cost[s.id]*(+quote.coef[s.id]||0);tc+=cost[s.id];tp+=pv[s.id]}
+  const stc={racc:0,forage:0,loc:0};
+  for(const l of lines()){const q=qtyOf(l,v);if(cost[l.sec]!=null){cost[l.sec]+=q*(+l.price||0);if(isST(l))stc[l.sec]+=q*(+l.price||0)}}
+  const pv={};let tc=0,tp=0;for(const s of SECS){cost[s.id]=Math.round(cost[s.id]*100)/100;pv[s.id]=(cost[s.id]-stc[s.id])*(+quote.coef[s.id]||0)+stc[s.id]*(1+stMarge()/100);tc+=cost[s.id];tp+=pv[s.id]}
   return {v,cost,pv,tc,tp};
 }
 
@@ -540,6 +543,7 @@ function summaryHTML(t){
       <div class="objline"><span class="status" id="s-prixnote"></span></div>
       <span class="k">Écart vs calcul</span><span class="v" id="s-ecart"></span>
       <span class="k">Marge brute</span><span class="v strong" id="s-marge"></span>
+      <label class="k" for="q-stm">Marge sous-traitance</label><div class="unit-in"><input id="q-stm" inputmode="decimal" value="${quote.stm??''}" placeholder="15"><span>%</span></div>
       <label class="k" for="q-com">Commission apporteur</label><div class="unit-in"><input id="q-com" inputmode="decimal" value="${quote.com||''}" placeholder="0"><span>%</span></div>
       <label class="k" for="q-ffm">Frais fixes société</label><div class="unit-in"><input id="q-ffm" inputmode="decimal" value="${quote.ffm??''}"><span>€/m</span></div>
       <span class="k">Commission + frais fixes</span><span class="v" id="s-ded"></span>
@@ -551,7 +555,15 @@ function summaryHTML(t){
   </div>`;
 }
 
-function prixEff(t){const pObj=Math.round((+quote.obj||0)*t.v.M);return quote.prixRetenu!=null?+quote.prixRetenu:(pObj||t.tp)}
+/* sous-traitance (TRT, zone orange…) : hors production, ajoutée par-dessus l'objectif au mètre */
+function isST(l){return l.src!=='extra'&&kindOf(l)==='st'}
+function stMarge(){return quote.stm!=null&&quote.stm!==''?+quote.stm:15}
+function stVente(t){t=t||totals();const v=t.v;let s=0;for(const l of lines()){if(!isST(l))continue;const q=qtyOf(l,v);if(q>0)s+=q*(+l.price||0)*(1+stMarge()/100)}return r2(s)}
+/* coefficient appliqué à la production (hors sous-traitance) pour tomber sur le prix retenu */
+function kProd(t){t=t||totals();const stV=stVente(t),pe=prixEff(t);return t.tp-stV>0.005?(pe-stV)/(t.tp-stV):1}
+function unitVente(l,k){return isST(l)?(+l.price||0)*(1+stMarge()/100):(+l.price||0)*(+quote.coef[l.sec]||0)*k}
+function objPrix(t){t=t||totals();const b=Math.round((+quote.obj||0)*t.v.M);return b>0?r2(b+stVente(t)):0}
+function prixEff(t){const pObj=objPrix(t);return quote.prixRetenu!=null?+quote.prixRetenu:(pObj||t.tp)}
 function updateSummary(t){
   t=t||totals();
   for(const s of SECS){
@@ -560,14 +572,14 @@ function updateSummary(t){
   }
   const bar=$('.bar');if(bar)bar.innerHTML=SECS.map(s=>`<span style="width:${t.tp?100*t.pv[s.id]/t.tp:0}%;background:var(--${s.id})"></span>`).join('');
   $('#s-total').textContent=eur(t.tp);$('#s-perm').textContent=t.v.M?eur(t.tp/t.v.M):'–';$('#s-cost').textContent=eur(t.tc);
-  const pObj=Math.round((+quote.obj||0)*t.v.M);
+  const pObj=objPrix(t),stv=stVente(t);
   const pr=quote.prixRetenu!=null?+quote.prixRetenu:(pObj||t.tp);
   const pi=$('#q-prix');if(pi)pi.placeholder=pObj?fmtN.format(pObj):'= calculé';
-  const pn=$('#s-prixnote');if(pn)pn.textContent=quote.prixRetenu!=null?'Prix saisi à la main — videz la case pour revenir à l’objectif':pObj?`Prix retenu = ${nf(+quote.obj)} €/m × ${nf(t.v.M)} m`:'Prix retenu = prix calculé';
+  const pn=$('#s-prixnote');if(pn)pn.textContent=quote.prixRetenu!=null?'Prix saisi à la main — videz la case pour revenir à l’objectif':pObj?`Prix retenu = ${nf(+quote.obj)} €/m × ${nf(t.v.M)} m${stv?' + sous-traitance '+eur(stv):''}`:'Prix retenu = prix calculé';
   const ec=pr-t.tp;const e=$('#s-ecart');e.textContent=Math.abs(ec)>0.005?(ec>=0?'+':'')+eur(ec):'–';e.className='v '+(Math.abs(ec)<=0.005?'':ec>=0?'good':'bad');
   const mg=pr-t.tc;$('#s-marge').textContent=`${eur(mg)} · ${pr?nf(100*mg/pr):0} %`;
   $('#s-ttc').textContent=eur(pr*(1+(+quote.tva||0)/100));
-  const po=(+quote.obj||0)*t.v.M, so=$('#s-obj');
+  const po=pObj, so=$('#s-obj');
   so.textContent=po?eur(po):'–';
   const sp=$('#s-objpct');sp.textContent=po?(t.tp<po?`Calcul ${nf(100*(po-t.tp)/po)} % sous l'objectif`:`Calcul ${nf(100*(t.tp-po)/po)} % au-dessus`):'';sp.className=po&&t.tp<po?'bad':'good';
   const com=pr*(+quote.com||0)/100, ff=(+quote.ffm||0)*t.v.M, net=mg-com-ff;
@@ -609,7 +621,7 @@ function renderDevis(){
   ${pchg?`<div class="banner"><span>${pchg} prix de ce chiffrage diffèrent des tarifs actuels (repérés par <span class="pchg">●</span>).</span><button class="btn sm" id="b-upd">Appliquer les tarifs actuels</button></div>`:''}
   <div class="layout"><div>
     <div class="card"><div class="card-h"><h2>Chantier</h2></div><div class="card-b"><div class="fields">
-      ${field('nom','Nom du chantier')}${field('lieu','Lieu')}${field('client','Client')}${field('tel','Téléphone','tel')}${field('mail','E-mail','email')}${field('archi','Architecte / BE')}${field('interlocuteur','Interlocuteur')}${field('chiffreur','Chiffré par')}${field('date','Date','date')}
+      ${field('nom','Nom du chantier')}${field('lieu','Lieu')}<div class="f"><label for="q-zone">Zone réglementaire GMI</label><select id="q-zone" data-k="zone"><option value="verte" ${quote.zone!=='orange'?'selected':''}>Verte</option><option value="orange" ${quote.zone==='orange'?'selected':''}>Orange (avis d’expert)</option></select></div>${field('client','Client')}${field('tel','Téléphone','tel')}${field('mail','E-mail','email')}${field('archi','Architecte / BE')}${field('interlocuteur','Interlocuteur')}${field('chiffreur','Chiffré par')}${field('date','Date','date')}
       <div class="f" style="grid-column:1/-1"><label for="q-notes">Notes</label><textarea id="q-notes" data-k="notes" rows="2">${esc(quote.notes)}</textarea></div>
     </div></div></div>
     <div class="card" style="margin-top:18px"><div class="card-h"><h2>Dimensionnement</h2></div><div class="card-b"><div class="params">
@@ -628,7 +640,7 @@ function onDevisInput(e){
   const tg=e.target;
   if(tg.dataset.k){const k=tg.dataset.k;quote[k]=tg.dataset.n?(pnum(tg.value)??0):tg.value;markDirty();
     if(k==='nom')$('.toolbar .title').textContent=quote.nom||'Nouveau chiffrage';
-    if(tg.dataset.n)refreshLines();return}
+    if(tg.dataset.n||k==='zone')refreshLines();return}
   if(tg.dataset.q){const id=tg.dataset.q;const n=pnum(tg.value);quote.q[id]=n==null?0:n;markDirty();
     tg.classList.add('is-over');tg.classList.remove('is-auto');refreshLines();return}
   if(tg.dataset.x){const id=tg.closest('tr').dataset.id;const x=quote.extra.find(o=>o.id===id);if(!x)return;
@@ -638,6 +650,7 @@ function onDevisInput(e){
   if(tg.dataset.ht){quote.h[tg.dataset.ht]=tg.value;markDirty();return}
   if(tg.dataset.h){const n=pnum(tg.value);quote.h[tg.dataset.h]=n;markDirty();refreshLines();return}
   if(tg.id==='q-obj'){quote.obj=pnum(tg.value)??0;markDirty();updateSummary();return}
+  if(tg.id==='q-stm'){quote.stm=pnum(tg.value);markDirty();updateSummary();return}
   if(tg.id==='q-com'){quote.com=pnum(tg.value)??0;markDirty();updateSummary();return}
   if(tg.id==='q-ffm'){quote.ffm=pnum(tg.value)??0;markDirty();updateSummary();return}
   if(tg.id==='q-tva'){quote.tva=+tg.value;markDirty();updateSummary();return}
@@ -750,6 +763,7 @@ const DSECS=[{id:'prep',label:'Déclarations et préparation chantier',st:'Sous-
 const pl=n=>n>1?'s':'';
 const POSTES=[
   {id:'declarations',ds:'prep',unit:'forfait',name:()=>'Déclarations administratives',desc:()=>['BRGM (Géothermie Perspectives)','DICT','Rapport de fin de travaux']},
+  {id:'zoneorange',ds:'prep',unit:'forfait',name:()=>'Déclaration en zone orange',desc:()=>['Avis d’un expert agréé (géothermie de minime importance, zone orange)']},
   {id:'installation',ds:'prep',unit:'forfait',name:()=>'Mise en place chantier',desc:()=>['Amenée et repli du matériel','Balisage du chantier']},
   {id:'forage',ds:'forage',unit:'ml',name:()=>'Forage',desc:v=>[`${v.N} forage${pl(v.N)} de ${nf(v.P)} m`,'Pré-tubage','Marteau fond de trou']},
   {id:'sondes',ds:'forage',unit:'ml',name:()=>'Mise en place des sondes et fourniture',desc:v=>[`Sondes géothermiques double U PE100 Ø${v.P>150?40:32}, garantie 30 ans`,'Cimentation : coulis géothermique > 2 W/m.K']},
@@ -775,9 +789,9 @@ const tvaSel=(sel,attrs)=>`<select ${attrs}>${TVA_OPTS.map(([r,l])=>`<option val
 function devisTotaux(ps){const m=new Map();for(const p of ps){const o=m.get(p.tva)||{r:p.tva,base:0};o.base+=p.tot;m.set(p.tva,o)}
   const rates=[...m.values()].sort((a,b)=>b.r-a.r).map(o=>({r:o.r,base:r2(o.base),tva:r2(o.base*o.r/100)}));
   const ht=r2(rates.reduce((a,o)=>a+o.base,0)),tva=r2(rates.reduce((a,o)=>a+o.tva,0));return {rates,ht,tva,ttc:r2(ht+tva)}}
-function devisPostes(t){t=t||totals();const v=t.v,pe=prixEff(t),k=t.tp?pe/t.tp:1;const dv=quote.dv||{};
+function devisPostes(t){t=t||totals();const v=t.v,pe=prixEff(t),k=kProd(t);const dv=quote.dv||{};
   const acc={},xs=[];
-  for(const l of lines()){const q=qtyOf(l,v);if(!(q>0))continue;const a=q*(+l.price||0)*(+quote.coef[l.sec]||0)*k;if(!(a>0))continue;
+  for(const l of lines()){const q=qtyOf(l,v);if(!(q>0))continue;const a=q*unitVente(l,k);if(!(a>0))continue;
     if(l.src==='extra'){xs.push({id:'x_'+String(l.id).replace(/^x_/,''),ds:l.sec==='loc'?'autres':l.sec,name:l.name||'Prestation',unit:l.unit||'u',q,amt:a,desc:[]});continue}
     const id=posteOf(l);const o=acc[id]||(acc[id]={amt:0,qL:0});o.amt+=a;if(/^l/i.test(l.unit||''))o.qL+=q}
   const out=[];
@@ -789,7 +803,7 @@ function devisPostes(t){t=t||totals();const v=t.v,pe=prixEff(t),k=t.tp?pe/t.tp:1
   for(const p of out){p.defName=p.name;p.defDesc=p.desc.join('\n');const o=dv[p.id]||{};if(o.name)p.name=o.name;if(o.desc)p.desc=String(o.desc).split('\n').filter(s=>s.trim());
     p.tva=o.tva!=null&&o.tva!==''?+o.tva:tvaDef();p.pu=r2(p.amt/p.q);p.tot=r2(p.pu*p.q);sum+=p.tot;exp+=p.amt}
   /* arrondis des prix au mètre reportés sur un forfait pour retomber exactement sur le prix retenu */
-  const diff=r2(r2(exp)-sum);const f=out.find(p=>p.q===1);if(Math.abs(diff)>=0.01&&f){f.pu=r2(f.pu+diff);f.tot=f.pu}
+  const diff=r2(r2(exp)-sum);const f=out.find(p=>p.q===1&&p.id!=='trt'&&p.id!=='zoneorange');if(Math.abs(diff)>=0.01&&f){f.pu=r2(f.pu+diff);f.tot=f.pu}
   return out}
 function nextNumero(){const d=quote.date?new Date(quote.date):new Date();const pre=`D-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-`;let n=0;
   for(const q of [...savedList,{dvs:quote.dvs}]){const s=String((q.dvs&&q.dvs.numero)||q.numero||'');if(s.startsWith(pre)){const m=parseInt(s.slice(pre.length),10);if(m>n)n=m}}return pre+String(n+1).padStart(2,'0')}
@@ -974,28 +988,47 @@ async function buildDevisPdf(){
 const lid=()=>'l'+Math.random().toString(36).slice(2,8);
 function devisFromChiffrage(){const t=totals(),v=t.v,ps=devisPostes(t),soc=socInfo(),o=quote.dvs||{};const tv=tvaDef();
   const lines=[];for(const s of DSECS){const xs=ps.filter(p=>p.ds===s.id);if(!xs.length)continue;lines.push({id:lid(),type:'sec',name:s.label});
-    for(const p of xs)lines.push({id:lid(),type:'line',name:p.name,desc:p.desc.join('\n'),q:p.q,unit:p.unit,pu:p.pu,tva:tv})}
+    for(const p of xs)lines.push({id:lid(),type:'line',src:p.id,name:p.name,desc:p.desc.join('\n'),q:p.q,unit:p.unit,pu:p.pu,tva:tv})}
   return {numero:o.numero||nextNumero(),date:o.date||new Date().toISOString().slice(0,10),validite:o.validite||soc.validite,
     clientType:o.clientType||'pro',client:o.client??quote.client??'',clientAdr:o.clientAdr||'',clientTva:o.clientTva||'',clientSiret:o.clientSiret||'',tel:o.tel??quote.tel??'',mail:o.mail??quote.mail??'',
     chantier:o.chantier||[quote.nom,quote.lieu].filter(Boolean).join(' – '),objet:defObjet(v),delai:defDelai(v),
     miseDispo:o.miseDispo??soc.miseDispo,nonCompris:o.nonCompris??soc.nonCompris,paiement:o.paiement??soc.paiement,lines}}
 function dvsItems(d){return d.lines.filter(l=>l.type!=='sec'&&l.type!=='img'&&l.type!=='break').map(l=>({tva:+l.tva||0,tot:r2((+l.q||0)*(+l.pu||0))}))}
+function missingExtras(){const d=quote.dvs;if(!d)return[];const ps=devisPostes();const have=new Set(d.lines.map(l=>l.src).filter(Boolean));
+  const names=new Set(d.lines.filter(l=>l.type!=='sec').map(l=>String(l.name||'').trim().toLowerCase()));
+  return ps.filter(p=>String(p.id).startsWith('x_')&&!have.has(p.id)&&!names.has(String(p.name||'').trim().toLowerCase()))}
+function addExtras(){const d=quote.dvs;if(!d)return;const mx=missingExtras();if(!mx.length)return;
+  for(const p of mx){const lab=(DSECS.find(s=>s.id===p.ds)||{}).label||'Prestations complémentaires';
+    const line={id:lid(),type:'line',src:p.id,name:p.name,desc:(p.desc||[]).join('\n'),q:p.q,unit:p.unit,pu:p.pu,tva:p.tva};
+    const si=d.lines.findIndex(l=>l.type==='sec'&&String(l.name||'').trim().toLowerCase()===lab.toLowerCase());
+    if(si<0){d.lines.push({id:lid(),type:'sec',name:lab},line);continue}
+    let j=si+1;while(j<d.lines.length&&d.lines[j].type!=='sec'&&d.lines[j].type!=='break')j++;d.lines.splice(j,0,line)}
+  dvpDirty();dvpRerender();toast(mx.length+' ligne'+pl(mx.length)+' ajoutée'+pl(mx.length)+' – utilisez « Ajuster le devis à ce prix » si besoin')}
 let dvpConfirm=false,imgTarget=null;
 function pickImg(pos,insert){imgTarget={pos,insert};let f=document.getElementById('p-file');
   if(!f){f=document.createElement('input');f.type='file';f.accept='image/*';f.id='p-file';f.hidden=true;document.body.appendChild(f);f.addEventListener('change',onImgFile)}f.value='';f.click()}
-function compressImg(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file);const im=new Image();
-  im.onload=()=>{const mx=1400;let w=im.naturalWidth,h=im.naturalHeight;const k=Math.min(1,mx/Math.max(w,h));w=Math.max(1,Math.round(w*k));h=Math.max(1,Math.round(h*k));
-    const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(im,0,0,w,h);URL.revokeObjectURL(u);
-    let q=.82,url=c.toDataURL('image/jpeg',q);while(url.length>280000&&q>.4){q-=.1;url=c.toDataURL('image/jpeg',q)}res(url)};
-  im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('img'))};im.src=u})}
+/* compression adaptée à la place restante : un chiffrage enregistré doit rester sous ~900 Ko */
+const IMG_MAX=110000,DOC_BUDGET=850000;
+function loadImg(src){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('img'));im.src=src})}
+async function compressImg(srcOrFile,maxB){const isFile=typeof srcOrFile!=='string';const u=isFile?URL.createObjectURL(srcOrFile):srcOrFile;
+  try{const im=await loadImg(u);const lim=Math.max(15000,maxB||IMG_MAX)*1.37;let best=null;
+    for(const mx of [1200,1000,800,640,480,360]){let w=im.naturalWidth,h=im.naturalHeight;const k=Math.min(1,mx/Math.max(w,h));w=Math.max(1,Math.round(w*k));h=Math.max(1,Math.round(h*k));
+      const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(im,0,0,w,h);
+      for(let q=.8;q>=.35;q-=.1){const url=c.toDataURL('image/jpeg',q);if(!best||url.length<best.length)best=url;if(url.length<=lim)return url}}
+    return best}finally{if(isFile)URL.revokeObjectURL(u)}}
+function imgBudget(exceptSrc){const used=JSON.stringify(quote).length-(exceptSrc?exceptSrc.length:0);return Math.min(IMG_MAX,DOC_BUDGET-used)}
+function imgWarn(){const kb=Math.round(JSON.stringify(quote).length/1024);if(kb>850)toast('Chiffrage trop lourd ('+kb+' Ko) : réduisez ou supprimez une image avant d’enregistrer');else if(kb>650)toast('Chiffrage : '+kb+' Ko – encore de la place pour peu d’images')}
 async function onImgFile(e){const file=e.target.files&&e.target.files[0];const t=imgTarget;const d=quote.dvs;if(!file||!t||!d)return;
-  try{const src=await compressImg(file);
-    if(t.insert)d.lines.splice(t.pos,0,{id:lid(),type:'img',src,legend:'',w:100});else{const l=d.lines[t.pos];if(l)l.src=src}
-    dvpDirty();dvpRerender();const kb=Math.round(JSON.stringify(quote).length/1024);if(kb>750)toast('Attention : chiffrage lourd ('+kb+' Ko) – limitez le nombre d’images');}
+  try{const old=!t.insert&&d.lines[t.pos]?d.lines[t.pos].src:'';const src=await compressImg(file,imgBudget(old));
+    if(t.insert)d.lines.splice(t.pos,0,{id:lid(),type:'img',src,legend:'',w:50});else{const l=d.lines[t.pos];if(l)l.src=src}
+    dvpDirty();dvpRerender();imgWarn()}
   catch(err){toast('Image illisible : utilisez une photo JPG ou PNG')}}
+async function shrinkImg(i){const d=quote.dvs;const l=d&&d.lines[i];if(!l||!l.src)return;const before=l.src.length;
+  try{const src=await compressImg(l.src,Math.max(15000,Math.round(before/1.37/2)));if(src.length>=before){toast('Image déjà au minimum');return}
+    l.src=src;dvpDirty();dvpRerender();toast('Image réduite : '+Math.round(before*.75/1024)+' → '+Math.round(src.length*.75/1024)+' Ko')}catch(e){toast('Réduction impossible')}}
 function dvpRow(l,i,n){const mv=`<button class="reset" data-up="${i}" title="Monter" ${i?'':'disabled'}>↑</button><button class="reset" data-down="${i}" title="Descendre" ${i<n-1?'':'disabled'}>↓</button><button class="reset" data-ins="${i}" title="Insérer une ligne dessous">+</button><button class="reset" data-insimg="${i}" title="Insérer une image dessous">▣</button><button class="reset" data-insbrk="${i}" title="Insérer un saut de page dessous">⤓</button><button class="reset" data-del="${i}" title="Supprimer">✕</button>`;
   if(l.type==='break')return `<tr data-i="${i}"><td colspan="6"><div class="pbreak">Saut de page dans le PDF</div></td><td class="r" style="white-space:nowrap">${mv}</td></tr>`;
-  if(l.type==='img')return `<tr data-i="${i}"><td colspan="6"><div class="dimg">${l.src?`<img src="${l.src}" alt="${esc(l.legend||'Image du devis')}">`:'<span class="help">Aucune image</span>'}<div class="dimg-f"><input class="xin" data-lf="legend" value="${esc(l.legend||'')}" placeholder="Légende sous l’image (facultatif)"><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="help">Largeur</span><select class="xin" data-lf="w" style="width:auto">${[100,75,50,33].map(v=>`<option value="${v}" ${(+l.w||100)===v?'selected':''}>${v} %</option>`).join('')}</select><button class="btn sm" data-imgpick="${i}">Changer l’image</button><span class="help">${l.src?Math.round(l.src.length*0.75/1024)+' Ko':''}</span></span></div></div></td><td class="r" style="white-space:nowrap">${mv}</td></tr>`;
+  if(l.type==='img')return `<tr data-i="${i}"><td colspan="6"><div class="dimg">${l.src?`<img src="${l.src}" alt="${esc(l.legend||'Image du devis')}">`:'<span class="help">Aucune image</span>'}<div class="dimg-f"><input class="xin" data-lf="legend" value="${esc(l.legend||'')}" placeholder="Légende sous l’image (facultatif)"><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="help">Largeur</span><select class="xin" data-lf="w" style="width:auto">${[100,75,50,33,25,20].map(v=>`<option value="${v}" ${(+l.w||100)===v?'selected':''}>${v} %</option>`).join('')}</select><button class="btn sm" data-imgpick="${i}">Changer l’image</button><button class="btn sm" data-imgsmall="${i}" title="Divise le poids du fichier par deux (qualité un peu plus faible)">Réduire le poids</button><span class="help">${l.src?Math.round(l.src.length*0.75/1024)+' Ko':''}</span></span></div></div></td><td class="r" style="white-space:nowrap">${mv}</td></tr>`;
   if(l.type==='sec')return `<tr class="grp" data-i="${i}"><td colspan="6"><input class="xin" data-lf="name" value="${esc(l.name)}" placeholder="Titre de section" style="font-weight:700"></td><td class="r" style="white-space:nowrap">${mv}</td></tr>`;
   const tot=r2((+l.q||0)*(+l.pu||0));
   return `<tr data-i="${i}"><td><input class="xin" data-lf="name" value="${esc(l.name)}" placeholder="Désignation" style="font-weight:600"><textarea class="xin dvt" data-lf="desc" rows="${Math.max(1,String(l.desc||'').split('\n').length)}" placeholder="Détail (une ligne par tiret)">${esc(l.desc||'')}</textarea></td>
@@ -1012,16 +1045,17 @@ function dvpTotalsHTML(){const d=quote.dvs;const T=devisTotaux(dvsItems(d));cons
     <span class="k">Prix retenu dans le chiffrage</span><span class="v">${eur(pe)}</span>
     <span class="k">Écart devis / chiffrage</span><span class="v ${Math.abs(ec)<0.01?'':ec>0?'good':'bad'}">${Math.abs(ec)<0.01?'aucun':(ec>0?'+':'')+eur(ec)}</span>
     <span class="k strong">Prix souhaité HT</span><span class="v"><input id="p-cible" inputmode="decimal" value="${esc(String(d.cible??dvpObjectif()).replace('.',','))}" aria-label="Prix souhaité HT"></span>
-    <span class="k" style="font-size:12px">Par défaut : objectif ${nf(+quote.obj||0)} €/m × ${nf(totals().v.M)} m forés</span><span class="v" style="font-size:12px">${totals().v.M?nf(r2((d.cible??dvpObjectif())/totals().v.M))+' €/m':''}</span>
-    <span class="k" style="font-size:12px">Les prix unitaires sont recalculés en proportion ; le prix retenu du chiffrage suit.</span><span class="v"><button class="btn sm primary" id="p-ajust">Ajuster le devis à ce prix</button></span></div>`}
-function dvpObjectif(){const t=totals();const o=Math.round((+quote.obj||0)*t.v.M);return o>0?o:r2(prixEff(t))}
+    <span class="k" style="font-size:12px">Par défaut : objectif ${nf(+quote.obj||0)} €/m × ${nf(totals().v.M)} m forés${stVente()?' + sous-traitance '+eur(stVente()):''}</span><span class="v" style="font-size:12px">${totals().v.M?nf(r2((d.cible??dvpObjectif())/totals().v.M))+' €/m':''}</span>
+    <span class="k" style="font-size:12px">Les prix unitaires sont recalculés en proportion ; le prix retenu du chiffrage suit. TRT et zone orange ne bougent pas.</span><span class="v"><button class="btn sm primary" id="p-ajust">Ajuster le devis à ce prix</button></span></div>`}
+const dvFixed=l=>l.src==='trt'||l.src==='zoneorange'||/réponse thermique|zone orange/i.test(l.name||'');
+function dvpObjectif(){const t=totals();const o=objPrix(t);return o>0?o:r2(prixEff(t))}
 function ajusterDevis(){const d=quote.dvs;if(!d)return;const target=r2(d.cible!=null?d.cible:dvpObjectif());
-  const ls=d.lines.filter(l=>l.type!=='sec'&&r2((+l.q||0)*(+l.pu||0))!==0);const cur=ls.reduce((s,l)=>s+r2((+l.q||0)*(+l.pu||0)),0);
+  const all=d.lines.filter(l=>l.type!=='sec'&&r2((+l.q||0)*(+l.pu||0))!==0);const fs=all.filter(dvFixed).reduce((s,l)=>s+r2((+l.q||0)*(+l.pu||0)),0);const ls=all.filter(l=>!dvFixed(l));const cur=ls.reduce((s,l)=>s+r2((+l.q||0)*(+l.pu||0)),0);
   if(!(target>0)||!(cur>0)){toast('Rien à ajuster : saisissez un prix et des lignes chiffrées');return}
-  const k=target/cur;for(const l of ls)l.pu=r2((+l.pu||0)*k);
-  const sum=ls.reduce((s,l)=>s+r2((+l.q||0)*(+l.pu||0)),0);const diff=r2(target-sum);
+  const k=(target-fs)/cur;if(!(k>0)){toast('Prix souhaité inférieur au montant de la sous-traitance');return}for(const l of ls)l.pu=r2((+l.pu||0)*k);
+  const sum=ls.reduce((s,l)=>s+r2((+l.q||0)*(+l.pu||0)),0);const diff=r2(target-fs-sum);
   if(Math.abs(diff)>=0.01){const f=ls.filter(l=>+l.q===1&&+l.pu>0).sort((a,b)=>b.pu-a.pu)[0];if(f)f.pu=r2(+f.pu+diff)}
-  const t0=totals(),isObj=Math.abs(target-Math.round((+quote.obj||0)*t0.v.M))<0.01;quote.prixRetenu=isObj?null:target;if(isObj)delete d.cible;else d.cible=target;dvpDirty();dvpRerender();toast('Devis ajusté à '+eur(target)+' HT')}
+  const t0=totals(),isObj=Math.abs(target-objPrix(t0))<0.01;quote.prixRetenu=isObj?null:target;if(isObj)delete d.cible;else d.cible=target;dvpDirty();dvpRerender();toast('Devis ajusté à '+eur(target)+' HT')}
 function renderDvp(){const el=$('#v-dvp');const d=quote.dvs;
   if(!d){el.innerHTML=`<div class="toolbar"><div class="title">Devis${quote.nom?' – '+esc(quote.nom):''}</div></div>
     <div class="card"><div class="empty">Pas encore de devis pour ce chiffrage.<br><br><button class="btn primary" id="p-create">Créer le devis à partir du chiffrage</button>
@@ -1030,6 +1064,7 @@ function renderDvp(){const el=$('#v-dvp');const d=quote.dvs;
   const ta=(k,l,rows=2,wide=true)=>`<div class="f" style="grid-column:${wide?'1/-1':'span 2'}"><label for="p-${k}">${l}</label><textarea id="p-${k}" data-p="${k}" rows="${rows}">${esc(d[k]??'')}</textarea></div>`;
   el.innerHTML=`<div class="toolbar"><div class="title">Devis ${esc(d.numero||'')}</div><span class="status ${dirty?'dirty':''}" id="st2">${dirty?'Modifications non enregistrées':''}</span>
     <button class="btn ghost" id="p-regen">Recréer depuis le chiffrage</button><button class="btn" id="p-pdf">Devis PDF</button><button class="btn primary" id="p-save" ${db&&canWrite?'':'disabled'}>Enregistrer</button></div>
+  ${(()=>{const mx=missingExtras();return mx.length?`<div class="banner">${mx.length} ligne${pl(mx.length)} libre${pl(mx.length)} du chiffrage pas encore dans le devis : <b>${mx.map(p=>esc(p.name)).join(', ')}</b> <button class="btn sm primary" id="p-addx">Les ajouter au devis</button></div>`:''})()}
   ${dvpConfirm?`<div class="banner">Remplacer toutes les lignes, l’objet et le délai par le calcul actuel du chiffrage ? Vos modifications de lignes seront perdues. <span class="confirm"><button class="btn sm danger" id="p-regen-ok">Remplacer</button><button class="btn sm ghost" id="p-regen-no">Annuler</button></span></div>`:''}
   <div class="card"><div class="card-h"><h2>En-tête</h2></div><div class="card-b"><div class="fields">
     ${pf('numero','N° de devis')}${pf('date','Date','date')}${pf('validite','Validité (jours)')}
@@ -1061,6 +1096,7 @@ async function onDvpClick(e){const b=e.target.closest('button');if(!b)return;con
   if(b.id==='p-pdf'){exportPDF('devis');return}
   if(b.id==='p-save'){await saveQuote();renderDvp();return}
   if(b.id==='p-ajust'){ajusterDevis();return}
+  if(b.id==='p-addx'){addExtras();return}
   if(!d)return;const n=d.lines.length;
   if(b.id==='p-addsec'){d.lines.push({id:lid(),type:'sec',name:'Nouvelle section'});dvpDirty();dvpRerender();$(`#p-body tr[data-i="${n}"] input`)?.select();return}
   if(b.id==='p-addline'){d.lines.push({id:lid(),type:'line',name:'',desc:'',q:1,unit:'forfait',pu:0,tva:tvaDef()});dvpDirty();dvpRerender();$(`#p-body tr[data-i="${n}"] input`)?.focus();return}
@@ -1069,6 +1105,7 @@ async function onDvpClick(e){const b=e.target.closest('button');if(!b)return;con
   if(b.dataset.insimg){pickImg(+b.dataset.insimg+1,true);return}
   if(b.dataset.insbrk){d.lines.splice(+b.dataset.insbrk+1,0,{id:lid(),type:'break'});dvpDirty();dvpRerender();return}
   if(b.dataset.imgpick){pickImg(+b.dataset.imgpick,false);return}
+  if(b.dataset.imgsmall){shrinkImg(+b.dataset.imgsmall);return}
   const mv=(i,j)=>{const x=d.lines.splice(i,1)[0];d.lines.splice(j,0,x);dvpDirty();dvpRerender()};
   if(b.dataset.up){const i=+b.dataset.up;if(i>0)mv(i,i-1);return}
   if(b.dataset.down){const i=+b.dataset.down;if(i<n-1)mv(i,i+1);return}
@@ -1142,7 +1179,7 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
   if(!hydroOnly&&!matOnly)for(const s of SECS){const ls=lines().filter(l=>l.sec===s.id&&qtyOf(l,v)>0);if(!ls.length)continue;
     h2(s.label);const rows=[];let g=null,st=0;
     for(const l of ls){const gg=l.src==='extra'?'Autres':l.grp;if(gg!==g){g=gg;rows.push({c:[g,'','','',''].slice(0,cols.length),b:true,fill:SOFT2,span:true})}
-      const q=qtyOf(l,v);const pu=r2((+l.price||0)*(+quote.coef[s.id]||0)*k);const lt=r2(q*pu);st+=lt;
+      const q=qtyOf(l,v);const pu=r2(unitVente(l,kProd()));const lt=r2(q*pu);st+=lt;
       rows.push(withPrices?[l.name||'—',l.unit,nf(q),eur(pu),eur(lt)]:[l.name||'—',l.unit,nf(q)])}
     if(withPrices)rows.push({c:[`Sous-total ${s.label}`,'','','',eur(st)],b:true});
     totHT+=st;table(cols,rows)}
