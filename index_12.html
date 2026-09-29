@@ -243,7 +243,6 @@ table.list tr.row:hover td{background:var(--panel2)}
   </div>
   <nav class="tabs" role="tablist">
     <button class="tab" role="tab" id="tab-devis" data-v="devis">Chiffrage en cours</button>
-    <button class="tab" role="tab" id="tab-dvp" data-v="dvp">Devis</button>
     <button class="tab" role="tab" id="tab-liste" data-v="liste">Mes chiffrages<span class="cnt" id="cnt"></span></button>
     <button class="tab" role="tab" id="tab-tarifs" data-v="tarifs">Tarifs</button>
     <button class="tab" role="tab" id="tab-soc" data-v="soc">Entreprise</button>
@@ -315,16 +314,18 @@ let dirty=false, view='devis', usedOnly=false, catDraft=null, listFilter='';
 
 function blankQuote(){
   return {id:null,nom:'',lieu:'',client:'',tel:'',mail:'',archi:'',interlocuteur:'',chiffreur:'Fred',
-    date:new Date().toISOString().slice(0,10),N:1,P:100,L:20,D2:0,mpj:100,jr:2,com:0,ffm:20,obj:80,h:{kw:null,dT:3,conc:30,sing:30,pac:30,model:'',qPac:null,dispo:null},E:10,D1:0,coef:{...DEF_COEF},q:{},snap:{},extra:[],prixRetenu:null,tva:20,notes:'',updated:0,dvs:null};
+    date:new Date().toISOString().slice(0,10),N:1,P:100,L:20,D2:0,mpj:100,jr:2,com:0,ffm:20,obj:80,h:{wpm:null,dT:3,conc:30,sing:30,pac:0,model:'',qPac:null,dispo:null},E:10,D1:0,coef:{...DEF_COEF},q:{},snap:{},extra:[],prixRetenu:null,tva:20,notes:'',updated:0,dvs:null};
 }
 function normQuote(q){const b=blankQuote();const o=Object.assign(b,clone(q));o.h=Object.assign(blankQuote().h,o.h||{});o.coef=Object.assign({...DEF_COEF},o.coef||{});o.q=o.q||{};o.snap=o.snap||{};o.extra=o.extra||[];return o}
 
 function baseVars(){const N=+quote.N||0,P=+quote.P||0,L=+quote.L||0,mpj=+quote.mpj||100,E=+quote.E||0,D1=+quote.D1||0,D2=+quote.D2||0;const M=N*P;
   /* forages alignés tous les E m, chacun relié en direct au collecteur (aller + retour) : forage k à k×E → 2·k·E */
-  const LF=E*N*(N+1),LC=2*L;
+  /* collecteur au bout de la ligne, ou au milieu : deux demi-lignes de part et d'autre */
+  const mid=quote.coll==='milieu',n1=mid?Math.ceil(N/2):N,n2=mid?Math.floor(N/2):0;
+  const LF=E*(n1*(n1+1)+n2*(n2+1)),LC=2*L,DF=n1*E;
   /* tranchée : ligne des forages + collecteur → chaufferie */
   const T=E*N+L;
-  return {N,P,L,M,J:mpj>0?Math.ceil(M/mpj):0,E,D1,D2,LF,LC,T,JR:+quote.jr||0,ZO:quote.zone==='orange'?1:0}}
+  return {N,P,L,M,J:mpj>0?Math.ceil(M/mpj):0,E,D1,D2,LF,LC,T,JR:+quote.jr||0,ZO:quote.zone==='orange'?1:0,DF}}
 /* Glycol : ancienne règle forfaitaire (M+L)/25*20 remplacée par le volume réel du réseau */
 function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String(i.rule||'').replace(/\s/g,'')==='(M+L)/25*20')i.rule='GLY';if(i&&i.id==='glycol'&&i.name==='Glycol')i.name='Glycol pur'});if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='decl')){const k=items.findIndex(i=>i.id==='trt');items.splice(k,0,{id:'decl',sec:'loc',grp:'Administratif',name:'Déclarations (BRGM, DICT, rapport de fin de travaux)',unit:'forfait',price:0,qty:1,rule:'',kind:'frais'})}
   if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='zo')){const k=items.findIndex(i=>i.id==='trt');items.splice(k+1,0,{id:'zo',sec:'loc',grp:'Sous-traitance',name:'Déclaration zone orange (avis d’expert agréé)',unit:'forfait',price:0,rule:'ZO',kind:'st',poste:'zoneorange'})}
@@ -401,25 +402,27 @@ function segment(name,D,L,Qm3h,fl,note){const DI=(D-2*(PE_E[D]||D/11))/1000;cons
 function hydro(){return hydroFor(vars())}
 function hydroFor(v){
   const h=quote.h,fl=fluid(concGly());const N=Math.max(1,v.N);
-  const kwAuto=Math.round(v.M*0.045*10)/10;const kw=h.kw!=null?+h.kw:kwAuto;const dT=+h.dT||3;
+  const wpm=h.wpm!=null&&h.wpm!==''?+h.wpm:45;const kwAuto=Math.round(v.M*wpm/100)/10;const kw=kwAuto;const dT=+h.dT||3;
   const qCalc=kw/(fl.rho*fl.cp*dT)*3600; /* m³/h */
   const Q=+h.qPac>0?+h.qPac:qCalc;
   const Ds=v.P>150?40:32;
   const segs=[
-    segment('Sonde (une boucle du double U)',Ds,2*v.P,Q/(2*N),fl,`${nf(v.P)} m aller + retour · Ø${Ds}`),
-    segment('Forage le plus éloigné → collecteur',v.D1||40,2*N*v.E,Q/N,fl,`${nf(N*v.E)} m aller + retour${v.D1auto?' · Ø selon profondeur':''}`),
-    segment('Collecteur → chaufferie',v.D2||63,2*v.L,Q,fl,`${nf(v.L)} m aller + retour${v.D2auto?' · Ø choisi selon le débit':''}`)];
+    segment('Sonde (une boucle du double U)',Ds,2*v.P,Q/(2*N),fl,`${nf(v.P)} m × 2 (descente + remontée) · Ø${Ds}`),
+    segment('Forage le plus éloigné → collecteur',v.D1||40,2*v.DF,Q/N,fl,`${nf(v.DF)} m × 2 (aller + retour) · collecteur ${quote.coll==='milieu'?'au milieu':'au bout'}${v.D1auto?' · Ø selon profondeur':''}`),
+    segment('Collecteur → chaufferie',v.D2||63,2*v.L,Q,fl,`${nf(v.L)} m × 2 (aller + retour)${v.D2auto?' · Ø choisi selon le débit':''}`)];
   const lin=segs.reduce((a,s)=>a+s.dp,0),sing=lin*(+h.sing||0)/100,pac=+h.pac||0,tot=lin+sing+pac;
   const reseau=lin+sing,dispo=+h.dispo||0;
   const verdict=dispo>0?(dispo>=reseau?{ok:true,txt:`Le circulateur de la PAC suffit : ${nf(dispo)} kPa disponibles pour ${nf(reseau)} kPa de réseau (marge ${nf(dispo-reseau)} kPa).`}
     :{ok:false,txt:`Circulateur de la PAC insuffisant : il manque ${nf(reseau-dispo)} kPa (${nf((reseau-dispo)*1000/(fl.rho*9.81))} mCE). Prévoir un circulateur complémentaire ou augmenter les diamètres.`}):null;
-  return {kw,kwAuto,qCalc,Q,fl,segs,lin,sing,pac,tot,reseau,dispo,verdict,mce:tot*1000/(fl.rho*9.81)}
+  return {kw,kwAuto,wpm,qCalc,Q,fl,segs,lin,sing,pac,tot,reseau,dispo,verdict,mce:tot*1000/(fl.rho*9.81)}
 }
 function hfield(k,label,unit,ph){const val=quote.h[k];return `<div class="f"><label for="h-${k}">${label}</label><div class="unit-in"><input id="h-${k}" data-h="${k}" inputmode="decimal" value="${val==null?'':esc(val)}" placeholder="${ph??''}"><span>${unit}</span></div></div>`}
 function hydroHTML(){
   return `<div class="card" id="perte-de-charge" style="margin-top:18px;scroll-margin-top:80px"><div class="card-h"><h2>Perte de charge du réseau</h2><span class="status" style="margin-left:auto">PE100 SDR11</span><button class="btn sm" id="b-pdfh">PDF pour le chauffagiste</button></div><div class="card-b">
-  <div class="pgrid hgrid">${hfield('kw','Puissance extraite (vide = 45 W/m)','kW','')}${hfield('dT','Écart aller / retour','K')}${hfield('conc','Dosage glycol (vide = 30 %)','%','30')}${hfield('pac','Échangeur PAC (fiche)','kPa')}${hfield('sing','Pertes singulières','% linéaire')}</div>
-  <div class="pgrid hgrid" style="margin-top:10px"><div class="f"><label for="h-model">Modèle de PAC</label><input id="h-model" data-ht="model" value="${esc(quote.h.model||'')}" placeholder="Marque, modèle, puissance"></div>${hfield('qPac','Débit nominal PAC (vide = calculé)','m³/h','')}${hfield('dispo','Pression disponible PAC','kPa','')}</div>
+  <div class="pgrid hgrid">${hfield('wpm','Extraction du sol (vide = 45)','W/m','45')}${hfield('dT','Écart aller / retour','K')}${hfield('conc','Dosage glycol (vide = 30 %)','%','30')}${hfield('sing','Pertes singulières','% linéaire')}<div class="f"><label for="q-coll">Position du collecteur</label><select id="q-coll" data-k="coll"><option value="bout" ${quote.coll!=='milieu'?'selected':''}>Au bout de la ligne</option><option value="milieu" ${quote.coll==='milieu'?'selected':''}>Au milieu du champ</option></select></div></div>
+  <p class="help" id="h-kwinfo" style="margin:8px 0 0"></p>
+  <p class="help" style="margin:14px 0 4px;font-weight:600">PAC – facultatif, à remplir seulement si tu as la fiche</p>
+  <div class="pgrid hgrid"><div class="f"><label for="h-model">Modèle de PAC</label><input id="h-model" data-ht="model" value="${esc(quote.h.model||'')}" placeholder="Marque, modèle, puissance"></div>${hfield('qPac','Débit nominal PAC (vide = calculé)','m³/h','')}${hfield('dispo','Pression disponible PAC','kPa','')}${hfield('pac','Échangeur PAC','kPa','0')}</div>
   <div id="h-alerts" class="alerts"></div>
   <div class="tbl-wrap" style="margin-top:14px"><table class="htbl"><thead><tr><th>Tronçon</th><th class="r">Ø ext / int</th><th class="r">Longueur</th><th class="r">Débit</th><th class="r">Vitesse</th><th class="r">Reynolds</th><th class="r">Perte</th></tr></thead><tbody id="h-body"></tbody></table></div>
   <div class="hres" id="h-res"></div>
@@ -450,7 +453,7 @@ function updateHydro(){
   const ha=$('#h-alerts');if(ha)ha.innerHTML=al.length?al.map(a=>`<div class="alert ${a.lvl}"><b>${a.lvl==='bad'?'À corriger':'Attention'}</b> ${esc(a.txt)}</div>`).join(''):`<div class="alert ok"><b>Diamètres OK</b> Vitesses et pertes de charge dans les limites.</div>`;
   const zb=$('#sz-banner');if(zb){const nb=al.filter(a=>a.lvl==='bad').length,nw=al.length-nb;
     zb.hidden=!al.length;zb.className='banner '+(nb?'bad':'');zb.innerHTML=al.length?`<span><b>Dimensionnement des tuyaux :</b> ${nb?nb+' point'+(nb>1?'s':'')+' à corriger':''}${nb&&nw?', ':''}${nw?nw+' point'+(nw>1?'s':'')+' à surveiller':''}.</span><a class="btn sm" href="#perte-de-charge">Voir le détail</a>`:''}
-  const kin=$('#h-kw');if(kin)kin.placeholder=nf(r.kwAuto);
+  const kin=$('#h-kwinfo');if(kin)kin.textContent=`Calcul sans PAC : ${nf(r.wpm)} W/m × ${nf(vars().M)} m forés = ${nf(r.kw)} kW extraits du sol → débit ${nf(r.qCalc)} m³/h.${+quote.h.qPac>0?' Débit PAC saisi : '+nf(+quote.h.qPac)+' m³/h (utilisé).':''}`;
   const qin=$('#h-qPac');if(qin)qin.placeholder=nf(r.qCalc);
   b.innerHTML=r.segs.map(s=>{const lam=s.Re<2300,tr=s.Re>=2300&&s.Re<4000;
     return `<tr><td><b>${s.name}</b><div class="status">${s.note}</div></td><td class="r num">${s.D} / ${nf(s.DI)}</td><td class="r num">${nf(s.L)} m</td><td class="r num">${nf(s.Q)} m³/h</td><td class="r num ${s.v>1.5?'bad':''}">${nf(s.v)} m/s</td><td class="r num ${lam?'bad':tr?'warnc':''}">${Math.round(s.Re).toLocaleString('fr-FR')}${lam?'<div class="status bad">laminaire</div>':tr?'<div class="status warnc">transitoire</div>':''}</td><td class="r num">${nf(s.dp)} kPa</td></tr>`}).join('')+
@@ -613,7 +616,7 @@ function renderDevis(){
     <button class="btn ghost" id="b-new">Nouveau</button>
     <button class="btn ghost" id="b-dup" ${quote.id?'':'disabled'}>Dupliquer</button>
     <button class="btn" id="b-csv">CSV</button>
-    <button class="btn" id="b-pdf1">Devis…</button>
+    <button class="btn" id="b-pdf1">PDF avec prix</button>
     <button class="btn" id="b-pdf0">PDF sans prix</button>
     <button class="btn" id="b-pdfm">PDF matériel</button>
     <button class="btn primary" id="b-save" ${db&&canWrite?'':'disabled'} title="${db?'':'Enregistrement indisponible sur cette vue'}">Enregistrer</button></div>
@@ -640,7 +643,7 @@ function onDevisInput(e){
   const tg=e.target;
   if(tg.dataset.k){const k=tg.dataset.k;quote[k]=tg.dataset.n?(pnum(tg.value)??0):tg.value;markDirty();
     if(k==='nom')$('.toolbar .title').textContent=quote.nom||'Nouveau chiffrage';
-    if(tg.dataset.n||k==='zone')refreshLines();return}
+    if(tg.dataset.n||k==='zone'||k==='coll')refreshLines();return}
   if(tg.dataset.q){const id=tg.dataset.q;const n=pnum(tg.value);quote.q[id]=n==null?0:n;markDirty();
     tg.classList.add('is-over');tg.classList.remove('is-auto');refreshLines();return}
   if(tg.dataset.x){const id=tg.closest('tr').dataset.id;const x=quote.extra.find(o=>o.id===id);if(!x)return;
@@ -673,7 +676,7 @@ function onDevisClick(e){
     case 'b-dup':quote=normQuote({...quote,id:null,nom:(quote.nom||'')+' (copie)',updated:0});markDirty();renderDevis();break;
     case 'b-upd':for(const id of Object.keys(quote.snap)){const c=catalog.find(i=>i.id===id);if(c)quote.snap[id].price=c.price}markDirty();renderDevisKeepScroll();toast('Tarifs actuels appliqués');break;
     case 'b-csv':exportCSV();break;
-    case 'b-pdf1':go('dvp');break;
+    case 'b-pdf1':exportPDF('devis');break;
     case 'b-pdf0':exportPDF('descriptif');break;
     case 'b-pdfh':exportPDF('hydro');break;
     case 'b-pdfm':exportPDF('materiel');break;
@@ -1227,9 +1230,9 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
 async function exportPDF(mode){
   if(!dlApi){toast('Téléchargement indisponible');return}
   toast('Préparation du PDF…');
-  try{let bytes;if(mode==='devis'){if(!quote.dvs)quote.dvs=devisFromChiffrage();if(!quote.dvs.numero){quote.dvs.numero=nextNumero();markDirty()}
-      const miss=socMissing(socInfo());if(miss.length)setTimeout(()=>toast('À compléter dans Entreprise : '+miss.join(', ')),2500);bytes=await buildDevisPdf()}else bytes=await buildPdf(mode);
-    await dlApi.save({filename:`${mode==='devis'?'devis-'+slug(quote.dvs&&quote.dvs.numero)+'-':PDF_MODES[mode].file+'-'}${slug(quote.nom)}.pdf`,data:new Blob([bytes])})}
+  try{let bytes;if(mode==='devis'){if(!quote.numero){quote.numero=(quote.dvs&&quote.dvs.numero)||nextNumero();markDirty()}quote.dvs=null;const dv=devisFromChiffrage();dv.numero=quote.numero;quote.dvs=dv;
+      const miss=socMissing(socInfo());if(miss.length)setTimeout(()=>toast('À compléter dans Entreprise : '+miss.join(', ')),2500);bytes=await buildDevisPdf();quote.dvs=null}else bytes=await buildPdf(mode);
+    await dlApi.save({filename:`${mode==='devis'?'devis-'+slug(quote.numero)+'-':PDF_MODES[mode].file+'-'}${slug(quote.nom)}.pdf`,data:new Blob([bytes])})}
   catch(e){if(e&&(e.code==='cancelled'||e.code==='declined'))return;toast(e?.message==='pdf-lib indisponible'?'Impossible de charger le module PDF':'Échec de la création du PDF')}
 }
 
@@ -1310,7 +1313,7 @@ async function onTarifsClick(e){
 
 /* ---------- nav ---------- */
 function go(v){view=v;store.set('view',v);
-  for(const n of ['devis','liste','tarifs','dvp','soc']){$('#v-'+n).hidden=n!==v;$('#tab-'+n).setAttribute('aria-selected',n===v)}
+  for(const n of ['devis','liste','tarifs','soc']){$('#v-'+n).hidden=n!==v;$('#tab-'+n).setAttribute('aria-selected',n===v)}
   if(v==='devis')renderDevis();if(v==='liste')renderListe();if(v==='tarifs')renderTarifs();if(v==='dvp'){dvpConfirm=false;renderDvp()}if(v==='soc')renderSoc();window.scrollTo(0,0)}
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>go(t.dataset.v)));
 const vd=$('#v-devis');vd.addEventListener('input',onDevisInput);vd.addEventListener('change',onDevisChange);vd.addEventListener('click',onDevisClick);
@@ -1323,7 +1326,7 @@ $('#v-soc').addEventListener('input',onSocInput);$('#v-soc').addEventListener('c
 (function boot(){
   let d=store.get('draft');if(d&&d.id==='plumergat')d=null;quote=d?normQuote(d):blankQuote();dirty=!!(d&&d.updated===0&&d.nom);
   {const u=store.get('usedOnly');usedOnly=u==null?true:!!u;}const v=store.get('view');
-  go(['devis','liste','tarifs','dvp','soc'].includes(v)?v:'devis');
+  go(['devis','liste','tarifs','soc'].includes(v)?v:'devis');
 })();
 /* ---------- Firebase : connexion + Firestore partagé ---------- */
 let fsdb=null,fbUser=null;
