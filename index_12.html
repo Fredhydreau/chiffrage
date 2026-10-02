@@ -329,16 +329,21 @@ function baseVars(){const N=+quote.N||0,P=+quote.P||0,L=+quote.L||0,mpj=+quote.m
 /* Glycol : ancienne règle forfaitaire (M+L)/25*20 remplacée par le volume réel du réseau */
 function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String(i.rule||'').replace(/\s/g,'')==='(M+L)/25*20')i.rule='GLY';if(i&&i.id==='glycol'&&i.name==='Glycol')i.name='Glycol pur'});if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='decl')){const k=items.findIndex(i=>i.id==='trt');items.splice(k,0,{id:'decl',sec:'loc',grp:'Administratif',name:'Déclarations (BRGM, DICT, rapport de fin de travaux)',unit:'forfait',price:0,qty:1,rule:'',kind:'frais'})}
   if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='zo')){const k=items.findIndex(i=>i.id==='trt');items.splice(k+1,0,{id:'zo',sec:'loc',grp:'Sous-traitance',name:'Déclaration zone orange (avis d’expert agréé)',unit:'forfait',price:0,rule:'ZO',kind:'st',poste:'zoneorange'})}
-  (items||[]).forEach(i=>{if(i&&i.id==='zo'&&!i.poste)i.poste='zoneorange'});return items}
+  (items||[]).forEach(i=>{if(i&&i.id==='zo'&&!i.poste)i.poste='zoneorange'});
+  /* barre PE Ø110 (diamètre courant) : ajoutée sans prix, à renseigner dans Tarifs */
+  if(Array.isArray(items)&&items.some(i=>i&&i.id==='b125')&&!items.some(i=>i&&/[øØ]\s*110\b/.test(i.name||'')&&/\bPE\b/i.test(i.grp||''))){const k=items.findIndex(i=>i.id==='b125');const r=items[k];items.splice(k,0,{id:'b110',sec:r.sec||'racc',grp:r.grp||'Barre de PE',name:'Ø110',unit:r.unit||'ml',price:0,rule:'D2==110?LC:0',kind:'mat'})}
+  return items}
 function vars(){const v=baseVars();v.D1auto=!v.D1;if(!v.D1)v.D1=v.P>150?50:40;v.D2auto=!v.D2;if(!v.D2)v.D2=autoD2(v).D;const vr=volumeReseau(v);v.VR=Math.ceil(vr.tot);v.GLY=Math.ceil(vr.gly);return v}
 /* Ø collecteur → chaufferie choisi selon le débit : vitesse ≤ 1 m/s, perte ≤ 150 Pa/m,
    et si la pression disponible de la PAC est connue, réseau ≤ 90 % de celle-ci */
 /* Diamètres PE proposés : liste de base + tout « ØNNN » trouvé dans les catégories PE des Tarifs */
-const BASE_D=[32,40,50,63,75,90,125];
+const BASE_D=[32,40,50,63,75,90,110,125];
+/* perte maxi admise sur la liaison collecteur → chaufferie (aller + retour), en kPa : au-delà, on monte d'un diamètre ; c'est ce qui fait grossir le tube quand la liaison s'allonge */
+const SEG_MAX=15;
 function peDiams(){const s=new Set(BASE_D);(catalog||[]).forEach(i=>{if(/\bPE\b/i.test(i.grp||'')){const m=/[øØ]\s*(\d{2,3})\b/.exec(i.name||'');if(m)s.add(+m[1])}});return [...s].sort((a,b)=>a-b)}
 function d2List(){return peDiams().filter(D=>D>=40)}
 function autoD2(v){
-  const D2_LIST=d2List();const rs=D2_LIST.map(D=>{const r=hydroFor({...v,D2:D});const sg=r.segs[2];return {D,r,hyd:sg.v<=1.0&&(sg.L?sg.dp*1000/sg.L:0)<=150}});
+  const D2_LIST=d2List();const rs=D2_LIST.map(D=>{const r=hydroFor({...v,D2:D});const sg=r.segs[2];return {D,r,hyd:sg.v<=1.0&&(sg.L?sg.dp*1000/sg.L:0)<=150&&sg.dp<=SEG_MAX}});
   const dispo=rs[0].r.dispo;
   const pass=[x=>x.hyd&&(!(dispo>0)||x.r.reseau<=0.9*dispo), x=>x.hyd&&x.r.reseau<=dispo, x=>x.hyd];
   for(const f of pass){const x=rs.find(f);if(x)return {D:x.D}}
@@ -430,8 +435,8 @@ function hydroHTML(){
   </div></div>`;
 }
 /* alertes de dimensionnement des tuyaux */
-const LIM={vMax:1.0,vMin:0.15,paMain:150,paBranch:250,loopKpa:40};
-function fitD(list,L,Q,fl,paMax){for(const D of list){const g=segment('',D,L||1,Q,fl);if(g.v<=LIM.vMax&&g.dp*1000/(L||1)<=paMax)return D}return null}
+const LIM={vMax:1.0,vBranch:1.2,vMin:0.15,paMain:150,paBranch:250,loopKpa:40};
+function fitD(list,L,Q,fl,paMax){for(const D of list){const g=segment('',D,L||1,Q,fl);if(g.v<=LIM.vMax&&g.dp*1000/(L||1)<=paMax&&g.dp<=SEG_MAX)return D}return null}
 function sizingAlerts(v,r){
   const A=[];const [so,br,mn]=r.segs;const pam=g=>g.L?g.dp*1000/g.L:0;
   if(so.Re<2300)A.push({lvl:'warn',seg:0,txt:`Sondes : écoulement laminaire (Re ${Math.round(so.Re)}). Échange thermique réduit : augmenter le débit ou réduire le glycol.`});
@@ -439,14 +444,19 @@ function sizingAlerts(v,r){
   if(so.dp>LIM.loopKpa)A.push({lvl:'warn',seg:0,txt:`Sondes : ${nf(so.dp)} kPa par boucle, perte élevée (profondeur ou débit important).`});
   const d1Rule=v.P>150?50:40;
   if(!v.D1auto&&v.D1!==d1Rule)A.push({lvl:'warn',seg:1,txt:`Liaisons forages → collecteur en Ø${v.D1} : la règle est Ø${d1Rule} pour ${nf(v.P)} m de profondeur.`});
-  if(br.L&&(br.v>LIM.vMax||pam(br)>LIM.paBranch)){const s=fitD(peDiams().filter(D=>D>br.D),br.L,br.Q,r.fl,LIM.paBranch);
-    A.push({lvl:'bad',seg:1,txt:`Liaisons forages → collecteur Ø${br.D} sous-dimensionnées (${nf(br.v)} m/s, ${Math.round(pam(br))} Pa/m).${s?` Passer en Ø${s}.`:''}`})}
+  /* liaisons forages → collecteur : on suit la pratique Hydreau (sonde Ø32 → liaison Ø40, sonde Ø40 → liaison Ø50) ; alerte seulement si la vitesse devient vraiment excessive */
+  if(br.L&&br.v>LIM.vBranch)A.push({lvl:'warn',seg:1,txt:`Liaisons forages → collecteur Ø${br.D} : vitesse élevée (${nf(br.v)} m/s, ${Math.round(pam(br))} Pa/m) pour ce débit par forage.`})
   else if(br.L&&br.v<LIM.vMin)A.push({lvl:'warn',seg:1,txt:`Liaisons forages → collecteur Ø${br.D} surdimensionnées (${nf(br.v)} m/s) : un diamètre plus petit suffit.`});
-  if(mn.L&&(mn.v>LIM.vMax||pam(mn)>LIM.paMain)){const s=fitD(d2List().filter(D=>D>mn.D),mn.L,mn.Q,r.fl,LIM.paMain);
-    A.push({lvl:'bad',seg:2,txt:`Collecteur → chaufferie Ø${mn.D} sous-dimensionné (${nf(mn.v)} m/s, ${Math.round(pam(mn))} Pa/m).${s?` Passer en Ø${s}.`:''}`})}
+  if(mn.L&&(mn.v>LIM.vMax||pam(mn)>LIM.paMain||mn.dp>SEG_MAX)){const s=fitD(d2List().filter(D=>D>mn.D),mn.L,mn.Q,r.fl,LIM.paMain);
+    A.push({lvl:'bad',seg:2,txt:`Collecteur → chaufferie Ø${mn.D} sous-dimensionné (${nf(mn.v)} m/s, ${Math.round(pam(mn))} Pa/m, ${nf(mn.dp)} kPa sur ${nf(mn.L)} m).${s?` Passer en Ø${s}.`:''}${v.D2auto?'':' (diamètre choisi à la main : mettre « Auto (selon débit) » pour qu’il suive le débit)'}`})}
   else if(!v.D2auto){const rec=autoD2(v).D;if(rec>mn.D)A.push({lvl:'bad',seg:2,txt:`Collecteur → chaufferie en Ø${mn.D} : Ø${rec} recommandé pour ce débit${r.dispo>0?' et la pression disponible de la PAC':''}.`});
     else if(mn.v<LIM.vMin&&mn.L)A.push({lvl:'warn',seg:2,txt:`Collecteur → chaufferie Ø${mn.D} surdimensionné (${nf(mn.v)} m/s) : Ø${rec} suffit.`})}
   if(r.verdict&&!r.verdict.ok)A.push({lvl:'bad',seg:-1,txt:r.verdict.txt});
+  /* le métré de PE n'est chiffré que si un article du bon Ø a une règle et un prix */
+  const pe=(D,len)=>{if(!(len>0))return;const it=catalog.filter(i=>/\bPE\b/i.test(i.grp||'')&&new RegExp('[øØ]\\s*'+D+'\\b').test(i.name||'')&&String(i.rule||'').includes(String(D)));
+    if(!it.length)A.push({lvl:'bad',seg:-1,txt:`PE Ø${D} : aucun article avec règle dans les Tarifs, les ${nf(len)} m ne sont pas chiffrés.`});
+    else if(!it.some(i=>+i.price>0))A.push({lvl:'bad',seg:-1,txt:`PE Ø${D} : prix à 0 € dans les Tarifs (${nf(len)} m non chiffrés). Renseigner le prix.`})};
+  if(v.D1===v.D2)pe(v.D1,v.LF+v.LC);else{pe(v.D1,v.LF);pe(v.D2,v.LC)}
   return A}
 function updateHydro(){
   const b=$('#h-body');if(!b)return;const r=hydro();const al=sizingAlerts(vars(),r);
