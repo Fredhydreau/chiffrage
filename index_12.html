@@ -138,6 +138,7 @@ td.qty{width:170px}
 .pchg{color:var(--warn);font-size:11px;margin-left:4px}
 .dvt{display:block;margin-top:4px;field-sizing:content;min-height:2.2em;font-size:13px;color:var(--ink2);resize:vertical;line-height:1.35}
 .xin.r{text-align:right}
+.xst{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--ink3);margin-top:3px;font-weight:400}
 .pbreak{border-top:2px dashed var(--ink3);text-align:center;color:var(--ink3);font-size:12px;padding:5px 0 2px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
 .dimg{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;padding:4px 0}
 .dimg img{max-width:160px;max-height:120px;border:1px solid var(--line);border-radius:4px;background:#fff}
@@ -330,6 +331,11 @@ function baseVars(){const N=+quote.N||0,P=+quote.P||0,L=+quote.L||0,mpj=+quote.m
 function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String(i.rule||'').replace(/\s/g,'')==='(M+L)/25*20')i.rule='GLY';if(i&&i.id==='glycol'&&i.name==='Glycol')i.name='Glycol pur'});if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='decl')){const k=items.findIndex(i=>i.id==='trt');items.splice(k,0,{id:'decl',sec:'loc',grp:'Administratif',name:'Déclarations (BRGM, DICT, rapport de fin de travaux)',unit:'forfait',price:0,qty:1,rule:'',kind:'frais'})}
   if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='zo')){const k=items.findIndex(i=>i.id==='trt');items.splice(k+1,0,{id:'zo',sec:'loc',grp:'Sous-traitance',name:'Déclaration zone orange (avis d’expert agréé)',unit:'forfait',price:0,rule:'ZO',kind:'st',poste:'zoneorange'})}
   (items||[]).forEach(i=>{if(i&&i.id==='zo'&&!i.poste)i.poste='zoneorange'});
+  /* sondes 150 m (Ø32) et 160 à 190 m (Ø40) : l'ancienne règle prenait une sonde de 200 m dès 141 m */
+  if(Array.isArray(items)){const s2=items.find(i=>i&&i.id==='s200');if(s2&&String(s2.rule||'').replace(/\s/g,'')==='P>140&&P<=200?N:0'&&!items.some(i=>i&&i.id==='s150')){
+    s2.rule='P>190&&P<=200?N:0';if(s2.name==='Sonde 200 m')s2.name='Sonde 200 m Ø40';const k=items.indexOf(s2);
+    const add=[[150,140,'Ø32'],[160,150,'Ø40'],[170,160,'Ø40'],[180,170,'Ø40'],[190,180,'Ø40']].map(([l,lo,d])=>({id:'s'+l,sec:s2.sec||'forage',grp:s2.grp||'Sondes',name:`Sonde ${l} m ${d}`,unit:s2.unit||'u',price:0,rule:`P>${lo}&&P<=${l}?N:0`,kind:'mat'}));
+    items.splice(k,0,...add)}}
   /* barre PE Ø110 (diamètre courant) : ajoutée sans prix, à renseigner dans Tarifs */
   if(Array.isArray(items)&&items.some(i=>i&&i.id==='b125')&&!items.some(i=>i&&/[øØ]\s*110\b/.test(i.name||'')&&/\bPE\b/i.test(i.grp||''))){const k=items.findIndex(i=>i.id==='b125');const r=items[k];items.splice(k,0,{id:'b110',sec:r.sec||'racc',grp:r.grp||'Barre de PE',name:'Ø110',unit:r.unit||'ml',price:0,rule:'D2==110?LC:0',kind:'mat'})}
   return items}
@@ -407,7 +413,7 @@ function segment(name,D,L,Qm3h,fl,note){const DI=(D-2*(PE_E[D]||D/11))/1000;cons
 function hydro(){return hydroFor(vars())}
 function hydroFor(v){
   const h=quote.h,fl=fluid(concGly());const N=Math.max(1,v.N);
-  const wpm=h.wpm!=null&&h.wpm!==''?+h.wpm:45;const kwAuto=Math.round(v.M*wpm/100)/10;const kw=kwAuto;const dT=+h.dT||3;
+  const wpm=h.wpm!=null&&h.wpm!==''?+h.wpm:50;const kwAuto=Math.round(v.M*wpm/100)/10;const kw=kwAuto;const dT=+h.dT||3;
   const qCalc=kw/(fl.rho*fl.cp*dT)*3600; /* m³/h */
   const Q=+h.qPac>0?+h.qPac:qCalc;
   const Ds=v.P>150?40:32;
@@ -424,7 +430,7 @@ function hydroFor(v){
 function hfield(k,label,unit,ph){const val=quote.h[k];return `<div class="f"><label for="h-${k}">${label}</label><div class="unit-in"><input id="h-${k}" data-h="${k}" inputmode="decimal" value="${val==null?'':esc(val)}" placeholder="${ph??''}"><span>${unit}</span></div></div>`}
 function hydroHTML(){
   return `<div class="card" id="perte-de-charge" style="margin-top:18px;scroll-margin-top:80px"><div class="card-h"><h2>Perte de charge du réseau</h2><span class="status" style="margin-left:auto">PE100 SDR11</span><button class="btn sm" id="b-pdfh">PDF pour le chauffagiste</button></div><div class="card-b">
-  <div class="pgrid hgrid">${hfield('wpm','Extraction du sol (vide = 45)','W/m','45')}${hfield('dT','Écart aller / retour','K')}${hfield('conc','Dosage glycol (vide = 30 %)','%','30')}${hfield('sing','Pertes singulières','% linéaire')}<div class="f"><label for="q-coll">Position du collecteur</label><select id="q-coll" data-k="coll"><option value="bout" ${quote.coll!=='milieu'?'selected':''}>Au bout de la ligne</option><option value="milieu" ${quote.coll==='milieu'?'selected':''}>Au milieu du champ</option></select></div></div>
+  <div class="pgrid hgrid">${hfield('wpm','Extraction du sol (vide = 50)','W/m','50')}${hfield('dT','Écart aller / retour','K')}${hfield('conc','Dosage glycol (vide = 30 %)','%','30')}${hfield('sing','Pertes singulières','% linéaire')}<div class="f"><label for="q-coll">Position du collecteur</label><select id="q-coll" data-k="coll"><option value="bout" ${quote.coll!=='milieu'?'selected':''}>Au bout de la ligne</option><option value="milieu" ${quote.coll==='milieu'?'selected':''}>Au milieu du champ</option></select></div></div>
   <p class="help" id="h-kwinfo" style="margin:8px 0 0"></p>
   <p class="help" style="margin:14px 0 4px;font-weight:600">PAC – facultatif, à remplir seulement si tu as la fiche</p>
   <div class="pgrid hgrid"><div class="f"><label for="h-model">Modèle de PAC</label><input id="h-model" data-ht="model" value="${esc(quote.h.model||'')}" placeholder="Marque, modèle, puissance"></div>${hfield('qPac','Débit nominal PAC (vide = calculé)','m³/h','')}${hfield('dispo','Pression disponible PAC','kPa','')}${hfield('pac','Échangeur PAC','kPa','0')}</div>
@@ -454,15 +460,20 @@ function sizingAlerts(v,r){
   if(r.verdict&&!r.verdict.ok)A.push({lvl:'bad',seg:-1,txt:r.verdict.txt});
   /* le métré de PE n'est chiffré que si un article du bon Ø a une règle et un prix */
   const pe=(D,len)=>{if(!(len>0))return;const it=catalog.filter(i=>/\bPE\b/i.test(i.grp||'')&&new RegExp('[øØ]\\s*'+D+'\\b').test(i.name||'')&&String(i.rule||'').includes(String(D)));
-    if(!it.length)A.push({lvl:'bad',seg:-1,txt:`PE Ø${D} : aucun article avec règle dans les Tarifs, les ${nf(len)} m ne sont pas chiffrés.`});
-    else if(!it.some(i=>+i.price>0))A.push({lvl:'bad',seg:-1,txt:`PE Ø${D} : prix à 0 € dans les Tarifs (${nf(len)} m non chiffrés). Renseigner le prix.`})};
+    if(!it.length)A.push({lvl:'bad',seg:-2,txt:`PE Ø${D} : aucun article avec règle dans les Tarifs, les ${nf(len)} m ne sont pas chiffrés.`})};
+  /* contrôles du chiffrage : sondes, collecteur, articles utilisés à 0 € */
+  const used=lines().filter(l=>l.src!=='extra'&&qtyOf(l,v)>0);
+  if(v.N>0&&v.P>0&&!used.some(l=>/sonde/i.test(l.grp||'')))A.push({lvl:'bad',seg:-2,txt:`Aucune sonde comptée pour des forages de ${nf(v.P)} m : ajouter la bonne longueur dans Tarifs (règle) ou saisir la quantité à la main.`});
+  if(v.N>=2&&!used.some(l=>/collecteur/i.test(l.grp||'')))A.push({lvl:'bad',seg:-2,txt:`Aucun collecteur compté pour ${v.N} forages : saisir la quantité de « Autre collecteur » (ou ajouter un collecteur ${v.N} sorties dans Tarifs).`});
+  const zero=used.filter(l=>!(+l.price>0)&&l.id!=='decl');
+  if(zero.length)A.push({lvl:'bad',seg:-2,txt:`Article${pl(zero.length)} utilisé${pl(zero.length)} avec un prix à 0 € : ${zero.map(l=>(l.grp&&!new RegExp(String(l.grp).split(' ')[0].replace(/s$/,''),'i').test(l.name||'')?l.grp+' ':'')+l.name).join(', ')}. Renseigner le prix dans Tarifs.`});
   if(v.D1===v.D2)pe(v.D1,v.LF+v.LC);else{pe(v.D1,v.LF);pe(v.D2,v.LC)}
   return A}
 function updateHydro(){
   const b=$('#h-body');if(!b)return;const r=hydro();const al=sizingAlerts(vars(),r);
   const ha=$('#h-alerts');if(ha)ha.innerHTML=al.length?al.map(a=>`<div class="alert ${a.lvl}"><b>${a.lvl==='bad'?'À corriger':'Attention'}</b> ${esc(a.txt)}</div>`).join(''):`<div class="alert ok"><b>Diamètres OK</b> Vitesses et pertes de charge dans les limites.</div>`;
   const zb=$('#sz-banner');if(zb){const nb=al.filter(a=>a.lvl==='bad').length,nw=al.length-nb;
-    zb.hidden=!al.length;zb.className='banner '+(nb?'bad':'');zb.innerHTML=al.length?`<span><b>Dimensionnement des tuyaux :</b> ${nb?nb+' point'+(nb>1?'s':'')+' à corriger':''}${nb&&nw?', ':''}${nw?nw+' point'+(nw>1?'s':'')+' à surveiller':''}.</span><a class="btn sm" href="#perte-de-charge">Voir le détail</a>`:''}
+    zb.hidden=!al.length;zb.className='banner '+(nb?'bad':'');zb.innerHTML=al.length?`<span><b>À vérifier :</b> ${nb?nb+' point'+(nb>1?'s':'')+' à corriger':''}${nb&&nw?', ':''}${nw?nw+' point'+(nw>1?'s':'')+' à surveiller':''}.</span><a class="btn sm" href="#perte-de-charge">Voir le détail</a>`:''}
   const kin=$('#h-kwinfo');if(kin)kin.textContent=`Calcul sans PAC : ${nf(r.wpm)} W/m × ${nf(vars().M)} m forés = ${nf(r.kw)} kW extraits du sol → débit ${nf(r.qCalc)} m³/h.${+quote.h.qPac>0?' Débit PAC saisi : '+nf(+quote.h.qPac)+' m³/h (utilisé).':''}`;
   const qin=$('#h-qPac');if(qin)qin.placeholder=nf(r.qCalc);
   b.innerHTML=r.segs.map(s=>{const lam=s.Re<2300,tr=s.Re>=2300&&s.Re<4000;
@@ -505,7 +516,7 @@ function lineRow(l,v){
   const q=qtyOf(l,v), a=autoQty(l,v), over=Object.prototype.hasOwnProperty.call(quote.q,l.id);
   const hasAuto=a!=null&&isFinite(a);
   if(l.src==='extra'){
-    return `<tr class="line ${q?'':'zero'}" data-id="${l.id}"><td class="name"><input class="xin" data-x="name" value="${esc(l.name)}" placeholder="Désignation"></td>
+    return `<tr class="line ${q?'':'zero'}" data-id="${l.id}"><td class="name"><input class="xin" data-x="name" value="${esc(l.name)}" placeholder="Désignation"><label class="xst" title="Coché : vendu au coût + marge sous-traitance, hors objectif au mètre"><input type="checkbox" data-x="st" ${l.st?'checked':''}> sous-traitance</label></td>
     <td class="unit"><input class="xin" data-x="unit" value="${esc(l.unit)}" placeholder="u"></td>
     <td class="qty"><div class="qwrap"><input class="qin" data-x="qty" inputmode="decimal" value="${esc(l.qty??'')}"></div></td>
     <td class="pu r"><input class="qin" data-x="price" inputmode="decimal" value="${esc(l.price??'')}"></td>
@@ -569,7 +580,7 @@ function summaryHTML(t){
 }
 
 /* sous-traitance (TRT, zone orange…) : hors production, ajoutée par-dessus l'objectif au mètre */
-function isST(l){return l.src!=='extra'&&kindOf(l)==='st'}
+function isST(l){return l.src==='extra'?!!l.st:kindOf(l)==='st'}
 function stMarge(){return quote.stm!=null&&quote.stm!==''?+quote.stm:15}
 function stVente(t){t=t||totals();const v=t.v;let s=0;for(const l of lines()){if(!isST(l))continue;const q=qtyOf(l,v);if(q>0)s+=q*(+l.price||0)*(1+stMarge()/100)}return r2(s)}
 /* coefficient appliqué à la production (hors sous-traitance) pour tomber sur le prix retenu */
@@ -589,6 +600,7 @@ function updateSummary(t){
   const pr=quote.prixRetenu!=null?+quote.prixRetenu:(pObj||t.tp);
   const pi=$('#q-prix');if(pi)pi.placeholder=pObj?fmtN.format(pObj):'= calculé';
   const pn=$('#s-prixnote');if(pn)pn.textContent=quote.prixRetenu!=null?'Prix saisi à la main — videz la case pour revenir à l’objectif':pObj?`Prix retenu = ${nf(+quote.obj)} €/m × ${nf(t.v.M)} m${stv?' + sous-traitance '+eur(stv):''}`:'Prix retenu = prix calculé';
+  if(pn){const low=stv>0&&pr<stv;pn.classList.toggle('bad',low);if(low)pn.textContent=`Attention : prix retenu inférieur à la sous-traitance refacturée (${eur(stv)}).`}
   const ec=pr-t.tp;const e=$('#s-ecart');e.textContent=Math.abs(ec)>0.005?(ec>=0?'+':'')+eur(ec):'–';e.className='v '+(Math.abs(ec)<=0.005?'':ec>=0?'good':'bad');
   const mg=pr-t.tc;$('#s-marge').textContent=`${eur(mg)} · ${pr?nf(100*mg/pr):0} %`;
   $('#s-ttc').textContent=eur(pr*(1+(+quote.tva||0)/100));
@@ -657,7 +669,7 @@ function onDevisInput(e){
   if(tg.dataset.q){const id=tg.dataset.q;const n=pnum(tg.value);quote.q[id]=n==null?0:n;markDirty();
     tg.classList.add('is-over');tg.classList.remove('is-auto');refreshLines();return}
   if(tg.dataset.x){const id=tg.closest('tr').dataset.id;const x=quote.extra.find(o=>o.id===id);if(!x)return;
-    x[tg.dataset.x]=(tg.dataset.x==='qty'||tg.dataset.x==='price')?(pnum(tg.value)??0):tg.value;markDirty();refreshLines();return}
+    x[tg.dataset.x]=tg.type==='checkbox'?tg.checked:(tg.dataset.x==='qty'||tg.dataset.x==='price')?(pnum(tg.value)??0):tg.value;markDirty();refreshLines();return}
   if(tg.dataset.coef){const n=pnum(tg.value);quote.coef[tg.dataset.coef]=n??0;markDirty();updateSummary();return}
   if(tg.id==='q-prix'){quote.prixRetenu=pnum(tg.value);markDirty();updateSummary();return}
   if(tg.dataset.ht){quote.h[tg.dataset.ht]=tg.value;markDirty();return}
@@ -805,7 +817,7 @@ function devisTotaux(ps){const m=new Map();for(const p of ps){const o=m.get(p.tv
 function devisPostes(t){t=t||totals();const v=t.v,pe=prixEff(t),k=kProd(t);const dv=quote.dv||{};
   const acc={},xs=[];
   for(const l of lines()){const q=qtyOf(l,v);if(!(q>0))continue;const a=q*unitVente(l,k);if(!(a>0))continue;
-    if(l.src==='extra'){xs.push({id:'x_'+String(l.id).replace(/^x_/,''),ds:l.sec==='loc'?'autres':l.sec,name:l.name||'Prestation',unit:l.unit||'u',q,amt:a,desc:[]});continue}
+    if(l.src==='extra'){xs.push({id:'x_'+String(l.id).replace(/^x_/,''),st:isST(l),ds:l.sec==='loc'?'autres':l.sec,name:l.name||'Prestation',unit:l.unit||'u',q,amt:a,desc:[]});continue}
     const id=posteOf(l);const o=acc[id]||(acc[id]={amt:0,qL:0});o.amt+=a;if(/^l/i.test(l.unit||''))o.qL+=q}
   const out=[];
   for(const p of POSTES){const o=acc[p.id];if(!o||o.amt<0.005)continue;let q=1,unit=p.unit;
@@ -816,12 +828,12 @@ function devisPostes(t){t=t||totals();const v=t.v,pe=prixEff(t),k=kProd(t);const
   for(const p of out){p.defName=p.name;p.defDesc=p.desc.join('\n');const o=dv[p.id]||{};if(o.name)p.name=o.name;if(o.desc)p.desc=String(o.desc).split('\n').filter(s=>s.trim());
     p.tva=o.tva!=null&&o.tva!==''?+o.tva:tvaDef();p.pu=r2(p.amt/p.q);p.tot=r2(p.pu*p.q);sum+=p.tot;exp+=p.amt}
   /* arrondis des prix au mètre reportés sur un forfait pour retomber exactement sur le prix retenu */
-  const diff=r2(r2(exp)-sum);const f=out.find(p=>p.q===1&&p.id!=='trt'&&p.id!=='zoneorange');if(Math.abs(diff)>=0.01&&f){f.pu=r2(f.pu+diff);f.tot=f.pu}
+  const diff=r2(r2(exp)-sum);const f=out.find(p=>p.q===1&&!p.st&&p.id!=='trt'&&p.id!=='zoneorange');if(Math.abs(diff)>=0.01&&f){f.pu=r2(f.pu+diff);f.tot=f.pu}
   return out}
 function nextNumero(){const d=quote.date?new Date(quote.date):new Date();const pre=`D-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-`;let n=0;
   for(const q of [...savedList,{dvs:quote.dvs}]){const s=String((q.dvs&&q.dvs.numero)||q.numero||'');if(s.startsWith(pre)){const m=parseInt(s.slice(pre.length),10);if(m>n)n=m}}return pre+String(n+1).padStart(2,'0')}
 function hasTRT(){const v=vars();return lines().some(l=>qtyOf(l,v)>0&&posteOf(l)==='trt'&&l.src!=='extra')}
-function defObjet(v){return `Forages géothermiques ${nf(v.M)} mètres${v.L>0?' avec raccordements et tranchées':''}${hasTRT()?' + TRT':''}${quote.nom?' ('+quote.nom+')':''}`}
+function defObjet(v){return `Forages géothermiques ${nf(v.M)} mètres${totals().pv.racc>0.005?(v.L>0?' avec raccordements et tranchées':' avec raccordements'):''}${hasTRT()?' + TRT':''}${quote.nom?' ('+quote.nom+')':''}`}
 function defDelai(v){return `Environ ${v.J} jour${pl(v.J)} de forage et ${nf(v.JR)} jour${pl(v.JR)} de raccordement, à une date convenue après acceptation du devis`}
 /* ---------- onglet Entreprise ---------- */
 function socToolbar(){return `<div class="title">Entreprise & conditions de vente</div>${socDraft?'<span class="status dirty">Modifications non enregistrées</span><button class="btn ghost" id="s-cancel">Annuler</button>':''}<button class="btn ghost" id="s-cgv">Remettre les CGV par défaut</button><button class="btn primary" id="s-save" ${socDraft&&db&&canWrite?'':'disabled'}>Enregistrer</button>`}
@@ -1222,7 +1234,7 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
      {c:['Échangeur de la PAC','','','','','',`${nf(hr.pac)} kPa`]},
      {c:[`Total avec échangeur (${nf(hr.mce)} mCE)`,'','','','','',`${nf(hr.tot)} kPa`],b:true,fill:SOFT}]);
   if(hr.verdict&&!hydroOnly){ensure(30);for(const l of wrap(hr.verdict.txt,CW,9.5,B)){text(l,M,y-10,{size:9.5,f:B,color:hr.verdict.ok?GRN:RED});y-=13}y-=4}
-  const al=sizingAlerts(v,hr).filter(a=>!(hr.verdict&&a.txt===hr.verdict.txt));
+  const al=sizingAlerts(v,hr).filter(a=>a.seg!==-2&&!(hr.verdict&&a.txt===hr.verdict.txt));
   if(al.length&&mode!=='devis'){ensure(30);text('Points de vigilance',M,y-10,{size:10,f:B,color:RED});y-=16;for(const a of al){for(const l of wrap('• '+a.txt,CW,9)){ensure(12);text(l,M,y-9,{size:9,color:a.lvl==='bad'?RED:INK});y-=12}}y-=6}
   if(false)para("Écoulement laminaire dans les sondes : l'échange thermique est réduit. Un débit plus élevé (écart de température plus faible) ou une dilution de glycol plus faible l'améliore.",8.5,RED);
   para('Calcul Darcy-Weisbach, tubes PE100 SDR11, rugosité 0,01 mm. Forages en parallèle reliés en direct au collecteur ; le forage le plus éloigné fixe la perte de charge. Propriétés du fluide à 0 °C (valeurs approchées) — à confirmer avec les fiches du fluide et de la pompe à chaleur.');
@@ -1239,6 +1251,7 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
 }
 async function exportPDF(mode){
   if(!dlApi){toast('Téléchargement indisponible');return}
+  if(mode==='devis'){const t0=totals();if(stVente(t0)>0&&prixEff(t0)<stVente(t0)){toast('Prix retenu inférieur à la sous-traitance : corrigez-le avant de sortir le PDF');return}}
   toast('Préparation du PDF…');
   try{let bytes;if(mode==='devis'){if(!quote.numero){quote.numero=(quote.dvs&&quote.dvs.numero)||nextNumero();markDirty()}quote.dvs=null;const dv=devisFromChiffrage();dv.numero=quote.numero;quote.dvs=dv;
       const miss=socMissing(socInfo());if(miss.length)setTimeout(()=>toast('À compléter dans Entreprise : '+miss.join(', ')),2500);bytes=await buildDevisPdf();quote.dvs=null}else bytes=await buildPdf(mode);
