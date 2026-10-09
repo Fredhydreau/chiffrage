@@ -641,6 +641,7 @@ function renderDevis(){
     <button class="btn" id="b-pdf1">PDF avec prix</button>
     <button class="btn" id="b-pdf0">PDF sans prix</button>
     <button class="btn" id="b-pdfm">PDF matériel</button>
+    <button class="btn" id="b-pdfa" title="Usage interne : prix d’achat, marges et résultat">PDF prix d’achat</button>
     <button class="btn primary" id="b-save" ${db&&canWrite?'':'disabled'} title="${db?'':'Enregistrement indisponible sur cette vue'}">Enregistrer</button></div>
   <div id="sz-banner" class="banner" hidden></div>
   ${pchg?`<div class="banner"><span>${pchg} prix de ce chiffrage diffèrent des tarifs actuels (repérés par <span class="pchg">●</span>).</span><button class="btn sm" id="b-upd">Appliquer les tarifs actuels</button></div>`:''}
@@ -702,6 +703,7 @@ function onDevisClick(e){
     case 'b-pdf0':exportPDF('descriptif');break;
     case 'b-pdfh':exportPDF('hydro');break;
     case 'b-pdfm':exportPDF('materiel');break;
+    case 'b-pdfa':exportPDF('achat');break;
   }
 }
 
@@ -1150,12 +1152,12 @@ const LOGO_SRC='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASAAAADNCAYAAAAYLq
 const WIN_EXTRA='€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ';
 function pt(s){s=String(s??'').replace(/[   ]/g,' ').replace(/→/g,'->').replace(/″/g,'"').replace(/≈/g,'env.').replace(/≤/g,'<=').replace(/≥/g,'>=').replace(/−/g,'-').replace(/³/g,'3').replace(/²/g,'2').replace(/\n/g,' ');
   let o='';for(const ch of s){const c=ch.codePointAt(0);o+=((c>=32&&c<127)||(c>=160&&c<256)||WIN_EXTRA.includes(ch))?ch:'?'}return o}
-const PDF_MODES={devis:{title:'Devis',file:'devis'},descriptif:{title:'Descriptif technique',file:'descriptif'},hydro:{title:'Note de calcul hydraulique',file:'perte-de-charge'},materiel:{title:'Liste matériel et locations',file:'materiel'}};
+const PDF_MODES={devis:{title:'Devis',file:'devis'},descriptif:{title:'Descriptif technique',file:'descriptif'},hydro:{title:'Note de calcul hydraulique',file:'perte-de-charge'},materiel:{title:'Liste matériel et locations',file:'materiel'},achat:{title:'Fiche prix d’achat',file:'prix-achat'}};
 function concGly(){const c=quote.h&&quote.h.conc;return (c==null||c==='')?30:(+c||0)}
 function volumeReseau(v,hr){const A=(D)=>{const di=(D-2*(PE_E[D]||D/11))/1000;return Math.PI*di*di/4*1000};/* L/m */
   const Ds=v.P>150?40:32;const vs=4*v.P*v.N*A(Ds),vl=v.LF*A(v.D1||40),vc=v.LC*A(v.D2||63);const tot=vs+vl+vc;
   return {vs,vl,vc,tot,gly:tot*concGly()/100}}
-async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='hydro',matOnly=mode==='materiel';
+async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='hydro',matOnly=mode==='materiel',achat=mode==='achat';
   const {PDFDocument,StandardFonts,rgb}=await getPdfLib();
   const doc=await PDFDocument.create();const F=await doc.embedFont(StandardFonts.Helvetica),B=await doc.embedFont(StandardFonts.HelveticaBold);
   const W=595.28,H=841.89,M=40,CW=W-2*M;
@@ -1187,7 +1189,7 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
   catch(e){text('HYDREAU FORAGE',M,y-10,{size:10,f:B,color:ACC})}
   text(`Date : ${dstr}`,W-M-200,y-10,{size:9,align:'right',w:200});if(quote.chiffreur)text(`Établi par : ${quote.chiffreur}`,W-M-200,y-22,{size:8,color:GR,align:'right',w:200});
   y-=74;text(PDF_MODES[mode].title,M,y,{size:22,f:B});y-=16;
-  text(`${hydroOnly?'Perte de charge du réseau de captage':matOnly?'Matières et locations prévues, hors main-d’œuvre et hébergement':'Géothermie sur sondes verticales'}${quote.nom?' — '+quote.nom:''}`,M,y,{size:11,color:GR});y-=16;
+  text(`${achat?'Document interne – ne pas transmettre au client':hydroOnly?'Perte de charge du réseau de captage':matOnly?'Matières et locations prévues, hors main-d’œuvre et hébergement':'Géothermie sur sondes verticales'}${quote.nom?' — '+quote.nom:''}`,M,y,{size:11,color:GR});y-=16;
   page.drawRectangle({x:M,y:y-4,width:60,height:3,color:ACC});y-=14;
   h2('Chantier');
   kv([['Chantier',quote.nom],['Lieu',quote.lieu],['Client',quote.client],['Téléphone',quote.tel],['E-mail',quote.mail],['Architecte / BE',quote.archi],['Interlocuteur',quote.interlocuteur]].filter(p=>p[1]));
@@ -1204,7 +1206,29 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
     for(const [kd,ttl] of [['mat','Matières et fournitures'],['loc','Locations et engins']]){const ls=all.filter(l=>(l.src==='extra'?(l.kind||'mat'):kindOf(l))===kd);if(!ls.length)continue;
       h2(ttl);const rows=[];let g=null;for(const l of ls){const gg=l.src==='extra'?'Autres':l.grp;if(gg!==g){g=gg;rows.push({c:[g,'',''],b:true,fill:SOFT2,span:true})}rows.push([l.name||'—',l.unit,nf(qtyOf(l,v))])}
       table(mc,rows)}}
-  if(!hydroOnly&&!matOnly)for(const s of SECS){const ls=lines().filter(l=>l.sec===s.id&&qtyOf(l,v)>0);if(!ls.length)continue;
+  if(achat){const ac=[{t:'Désignation',w:135.28},{t:'Quantité',w:55,a:'right'},{t:'PU achat',w:55,a:'right'},{t:'Total achat',w:62,a:'right'},{t:'PU vente',w:58,a:'right'},{t:'Total vente',w:65,a:'right'},{t:'Marge',w:55,a:'right'},{t:'%',w:30,a:'right'}];
+    const kk=kProd(t),pct=(m,vt)=>vt>0?Math.round(100*m/vt)+' %':'';
+    para('Prix de vente conseillé = prix de chaque ligne une fois le prix retenu réparti (coefficients de section ajustés pour tomber sur le prix retenu ; sous-traitance au coût + marge). Marge = vente − achat ; % = marge / vente.',8,GR);
+    for(const s of SECS){const ls=lines().filter(l=>l.sec===s.id&&qtyOf(l,v)>0);if(!ls.length)continue;
+      h2(s.label);const rows=[];let g=null,sa=0,sv=0;
+      for(const l of ls){const gg=l.src==='extra'?'Lignes libres':l.grp;if(gg!==g){g=gg;rows.push({c:[g,'','','','','','',''],b:true,fill:SOFT2,span:true})}
+        const q=qtyOf(l,v),pa=+l.price||0,ta=r2(q*pa),pv=r2(unitVente(l,kk)),tv=r2(q*unitVente(l,kk)),m=r2(tv-ta);sa+=ta;sv+=tv;
+        rows.push([(l.name||'—')+(isST(l)?' (sous-traitance)':''),`${nf(q)} ${l.unit||''}`,eur(pa),eur(ta),eur(pv),eur(tv),eur(m),pct(m,tv)])}
+      rows.push({c:[`Total ${s.label}`,'','',eur(sa),'',eur(sv),eur(sv-sa),pct(sv-sa,sv)],b:true,fill:SOFT});
+      table(ac,rows)}
+    const stv=stVente(t),com=pe*(+quote.com||0)/100,ff=(+quote.ffm||0)*v.M,mg=pe-t.tc,net=mg-com-ff;
+    const pm=x=>v.M?eur(x/v.M):'',pc=x=>pe?nf(Math.round(1000*x/pe)/10)+' %':'';
+    ensure(230);h2('Synthèse');
+    table([{t:'',w:315},{t:'Montant HT',w:110,a:'right'},{t:'Par mètre foré',w:90.28,a:'right'}],[
+      ['Coût d’achat total du chantier',eur(t.tc),pm(t.tc)],
+      ['Prix de vente calculé (coefficients)',eur(t.tp),pm(t.tp)],
+      ...(stv>0?[[`dont sous-traitance refacturée (marge ${nf(stMarge())} %)`,eur(stv),'']]:[]),
+      {c:[`Prix retenu${quote.prixRetenu!=null?' (saisi à la main)':''}`,eur(pe),pm(pe)],b:true,fill:SOFT},
+      [`Marge brute (${pc(mg)})`,eur(mg),pm(mg)],
+      [`Commission apporteur (${nf(+quote.com||0)} %)`,'− '+eur(com),v.M?'− '+pm(com):''],
+      [`Frais fixes société (${nf(+quote.ffm||0)} €/m)`,'− '+eur(ff),v.M?'− '+pm(ff):''],
+      {c:[`Résultat net estimé (${pc(net)})`,eur(net),pm(net)],b:true,fill:SOFT,color:net<0?RED:GRN}])}
+  if(!hydroOnly&&!matOnly&&!achat)for(const s of SECS){const ls=lines().filter(l=>l.sec===s.id&&qtyOf(l,v)>0);if(!ls.length)continue;
     h2(s.label);const rows=[];let g=null,st=0;
     for(const l of ls){const gg=l.src==='extra'?'Autres':l.grp;if(gg!==g){g=gg;rows.push({c:[g,'','','',''].slice(0,cols.length),b:true,fill:SOFT2,span:true})}
       const q=qtyOf(l,v);const pu=r2(unitVente(l,kProd()));const lt=r2(q*pu);st+=lt;
@@ -1216,7 +1240,7 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
     rowsT.forEach((r,i)=>{const last=i===2;if(last)page.drawRectangle({x:bx,y:y-20,width:230,height:20,color:SOFT});text(r[0],bx+8,y-14,{size:last?11:9.5,f:last?B:F});text(r[1],bx,y-14,{size:last?11:9.5,f:B,align:'right',w:222});y-=last?22:18});y-=8}
   /* perte de charge */
   const hr=hydro(),hq=quote.h;
-  if(!matOnly){
+  if(!matOnly&&!achat){
   h2(hydroOnly?'Hypothèses de calcul':'Perte de charge du réseau de captage');
   kv([['Pompe à chaleur',hq.model||'—'],['Débit de dimensionnement',`${nf(hr.Q)} m³/h${+hq.qPac>0?' (fiche PAC)':` (${nf(hr.kw)} kW, écart ${nf(+hq.dT||3)} K)`}`],
       ['Fluide',`Eau + monopropylène glycol ${nf(concGly())} %`],['Pertes singulières',`${nf(+hq.sing||0)} % des pertes linéaires`],
