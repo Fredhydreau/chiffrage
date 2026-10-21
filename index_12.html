@@ -803,14 +803,14 @@ async function planPdf(){
   if(false)for(let y=Math.ceil(ya/gm)*gm;y<yb;y+=gm)line({x:ax*K,y:Y(y)},{x:(ax+aw)*K,y:Y(y)},.3,GRID);
   const pg=planGeo(),eq=p.trace==='equerre';
   const segs=(a,b)=>legs(routeFor(a,b));
-  if(p.zone&&p.zone.closed&&p.zone.pts.length>2){const Q=p.zone.pts;Q.forEach((a,k)=>{const b2=Q[(k+1)%Q.length];page.drawLine({start:{x:X(a.x),y:Y(a.y)},end:{x:X(b2.x),y:Y(b2.y)},thickness:.9,color:FOR,dashArray:[4,3]})})}
+  if(false&&p.zone&&p.zone.closed&&p.zone.pts.length>2){const Q=p.zone.pts;Q.forEach((a,k)=>{const b2=Q[(k+1)%Q.length];page.drawLine({start:{x:X(a.x),y:Y(a.y)},end:{x:X(b2.x),y:Y(b2.y)},thickness:.9,color:FOR,dashArray:[4,3]})})}
   const lf=[],lc=[];pg.asg.forEach(q=>{const c=pg.C[q.j];if(c)lf.push(...segs(q.f,c))});if(pg.ch)pg.C.forEach(c=>lc.push(...segs(c,pg.ch)));
   const tw=Math.max(.6*mm*K,2.2);if(!p.noTr)(trActive()?trSegs():[...lf,...lc]).forEach(([a,b])=>line({x:X(a.x),y:Y(a.y)},{x:X(b.x),y:Y(b.y)},tw,SAND,true));
   lf.forEach(([a,b])=>line({x:X(a.x),y:Y(a.y)},{x:X(b.x),y:Y(b.y)},.7,ACC,true));
   lc.forEach(([a,b])=>line({x:X(a.x),y:Y(a.y)},{x:X(b.x),y:Y(b.y)},1.6,ACC,true));
   const pill=(x,y,t)=>{t=pt(t);const w=F.widthOfTextAtSize(t,6.5)+6;page.drawRectangle({x:x-w/2,y:y-4.5,width:w,height:9,color:WH,borderColor:ACC,borderWidth:.5});T(t,x,y-2.2,{s:6.5,c:1})};
   if(p.cotes!==false)plCotes().forEach(c=>{const x=X((c.a.x+c.b.x)/2),y=Y((c.a.y+c.b.y)/2),t=pt(nf(r1(c.d))+' m'),w=F.widthOfTextAtSize(t,5.5)+4;page.drawRectangle({x:x-w/2,y:y-3.6,width:w,height:7.2,color:WH,opacity:.9,borderColor:GR,borderWidth:.3});T(t,x,y-1.9,{s:5.5,c:1,col:INK})});
-  if(pg.ch)pg.C.forEach(c=>{const r=routeFor(c,pg.ch),m=polyMid(r);pill(X(m.x),Y(m.y),'Collecteur C'+((c.i||0)+1)+' → chaufferie : '+nf(r1(polyLen(r)))+' m')});
+  /* distance collecteur → chaufferie : dans le cartouche, pas sur le plan */
   const num=plNum();
   planItems().forEach(i=>{const x=X(i.x),y=Y(i.y);
     if(i.k==='f'){page.drawCircle({x,y,size:1.7*K,color:WH,borderColor:FOR,borderWidth:1.1});page.drawCircle({x,y,size:.6*K,color:FOR});T('F'+num.get(i),x+2.1*K,y+1.6*K,{s:6,f:B,col:FOR})}});
@@ -835,6 +835,7 @@ async function planPdf(){
   const v=vars();const row=(k,val)=>{if(!val)return;T(k,tx0,ky-7,{s:6,col:GR});const ls=[];let cur='';for(const w of pt(val).split(/\s+/)){const t=cur?cur+' '+w:w;if(F.widthOfTextAtSize(t,8)>tw0&&cur){ls.push(cur);cur=w}else cur=t}ls.push(cur);ls.slice(0,2).forEach((l,j)=>T(l,tx0,ky-16-j*9.5,{s:8,f:B}));ky-=12+ls.slice(0,2).length*9.5};
   row('Chantier',quote.nom);row('Lieu',quote.lieu);row('Client',quote.client);
   row('Forages',`${v.N} × ${nf(v.P)} m, soit ${nf(v.M)} m forés`);row('Collecteurs',pg.groups.length>1?`2 (${pg.groups.map(g=>g.n).join(' + ')} forages)`:'1');
+  if(pg.ch)row(pg.C.length>1?'Collecteurs → chaufferie':'Collecteur → chaufferie',pg.C.map(c=>(pg.C.length>1?'C'+((c.i||0)+1)+' : ':'')+nf(r1(polyLen(routeFor(c,pg.ch))))+' m').join(' · '));
   row('Date',quote.date?new Date(quote.date).toLocaleDateString('fr-FR'):new Date().toLocaleDateString('fr-FR'));row('Établi par',quote.chiffreur);
   if(port){col(1);footX=tx0;footW=tw0;ky-=pad}else{line({x:tx0,y:ky},{x:tx0+tw0,y:ky},.5,LN);ky-=6}
   T('ÉCHELLE',tx0,ky-7,{s:6,col:GR});T(`1/${N}`,tx0,ky-24,{s:20,f:B});T(`Format ${P.A3?'A3':'A4'} ${port?'portrait':'paysage'}`,tx0+tw0,ky-24,{s:7,col:GR,r:1});ky-=34;
