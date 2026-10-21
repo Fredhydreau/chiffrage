@@ -880,7 +880,7 @@ function planBgUpdate(){const L=$('#pl-bgl');if(!L)return;const p=quote.plan||{w
   if(im.getAttribute('href')!==b.src)im.setAttribute('href',b.src);
   im.setAttribute('x',b.x);im.setAttribute('y',b.y);im.setAttribute('width',b.iw*b.mpp);im.setAttribute('height',b.ih*b.mpp);im.setAttribute('opacity',b.op??.6)}
 function plHint(){if(plTool==='tr'){if(plLink)return `Tracé en cours depuis ${plLink.from.k==='f'?'le forage':'le collecteur'} : cliquer les points de passage, puis <b>${plLink.from.k==='f'?'un collecteur':'la chaufferie'}</b> pour terminer (${plLink.pts.length} point${pl(plLink.pts.length)}). Échap ou clic sur le point de départ pour annuler.`;
-    return 'Tracer une liaison soi-même : cliquer un <b>forage</b> (ou un collecteur), puis les points de passage, puis le <b>collecteur</b> (ou la chaufferie) d’arrivée — le forage est alors rattaché à ce collecteur. Modifier : tirer un <b>+</b> ou déplacer les carrés ; double-clic (ou Gomme) sur un carré pour le supprimer. Les longueurs de PE, la tranchée et la perte de charge suivent le tracé.'}
+    return 'Tracer une liaison soi-même : cliquer un <b>forage</b> (ou un collecteur), puis les points de passage, puis le <b>collecteur</b> (ou la chaufferie) d’arrivée — le forage est alors rattaché à ce collecteur. Modifier : tirer un <b>+</b> ou déplacer les carrés ; double-clic (ou Gomme) sur un carré pour le supprimer. Supprimer tout un tracé : outil <b>Gomme</b> sur la liaison. Les longueurs de PE, la tranchée et la perte de charge suivent le tracé.'}
   if(plTool==='zone'){const Z=quote.plan&&quote.plan.zone,N=+quote.N||0,E=+quote.E||0;
     const warn=bgOn()&&!quote.plan.bg.cal?' <b class="bad">L’échelle du fond n’est pas calée : la zone et les espacements ne correspondront pas à la photo.</b>':'';
     if(!Z||!Z.closed)return `Zone de forage : cliquer les coins de la zone autorisée (à l’échelle du plan), puis cliquer le 1er point (ou double-clic) pour la fermer. <button class="btn sm ghost danger" id="pl-zdel" ${Z&&Z.pts.length?'':'disabled'}>Effacer</button>${warn}`;
@@ -1156,7 +1156,13 @@ function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.pr
     if(plTool==='tr'){if(rh&&rh.ins!=null){p.routes=p.routes||{};if(!routeWps(rh.L.a).length)p.routes[rh.key]=rh.rt.slice(1,-1).map(q=>({x:q.x,y:q.y}));p.routes[rh.key].splice(rh.ins,0,{x:pt.x,y:pt.y});
       plDrag={wp:{key:rh.key,idx:rh.ins},moved:true};svg.setPointerCapture?.(e.pointerId);planDraw()}return}}
   const hit=planHit(pt);
-  if(plTool==='del'){if(hit){p.items=p.items.filter(i=>i!==hit);planChanged()}return}
+  if(plTool==='del'){if(hit){p.items=p.items.filter(i=>i!==hit);planChanged();return}
+    /* gomme sur une liaison : on supprime son tracé à la main (et le rattachement choisi), elle redevient droite */
+    const tol=planView().w/60;let best=null,bd=tol;planLinks().forEach(L=>{legs(routeFor(L.a,L.b)).forEach(([a,b2])=>{const d=segDist(pt.x,pt.y,a,b2);if(d<bd){bd=d;best=L}})});
+    if(best){const key=routeKey(best.a),had=(p.routes&&p.routes[key]&&p.routes[key].length)||(best.a.k==='f'&&p.assign&&p.assign[best.a.id]!=null);
+      if(had){if(p.routes)delete p.routes[key];if(best.a.k==='f'&&p.assign)delete p.assign[best.a.id];planChanged();toast('Tracé supprimé : la liaison repart en ligne droite vers le collecteur le plus proche')}
+      else toast('Cette liaison est déjà en ligne droite (pas de tracé à supprimer)')}
+    return}
   if(hit){plDrag={it:hit,moved:false};svg.setPointerCapture?.(e.pointerId);return}
   if(plTool==='f')p.items.push({k:'f',x:pt.x,y:pt.y});
   else if(plTool==='c0'||plTool==='c1'){const ci=plTool==='c1'?1:0;p.items=p.items.filter(i=>!(i.k==='c'&&(i.i||0)===ci));p.items.push({k:'c',i:ci,x:pt.x,y:pt.y})}
