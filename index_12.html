@@ -227,6 +227,13 @@ table.list tr.row:hover td{background:var(--panel2)}
 .btn.primary .pl-ic{outline:1.5px solid var(--accent-ink)}
 .pl-wrap{box-shadow:inset 0 0 0 1px var(--line)}
 .pl-svg.pl-edit{cursor:default}.pl-svg .pl-h{cursor:grab}
+.pl-bgbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:0 0 10px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px}
+.pl-bgbar label.btn{cursor:pointer}.pl-bgbar label.btn .status{font-weight:400;font-size:12px}.pl-bgname{font-size:13px;font-weight:600;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl-sin{width:62px;margin-left:4px;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:3px 6px;color:var(--ink);font-family:var(--mono)}
+.pl-bgbar select{color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:3px 6px;margin-left:4px}
+.pl-bgbar input[type=range]{vertical-align:middle;width:90px}
+.pl-calw{display:inline-block;width:110px;vertical-align:middle}.pl-calw input{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:3px 24px 3px 6px;font-family:var(--mono);color:var(--ink)}
+.pl-svg.pl-move{cursor:move}
 .pl-hint{margin:0 0 8px;padding:7px 10px;border-radius:6px;background:var(--racc-soft);font-size:13px;color:var(--ink)}
 .pl-ic-tr{width:14px!important;height:8px!important;border:0!important;background:linear-gradient(135deg,transparent 45%,var(--racc) 45%,var(--racc) 60%,transparent 60%)}
 .pl-leg{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:8px;font-size:12px;color:var(--ink2)}.pl-leg span{display:inline-flex;align-items:center;gap:6px}
@@ -598,7 +605,7 @@ function coupeSVG(){
 
 
 /* ---------- plan d'implantation : interface ---------- */
-const PL_W=[20,30,40,60,80,100,150,200,300,500];
+const PL_W=[20,30,40,60,80,100,150,200,300,500,750,1000];
 let plTool='f',plDrag=null;
 function planObj(){if(!quote.plan)quote.plan={on:false,w:60,trace:'droit',items:[]};if(!Array.isArray(quote.plan.items))quote.plan.items=[];return quote.plan}
 function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tools=[['f','Forage'],['c0','Collecteur 1'],['c1','Collecteur 2'],['ch','Chaufferie'],['tr','Tracé des liaisons'],['del','Gomme']];
@@ -607,12 +614,13 @@ function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tool
   <div class="pl-opts"><label class="status">Zone <select id="pl-w">${PL_W.map(w=>`<option value="${w}" ${(+p.w||60)===w?'selected':''}>${w} m</option>`).join('')}</select></label>
   <label class="status">Tracé <select id="pl-trace"><option value="droit" ${p.trace!=='equerre'?'selected':''}>en ligne droite</option><option value="equerre" ${p.trace==='equerre'?'selected':''}>en équerre</option></select></label>
   <button class="btn sm" id="pl-gen" title="Place les forages en ligne avec les valeurs du dimensionnement">Placer depuis le dimensionnement</button>${p.routes&&Object.keys(p.routes).length?'<button class="btn sm" id="pl-straight" title="Supprime tous les points de passage">Redresser les liaisons</button>':''}<button class="btn sm ghost danger" id="pl-clear">Tout effacer</button></div></div>
-  <p class="pl-hint" id="pl-hint" ${plTool==='tr'?'':'hidden'}>Tracé des liaisons : tirer un <b>+</b> pour créer un point de passage, déplacer les carrés pour modifier le tracé ; double-clic (ou Gomme) sur un carré pour le supprimer. Les longueurs de PE, la tranchée et la perte de charge suivent le tracé.</p>
-  <div class="pl-wrap"><svg id="pl-svg" class="pl-svg ${plTool==='tr'?'pl-edit':''}" viewBox="0 0 ${+p.w||60} ${Math.round((+p.w||60)*0.6)}" role="img" aria-label="Plan d’implantation">${planSVG()}</svg></div>
+  <div id="pl-bgbar-w">${planBgBar()}</div>
+  <p class="pl-hint" id="pl-hint" ${plHint()?'':'hidden'}>${plHint()}</p>
+  <div class="pl-wrap"><svg id="pl-svg" class="pl-svg ${plTool==='tr'?'pl-edit':''}" viewBox="0 0 ${+p.w||60} ${Math.round((+p.w||60)*0.6)}" role="img" aria-label="Plan d’implantation"><g id="pl-bgl">${planBgSVG()}</g><g id="pl-fg">${planSVG()}</g></svg></div>
   <div class="pl-leg"><span><i class="pl-ic pl-ic-f"></i>Forage</span><span><i class="pl-ic pl-ic-c0"></i>Collecteur</span><span><i class="pl-ic pl-ic-ch"></i>Chaufferie</span><span><i class="pl-ln"></i>Liaison PE</span><span><i class="pl-ln pl-ln2"></i>vers chaufferie</span><span><i class="pl-ln pl-tr"></i>Tranchée indicative</span></div>
   <p class="help" id="pl-info" style="margin:8px 0 0">${planInfo()}</p>
   <div id="pl-exp-w">${planExpHTML()}</div>
-  <p class="note" style="padding:4px 0 0">Choisir un outil puis cliquer sur la grille ; on peut déplacer un point en le faisant glisser. Chaque forage est relié au collecteur le plus proche ; outil « Tracé des liaisons » pour faire passer une liaison où on veut (contournement, passage commun). Liaisons aller + retour ; tranchée estimée par le chemin le plus court qui relie les forages de chaque collecteur, plus les liaisons vers la chaufferie. Sans chaufferie placée, les longueurs collecteur → chaufferie restent celles saisies. Exports : PDF à imprimer à 100 % (taille réelle) pour le superposer à un plan de masse à la même échelle ; PNG à fond transparent (1 m = la résolution choisie) pour une vue satellite ; DXF en mètres réels pour AutoCAD.</p>
+  <p class="note" style="padding:4px 0 0">Choisir un outil puis cliquer sur la grille ; on peut déplacer un point en le faisant glisser. Chaque forage est relié au collecteur le plus proche ; outil « Tracé des liaisons » pour faire passer une liaison où on veut (contournement, passage commun). Liaisons aller + retour ; tranchée estimée par le chemin le plus court qui relie les forages de chaque collecteur, plus les liaisons vers la chaufferie. Sans chaufferie placée, les longueurs collecteur → chaufferie restent celles saisies. Fond de plan : PDF (avec son échelle, ex. 1/200), DWG, DXF (déjà à l’échelle) ou image (à caler avec 2 points et une distance connue), puis « Déplacer le fond » pour l’aligner. Exports : PDF à imprimer à 100 % (taille réelle) pour le superposer à un plan de masse à la même échelle ; PNG à fond transparent (1 m = la résolution choisie) pour une vue satellite ; DXF en mètres réels pour AutoCAD.</p>
   </div></div>`}
 function planInfo(){const it=planItems();if(!it.length)return 'Plan vide : placer les forages, le ou les collecteurs et la chaufferie, ou partir du dimensionnement.';
   const pg=planGeo();const parts=[`<b>${pg.N}</b> forage${pl(pg.N)}`];
@@ -623,7 +631,7 @@ function planInfo(){const it=planItems();if(!it.length)return 'Plan vide : place
   return parts.join(' · ')+(miss.length?` · <span class="warnc">manque ${miss.join(' et ')}</span>`:'')+(on?(planOn()?' · <span class="good">longueurs du chiffrage prises sur le plan</span>':''):' · <span class="status">cocher « Utiliser le plan » pour l’appliquer au chiffrage</span>')}
 function planSVG(){const p=quote.plan||{w:60};const w=+p.w||60,h=Math.round(w*0.6);const it=planItems();
   const st=w<=30?1:w<=60?2:w<=150?5:w<=300?10:25,maj=st*5;const u=w/100,fs=u*1.9;
-  let s=`<rect x="0" y="0" width="${w}" height="${h}" fill="var(--panel)"/>`;
+  let s='';
   for(let x=st;x<w;x+=st){const M=Math.abs(x/maj-Math.round(x/maj))<1e-6;s+=`<line x1="${x}" x2="${x}" y1="0" y2="${h}" stroke="var(--line)" stroke-width="${M?1:.5}" opacity="${M?1:.6}" vector-effect="non-scaling-stroke"/>`}
   for(let y=st;y<h;y+=st){const M=Math.abs(y/maj-Math.round(y/maj))<1e-6;s+=`<line y1="${y}" y2="${y}" x1="0" x2="${w}" stroke="var(--line)" stroke-width="${M?1:.5}" opacity="${M?1:.6}" vector-effect="non-scaling-stroke"/>`}
   if(!it.length)s+=`<text x="${w/2}" y="${h/2}" text-anchor="middle" font-size="${fs*1.2}" fill="var(--ink3)" font-family="Barlow,sans-serif">Choisir un outil puis cliquer pour placer forages, collecteurs et chaufferie</text>`;
@@ -647,6 +655,8 @@ function planSVG(){const p=quote.plan||{w:60};const w=+p.w||60,h=Math.round(w*0.
   if(edit)planLinks().forEach(L=>{const r=routeFor(L.a,L.b);const wn=routeWps(L.a).length;
     routeHandles(L,u).H.forEach(hh=>{const mx=hh.x,my=hh.y;s+=`<g class="pl-h"><circle cx="${mx}" cy="${my}" r="${u*1.05}" fill="var(--panel)" stroke="var(--racc)" stroke-width="1.5" vector-effect="non-scaling-stroke"/><path d="M${mx-u*.55} ${my}H${mx+u*.55}M${mx} ${my-u*.55}V${my+u*.55}" stroke="var(--racc)" stroke-width="1.5" vector-effect="non-scaling-stroke"/></g>`});
     if(wn)r.slice(1,-1).forEach(q=>{const z=u*.95;s+=`<rect x="${q.x-z}" y="${q.y-z}" width="${2*z}" height="${2*z}" fill="var(--racc)" stroke="var(--panel)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`})});
+  if(plTool==='cal'&&plCal.A){const mk=(q,t)=>`<g><path d="M${q.x-u*1.6} ${q.y}H${q.x+u*1.6}M${q.x} ${q.y-u*1.6}V${q.y+u*1.6}" stroke="#D2321E" stroke-width="2" vector-effect="non-scaling-stroke"/><text x="${q.x+u*1.2}" y="${q.y-u*1.2}" font-size="${fs}" font-weight="700" fill="#D2321E" font-family="Barlow,sans-serif" ${halo}>${t}</text></g>`;
+    if(plCal.B)s+=`<line x1="${plCal.A.x}" y1="${plCal.A.y}" x2="${plCal.B.x}" y2="${plCal.B.y}" stroke="#D2321E" stroke-width="2" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>`+mk(plCal.B,'B');s+=mk(plCal.A,'A')}
   /* nord */
   const nd=+p.nord||0,nx=w-u*5,ny=u*7;
   s+=`<g transform="translate(${nx} ${ny}) rotate(${nd})"><circle r="${u*3.6}" fill="var(--panel)" stroke="var(--line)" stroke-width="1" vector-effect="non-scaling-stroke"/><polygon points="0,${-u*2.9} ${u*1.4},${u*1.8} 0,${u*.8} ${-u*1.4},${u*1.8}" fill="var(--ink)"/><text y="${-u*3.9}" text-anchor="middle" font-size="${fs*.9}" font-weight="700" fill="var(--ink)" font-family="Barlow,sans-serif">N</text></g>`;
@@ -670,7 +680,7 @@ function planExpHTML(){const p=quote.plan||{};const fit=planFitScale();
   <label class="status" title="Angle du nord par rapport au haut du plan, dans le sens des aiguilles d’une montre">Nord <span class="unit-in pl-nord"><input id="pl-nord" inputmode="decimal" value="${p.nord?esc(p.nord):''}" placeholder="0"><span>°</span></span></label>
   <span class="pl-exp-b"><button class="btn sm" id="pl-pdf" title="Plan à l’échelle avec cartouche, à imprimer à 100 %">PDF à l’échelle</button>
   <button class="btn sm" id="pl-png" title="Image à fond transparent, à poser sur une vue satellite">Image PNG</button>
-  <label class="status">résolution <select id="pl-ppm">${[10,20,40].map(n=>`<option value="${n}" ${(+p.ppm||20)===n?'selected':''}>${n} px/m</option>`).join('')}</select></label>
+  ${bgOn()?`<label class="status"><input type="checkbox" id="pl-bgpdf" ${p.bgPdf!==false?'checked':''}> fond dans le PDF</label>`:''}<label class="status">résolution <select id="pl-ppm">${[10,20,40].map(n=>`<option value="${n}" ${(+p.ppm||20)===n?'selected':''}>${n} px/m</option>`).join('')}</select></label>
   <button class="btn sm" id="pl-dxf" title="Fichier DXF en mètres réels, pour AutoCAD ou un plan de masse">DXF (AutoCAD)</button></span></div>`}
 function plNum(){const it=planItems();const m=new Map();let n=0;it.forEach(i=>{if(i.k==='f')m.set(i,++n)});return m}
 function plName(){return slug(quote.nom||'chantier')}
@@ -690,6 +700,7 @@ async function planPdf(){
   /* cadre et zone de dessin */
   page.drawRectangle({x:5*K,y:5*K,width:(P.PW-10)*K,height:(P.PH-10)*K,borderColor:INK,borderWidth:.8});
   page.drawRectangle({x:ax*K,y:ay*K,width:aw*K,height:ah*K,borderColor:LN,borderWidth:.5});
+  if(bgOn()&&p.bgPdf!==false)await bgDrawPdf(doc,page,cx-aw/2/mm,cy-ah/2/mm,cx+aw/2/mm,cy+ah/2/mm,X,Y);
   /* quadrillage */
   const gm=[1,2,5,10,20,50,100,200,500].find(g=>g*mm>=8)||500;
   const xa=cx-aw/2/mm,xb=cx+aw/2/mm,ya=cy-ah/2/mm,yb=cy+ah/2/mm;
@@ -804,13 +815,191 @@ async function planDxf(){
     '0\nSECTION\n2\nENTITIES\n'+E.join('\n')+'\n0\nENDSEC\n0\nEOF\n'].join('\n');
   try{await dlApi.save({filename:`plan-implantation-${plName()}.dxf`,data:new Blob([dxf.replace(/\n/g,'\r\n')],{type:'application/dxf'})});toast('DXF : 1 unité = 1 m, origine sur la '+(pg.ch?'chaufferie':'collecteur 1'))}
   catch(e){if(e?.code!=='cancelled'&&e?.code!=='declined')toast('Export annulé')}}
-function planDraw(){const ew=$('#pl-exp-w');if(ew&&!ew.contains(document.activeElement))ew.innerHTML=planExpHTML();const svg=$('#pl-svg');if(!svg)return;const p=quote.plan||{w:60};const w=+p.w||60;svg.setAttribute('viewBox',`0 0 ${w} ${Math.round(w*0.6)}`);svg.innerHTML=planSVG();const pin=$('#pl-info');if(pin)pin.innerHTML=planInfo()}
+function planDraw(){const ew=$('#pl-exp-w');if(ew&&!ew.contains(document.activeElement))ew.innerHTML=planExpHTML();const svg=$('#pl-svg');if(!svg)return;const p=quote.plan||{w:60};const w=+p.w||60;svg.setAttribute('viewBox',`0 0 ${w} ${Math.round(w*0.6)}`);const fg=$('#pl-fg');if(fg){fg.innerHTML=planSVG();planBgUpdate()}else svg.innerHTML=planSVG();const pin=$('#pl-info');if(pin)pin.innerHTML=planInfo()}
 /* recopie dans le chiffrage ce que donne le plan (nombre de forages, collecteurs, longueurs vers la chaufferie) */
 function planSync(){if(!planOn())return;const pg=planGeo();quote.N=pg.N;quote.nc=pg.groups.length>1?2:1;quote.N2=pg.groups[1]?pg.groups[1].n:null;
   if(pg.ch){quote.L=pg.groups[0]?pg.groups[0].L:0;quote.L2=pg.groups[1]?pg.groups[1].L:null}}
 function planLocks(){const on=planOn(),ch=on&&planGeo().ch;
   [['N',on],['E',on],['nc',on],['N2',on],['L',ch],['L2',ch]].forEach(([k,lk])=>{const el=$('#q-'+k);if(!el)return;el.disabled=!!lk;el.title=lk?'Donné par le plan d’implantation':''});
   const cl=$('#q-coll');if(cl){cl.disabled=on;cl.title=on?'Les longueurs viennent du plan':''}}
+/* ---------- fond de plan importé (PDF, DWG, DXF, image) ---------- */
+let plCal={},plLastFile=null;
+function planRaw(e){const svg=$('#pl-svg');const pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const q=pt.matrixTransform(svg.getScreenCTM().inverse());return {x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100}}
+function bgOn(){const b=quote.plan&&quote.plan.bg;return !!(b&&b.src&&b.show!==false)}
+function planBgSVG(){const p=quote.plan||{w:60};const w=+p.w||60,h=Math.round(w*0.6);const b=p.bg;
+  return `<rect id="pl-bgrect" x="0" y="0" width="${w}" height="${h}" fill="var(--panel)"/>`+(bgOn()?`<image id="pl-bgimg" href="${b.src}" x="${b.x}" y="${b.y}" width="${b.iw*b.mpp}" height="${b.ih*b.mpp}" preserveAspectRatio="none" opacity="${b.op??.6}"/>`:'')}
+function planBgUpdate(){const L=$('#pl-bgl');if(!L)return;const p=quote.plan||{w:60};const w=+p.w||60;const r=$('#pl-bgrect');if(r){r.setAttribute('width',w);r.setAttribute('height',Math.round(w*0.6))}
+  let im=$('#pl-bgimg');if(!bgOn()){if(im)im.remove();return}const b=p.bg;
+  if(!im){im=document.createElementNS('http://www.w3.org/2000/svg','image');im.id='pl-bgimg';im.setAttribute('preserveAspectRatio','none');L.appendChild(im)}
+  if(im.getAttribute('href')!==b.src)im.setAttribute('href',b.src);
+  im.setAttribute('x',b.x);im.setAttribute('y',b.y);im.setAttribute('width',b.iw*b.mpp);im.setAttribute('height',b.ih*b.mpp);im.setAttribute('opacity',b.op??.6)}
+function plHint(){if(plTool==='tr')return 'Tracé des liaisons : tirer un <b>+</b> pour créer un point de passage, déplacer les carrés pour modifier le tracé ; double-clic (ou Gomme) sur un carré pour le supprimer. Les longueurs de PE, la tranchée et la perte de charge suivent le tracé.';
+  if(plTool==='bg')return 'Déplacer le fond : faire glisser le plan pour aligner le fond sur les forages (ou l’inverse). Les forages ne bougent pas.';
+  if(plTool==='cal'){const b=quote.plan&&quote.plan.bg;if(!b)return 'Importer d’abord un fond de plan.';
+    if(!plCal.A)return 'Caler l’échelle : cliquer le <b>1er point</b> d’une distance connue sur le fond (cote, façade, limite de propriété, barre d’échelle…).';
+    if(!plCal.B)return 'Cliquer le <b>2e point</b>.';
+    const d=Math.hypot(plCal.B.x-plCal.A.x,plCal.B.y-plCal.A.y);
+    return `Distance A–B sur le fond : <b>${nf(Math.round(d*100)/100)} m</b> à l’échelle actuelle. Distance réelle : <span class="unit-in pl-calw"><input id="pl-caldist" inputmode="decimal" placeholder="ex. 12,5"><span>m</span></span> <button class="btn sm primary" id="pl-calok">Appliquer</button> <button class="btn sm ghost" id="pl-calre">Recommencer</button>`}
+  return ''}
+function hintUpdate(){const ht=$('#pl-hint');if(!ht)return;const h=plHint();ht.hidden=!h;ht.innerHTML=h}
+function planBgBar(){const p=quote.plan||{};const b=p.bg;
+  return `<div class="pl-bgbar"><label class="btn sm" for="pl-file" title="PDF, DWG, DXF, PNG, JPG">${b?'Changer le fond':'Importer un fond de plan'} <span class="status">PDF, DWG, DXF, image</span></label><input type="file" id="pl-file" hidden accept=".pdf,.dwg,.dxf,.png,.jpg,.jpeg,.webp,.gif,image/*,application/pdf">`+
+  (b?`<span class="pl-bgname" title="${esc(b.name||'')}">${esc(b.name||'Fond')}${b.cal?'':' <span class="bad">· échelle à caler</span>'}</span>`+
+    (b.pages>1&&plLastFile?`<label class="status">Page <select id="pl-bgpage">${Array.from({length:b.pages},(_,i)=>`<option value="${i+1}" ${(b.page||1)===i+1?'selected':''}>${i+1}</option>`).join('')}</select></label>`:'')+
+    (b.kind==='pdf'?`<label class="status">Plan au 1/<input id="pl-bgech" class="pl-sin" inputmode="numeric" value="${b.ech||''}" placeholder="200"></label><button class="btn sm" id="pl-bgech-ok">Appliquer</button>`:'')+
+    `<button class="btn sm ${plTool==='cal'?'primary':''}" data-pltool="cal">Caler l’échelle</button><button class="btn sm ${plTool==='bg'?'primary':''}" data-pltool="bg">Déplacer le fond</button>`+
+    `<label class="status">Rotation <input id="pl-bgrot" class="pl-sin" inputmode="decimal" placeholder="0">°</label><button class="btn sm" id="pl-bgrot-ok" title="Tourne le fond (sens horaire)">Tourner</button>`+
+    `<label class="status">Opacité <input type="range" id="pl-bgop" min="10" max="100" value="${Math.round((b.op??.6)*100)}"></label>`+
+    `<label class="status"><input type="checkbox" id="pl-bgshow" ${b.show!==false?'checked':''}> afficher</label><button class="btn sm" id="pl-fit" title="Ajuste la zone pour voir le fond et les forages">Recadrer</button><button class="btn sm ghost danger" id="pl-bgdel">Retirer</button>`:'')+
+  `<span id="pl-bgmsg" class="status"></span></div>`}
+function bgBarUpdate(){const w=$('#pl-bgbar-w');if(w)w.innerHTML=planBgBar()}
+function bgMsg(t){const m=$('#pl-bgmsg');if(m)m.textContent=t||''}
+const BG_MAX=380*1024;
+function loadImg(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src})}
+function whiteCanvas(w,h){const c=document.createElement('canvas');c.width=Math.max(1,Math.round(w));c.height=Math.max(1,Math.round(h));const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);return c}
+/* image du fond : PNG (traits) ou JPEG (photos), réduite jusqu'à tenir dans ~380 Ko (le chiffrage entier doit rester sous 1 Mo) */
+function bgEncode(cv){for(const f of [1,.85,.7,.55,.45,.35,.28,.22]){let c=cv;if(f<1){c=whiteCanvas(cv.width*f,cv.height*f);c.getContext('2d').drawImage(cv,0,0,c.width,c.height)}
+    for(const [t,q] of [['image/png'],['image/jpeg',.8],['image/jpeg',.6]]){const u=c.toDataURL(t,q);if(u.length*.75<=BG_MAX)return {src:u,iw:c.width,ih:c.height,f:c.width/cv.width}}}
+  const c=whiteCanvas(cv.width*.18,cv.height*.18);c.getContext('2d').drawImage(cv,0,0,c.width,c.height);return {src:c.toDataURL('image/jpeg',.55),iw:c.width,ih:c.height,f:c.width/cv.width}}
+function dataUrlBytes(u){const bin=atob(u.split(',')[1]);const a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a}
+/* recadre la zone sur le fond + les éléments du plan, en décalant tout (les distances ne changent pas) */
+function planFit(){const p=planObj();let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;const add=(x,y)=>{x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y)};
+  p.items.forEach(i=>add(i.x,i.y));Object.values(p.routes||{}).forEach(r=>(r||[]).forEach(q=>add(q.x,q.y)));if(bgOn())add(p.bg.x,p.bg.y),add(p.bg.x+p.bg.iw*p.bg.mpp,p.bg.y+p.bg.ih*p.bg.mpp);
+  if(!isFinite(x0))return;const W=x1-x0,H=y1-y0;const w=PL_W.find(w=>w*.94>=W&&w*.6*.92>=H)||PL_W[PL_W.length-1];const h=Math.round(w*.6);
+  const dx=(w-W)/2-x0,dy=(h-H)/2-y0;p.items.forEach(i=>{i.x=r1(i.x+dx);i.y=r1(i.y+dy)});Object.values(p.routes||{}).forEach(r=>(r||[]).forEach(q=>{q.x=r1(q.x+dx);q.y=r1(q.y+dy)}));
+  if(p.bg){p.bg.x+=dx;p.bg.y+=dy}p.w=w}
+function bgSizeCheck(){try{const n=JSON.stringify(quote).length;if(n>900000)toast('Chiffrage très lourd ('+Math.round(n/1024)+' Ko) : l’enregistrement risque d’échouer, alléger le fond ou les images')}catch(e){}}
+async function bgSet(cv,info){const enc=bgEncode(cv);const p=planObj();const w=+p.w||60,h=Math.round(w*.6);
+  const bg={src:enc.src,iw:enc.iw,ih:enc.ih,op:p.bg?.op??.6,show:true,...info};
+  if(info.mppSrc){bg.mpp=info.mppSrc/enc.f;bg.cal=true}else{bg.mpp=Math.min(w*.9/enc.iw,h*.9/enc.ih);bg.cal=false}
+  if(info.pptSrc)bg.ppt=info.pptSrc*enc.f;delete bg.mppSrc;delete bg.pptSrc;
+  const bw=bg.iw*bg.mpp,bh=bg.ih*bg.mpp;bg.x=(w-bw)/2;bg.y=(h-bh)/2;p.bg=bg;
+  if(bg.cal)planFit();markDirty();renderDevisKeepScroll();bgSizeCheck();
+  toast(bg.cal?'Fond importé à l’échelle : le déplacer pour l’aligner sur les forages':'Fond importé : caler l’échelle (2 points + distance)'+(bg.kind==='pdf'?' ou indiquer l’échelle du PDF':''))}
+async function planImport(file,page){const name=file.name||'fond';const ext=(name.split('.').pop()||'').toLowerCase();
+  bgMsg('Import en cours…');
+  try{if(ext==='pdf'||file.type==='application/pdf'){plLastFile=file;await importPdf(file,page||1)}
+    else if(ext==='dxf'){await importCad(await readDxf(file),name)}
+    else if(ext==='dwg'){bgMsg('Chargement du lecteur DWG (≈ 10 Mo, la 1re fois)…');await importCad(await readDwg(file),name)}
+    else if(/^image\//.test(file.type)||['png','jpg','jpeg','webp','gif'].includes(ext)){const u=URL.createObjectURL(file);const img=await loadImg(u);const k=Math.min(1,2400/Math.max(img.width,img.height));const cv=whiteCanvas(img.width*k,img.height*k);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(u);await bgSet(cv,{kind:'img',name})}
+    else{toast('Format non reconnu : PDF, DWG, DXF ou image');bgMsg('')}}
+  catch(e){console.error(e);bgMsg('');toast(e&&e.message?e.message:'Import impossible')}}
+/* ----- PDF (pdf.js) ----- */
+let _pdfjs=null;
+async function getPdfJs(){if(_pdfjs)return _pdfjs;
+  for(const [a,w] of [['https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js','https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'],['https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js','https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js']]){
+    try{if(!window.pdfjsLib)await loadScript(a);const L=window.pdfjsLib;if(!L)continue;
+      try{const r=await fetch(w);if(!r.ok)throw 0;L.GlobalWorkerOptions.workerSrc=URL.createObjectURL(await r.blob())}catch(e){L.GlobalWorkerOptions.workerSrc=w}
+      _pdfjs=L;return L}catch(e){}}
+  throw new Error('Impossible de charger le lecteur PDF')}
+async function importPdf(file,pageNo){const L=await getPdfJs();const doc=await L.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+  const n=Math.min(Math.max(1,pageNo),doc.numPages);const pg=await doc.getPage(n);const v1=pg.getViewport({scale:1});
+  const sc=Math.min(3000/v1.width,3000/v1.height,6);const vp=pg.getViewport({scale:sc});const cv=whiteCanvas(vp.width,vp.height);
+  await pg.render({canvasContext:cv.getContext('2d'),viewport:vp,background:'#ffffff'}).promise;
+  const old=quote.plan&&quote.plan.bg;const ech=old&&old.kind==='pdf'&&old.name===file.name?old.ech:'';
+  const info={kind:'pdf',name:file.name,pages:doc.numPages,page:n,pptSrc:sc};if(ech){info.ech=ech;info.mppSrc=25.4/72*ech/1000/sc}
+  await bgSet(cv,info)}
+/* ----- DAO : DXF (lecteur intégré) et DWG (LibreDWG en WebAssembly) ----- */
+const CAD_UNITS={1:.0254,2:.3048,4:.001,5:.01,6:1,14:.1};
+async function readText(file){const buf=await file.arrayBuffer();try{return new TextDecoder('utf-8',{fatal:true}).decode(buf)}catch(e){return new TextDecoder('windows-1252').decode(buf)}}
+async function readDxf(file){const txt=await readText(file);if(/^AutoCAD Binary DXF/.test(txt))throw new Error('DXF binaire non pris en charge : l’enregistrer en DXF texte (ASCII)');return dxfParse(txt)}
+function dxfParse(txt){const L=txt.split(/\r?\n/);const P=[];for(let i=0;i+1<L.length;i+=2){const c=parseInt(L[i],10);if(isNaN(c))continue;P.push([c,L[i+1].trim()])}
+  const header={},blocks=new Map(),off=new Set(),ents=[];const deg=Math.PI/180;
+  const readEnt=i=>{const type=P[i][1];const g=[];i++;while(i<P.length&&P[i][0]!==0){g.push(P[i]);i++}return {type,g,next:i}};
+  const num=(g,c,d=0)=>{const x=g.find(q=>q[0]===c);return x?parseFloat(x[1]):d},str=(g,c,d='')=>{const x=g.find(q=>q[0]===c);return x?x[1]:d},pt=(g,cx,cy)=>({x:num(g,cx),y:num(g,cy)});
+  function conv(t,g){const e={type:t,layer:str(g,8,'0'),paper:num(g,67)===1};
+    switch(t){case 'LINE':e.startPoint=pt(g,10,20);e.endPoint=pt(g,11,21);break;
+      case 'LWPOLYLINE':{e.flag=num(g,70);e.vertices=[];for(const [c,v] of g){if(c===10)e.vertices.push({x:+v,y:0,bulge:0});else if(c===20&&e.vertices.length)e.vertices[e.vertices.length-1].y=+v;else if(c===42&&e.vertices.length)e.vertices[e.vertices.length-1].bulge=+v}break}
+      case 'CIRCLE':e.center=pt(g,10,20);e.radius=num(g,40);break;
+      case 'ARC':e.center=pt(g,10,20);e.radius=num(g,40);e.startAngle=num(g,50)*deg;e.endAngle=num(g,51)*deg;break;
+      case 'ELLIPSE':e.center=pt(g,10,20);e.majorAxisEndPoint=pt(g,11,21);e.axisRatio=num(g,40,1);e.startAngle=num(g,41,0);e.endAngle=num(g,42,Math.PI*2);break;
+      case 'SPLINE':{e.controlPoints=[];e.fitPoints=[];let cur=null;for(const [c,v] of g){if(c===10){cur={x:+v,y:0};e.controlPoints.push(cur)}else if(c===20&&cur)cur.y=+v;else if(c===11){cur={x:+v,y:0};e.fitPoints.push(cur)}else if(c===21&&cur)cur.y=+v}break}
+      case 'TEXT':case 'ATTRIB':{const al=num(g,72)||num(g,73);e.type='TEXT';e.startPoint=al?pt(g,11,21):pt(g,10,20);if(al&&!e.startPoint.x&&!e.startPoint.y)e.startPoint=pt(g,10,20);e.textHeight=num(g,40,1);e.rotation=num(g,50)*deg;e.text=str(g,1);if(t==='ATTRIB'&&(num(g,70)&1))e.hidden=true;break}
+      case 'MTEXT':e.insertionPoint=pt(g,10,20);e.textHeight=num(g,40,1);e.text=g.filter(q=>q[0]===3).map(q=>q[1]).join('')+str(g,1);e.rotation=g.some(q=>q[0]===50)?num(g,50)*deg:Math.atan2(num(g,21),num(g,11,1));break;
+      case 'INSERT':e.name=str(g,2);e.insertionPoint=pt(g,10,20);e.xScale=num(g,41,1);e.yScale=num(g,42,1);e.rotation=num(g,50)*deg;e.attribs=[];break;
+      case 'DIMENSION':e.name=str(g,2);break;
+      case 'SOLID':case 'TRACE':e.type='SOLID';e.corner1=pt(g,10,20);e.corner2=pt(g,11,21);e.corner3=pt(g,12,22);e.corner4=pt(g,13,23);break;
+      case 'POINT':e.position=pt(g,10,20);break;
+      default:return null}
+    return e}
+  function readList(i,stop){const out=[];while(i<P.length){if(P[i][0]!==0){i++;continue}const t=P[i][1];if(stop.includes(t))return {out,i};
+      const r=readEnt(i);i=r.next;
+      if(t==='POLYLINE'){const e={type:'POLYLINE2D',layer:str(r.g,8,'0'),paper:num(r.g,67)===1,flag:num(r.g,70),vertices:[]};
+        while(i<P.length&&P[i][0]===0&&P[i][1]==='VERTEX'){const v=readEnt(i);i=v.next;if(!(num(v.g,70)&16))e.vertices.push({x:num(v.g,10),y:num(v.g,20),bulge:num(v.g,42)})}
+        if(i<P.length&&P[i][1]==='SEQEND')i=readEnt(i).next;if(!(e.flag&64))out.push(e);continue}
+      if(t==='INSERT'){const e=conv(t,r.g);if(num(r.g,66)===1){while(i<P.length&&P[i][0]===0&&P[i][1]==='ATTRIB'){const a=readEnt(i);i=a.next;const ae=conv('ATTRIB',a.g);if(ae&&!ae.hidden)e.attribs.push(ae)}if(i<P.length&&P[i][1]==='SEQEND')i=readEnt(i).next}out.push(e);continue}
+      const e=conv(t,r.g);if(e)out.push(e)}
+    return {out,i}}
+  let i=0;
+  while(i<P.length){if(P[i][0]===0&&P[i][1]==='SECTION'&&P[i+1]&&P[i+1][0]===2){const name=P[i+1][1];i+=2;
+      if(name==='HEADER'){while(i<P.length&&!(P[i][0]===0&&P[i][1]==='ENDSEC')){if(P[i][0]===9&&P[i][1]==='$INSUNITS'&&P[i+1])header.INSUNITS=parseInt(P[i+1][1],10);i++}}
+      else if(name==='TABLES'){while(i<P.length&&!(P[i][0]===0&&P[i][1]==='ENDSEC')){if(P[i][0]===0&&P[i][1]==='LAYER'){const r=readEnt(i);i=r.next;const nm=str(r.g,2);if((num(r.g,70)&1)||num(r.g,62,7)<0)off.add(nm);continue}i++}}
+      else if(name==='BLOCKS'){while(i<P.length&&!(P[i][0]===0&&P[i][1]==='ENDSEC')){if(P[i][0]===0&&P[i][1]==='BLOCK'){const r=readEnt(i);const lst=readList(r.next,['ENDBLK','ENDSEC']);blocks.set(str(r.g,2),{base:pt(r.g,10,20),entities:lst.out});i=lst.i;if(P[i]&&P[i][1]==='ENDBLK')i=readEnt(i).next;continue}i++}}
+      else if(name==='ENTITIES'){const lst=readList(i,['ENDSEC']);ents.push(...lst.out);i=lst.i}
+      else{while(i<P.length&&!(P[i][0]===0&&P[i][1]==='ENDSEC'))i++}}
+    i++}
+  return {entities:ents,blocks,off,units:header.INSUNITS}}
+let _dwg=null;
+async function getDwgLib(){if(_dwg)return _dwg;let err;
+  for(const b of ['https://cdn.jsdelivr.net/npm/@mlightcad/libredwg-web@0.7.10/','https://unpkg.com/@mlightcad/libredwg-web@0.7.10/']){
+    try{const m=await import(b+'dist/libredwg-web.js');const lib=await m.LibreDwg.create(b+'wasm');_dwg={m,lib};return _dwg}catch(e){err=e}}
+  console.error(err);throw new Error('Lecteur DWG indisponible ici : enregistrer le DWG en DXF ou en PDF depuis AutoCAD, puis l’importer')}
+async function readDwg(file){const {m,lib}=await getDwgLib();const ptr=lib.dwg_read_data(await file.arrayBuffer(),m.Dwg_File_Type.DWG);if(!ptr)throw new Error('DWG illisible (version non prise en charge ?) : l’enregistrer en DXF ou en PDF');
+  let db;try{db=lib.convert(ptr)}finally{try{lib.dwg_free(ptr)}catch(e){}}
+  const blocks=new Map();((db.tables&&db.tables.BLOCK_RECORD&&db.tables.BLOCK_RECORD.entries)||[]).forEach(b=>blocks.set(b.name,{base:b.basePoint||{x:0,y:0},entities:b.entities||[]}));
+  const off=new Set();((db.tables&&db.tables.LAYER&&db.tables.LAYER.entries)||[]).forEach(l=>{if(l.off||l.frozen)off.add(l.name)});
+  return {entities:db.entities||[],blocks,off,units:db.header&&db.header.INSUNITS}}
+/* éclate le dessin (blocs compris) en polylignes et textes, en unités du dessin */
+function cadPrims(cad){const polys=[],texts=[];let n=0;const MAX=600000;
+  const ap=(T,p)=>({x:T[0]*p.x+T[2]*p.y+T[4],y:T[1]*p.x+T[3]*p.y+T[5]});
+  const mul=(A,B)=>[A[0]*B[0]+A[2]*B[1],A[1]*B[0]+A[3]*B[1],A[0]*B[2]+A[2]*B[3],A[1]*B[2]+A[3]*B[3],A[0]*B[4]+A[2]*B[5]+A[4],A[1]*B[4]+A[3]*B[5]+A[5]];
+  const arc=(c,r,a0,a1)=>{let sw=a1-a0;while(sw<=0)sw+=Math.PI*2;const k=Math.max(6,Math.min(96,Math.ceil(sw/(Math.PI/24))));const o=[];for(let j=0;j<=k;j++){const a=a0+sw*j/k;o.push({x:c.x+r*Math.cos(a),y:c.y+r*Math.sin(a)})}return o};
+  const bulgePts=(p1,p2,b)=>{const dx=p2.x-p1.x,dy=p2.y-p1.y,d=Math.hypot(dx,dy);if(!b||d<1e-12)return [p2];const th=4*Math.atan(b),r=d*(1+b*b)/(4*Math.abs(b)),m={x:(p1.x+p2.x)/2,y:(p1.y+p2.y)/2},off=d*(1-b*b)/(4*b);
+    const c={x:m.x-dy/d*off,y:m.y+dx/d*off};const a0=Math.atan2(p1.y-c.y,p1.x-c.x);const k=Math.max(4,Math.min(64,Math.ceil(Math.abs(th)/(Math.PI/24))));const o=[];for(let j=1;j<=k;j++){const a=a0+th*j/k;o.push({x:c.x+r*Math.cos(a),y:c.y+r*Math.sin(a)})}return o};
+  const poly=(T,pts,closed)=>{if(pts.length<2)return;const q=pts.map(p=>ap(T,p));if(closed)q.push(q[0]);n+=q.length;polys.push(q)};
+  const vpoly=(T,vs,closed)=>{if(!vs||vs.length<2)return;const o=[vs[0]];for(let k=0;k<vs.length-1;k++)o.push(...bulgePts(vs[k],vs[k+1],vs[k].bulge||0));if(closed){o.push(...bulgePts(vs[vs.length-1],vs[0],vs[vs.length-1].bulge||0))}poly(T,o,false)};
+  const txt=(T,p,h,rot,t)=>{if(!t)return;const q=ap(T,p);const sx=Math.hypot(T[0],T[1]);const ang=Math.atan2(T[1],T[0]);texts.push({x:q.x,y:q.y,h:h*sx,r:rot+ang,t})};
+  function walk(list,T,depth){for(const e of list||[]){if(n>MAX)return;if(!e||e.isVisible===false||e.paper||cad.off.has(e.layer))continue;
+    switch(e.type){case 'LINE':poly(T,[e.startPoint,e.endPoint]);break;
+      case 'LWPOLYLINE':case 'POLYLINE2D':vpoly(T,e.vertices,!!(e.flag&1));break;
+      case 'POLYLINE3D':poly(T,e.vertices||[],!!(e.flag&1));break;
+      case 'CIRCLE':poly(T,arc(e.center,e.radius,0,Math.PI*2));break;
+      case 'ARC':poly(T,arc(e.center,e.radius,e.startAngle,e.endAngle));break;
+      case 'ELLIPSE':{const M=e.majorAxisEndPoint,a=Math.hypot(M.x,M.y),b=a*(e.axisRatio||1),rot=Math.atan2(M.y,M.x);let a0=e.startAngle||0,a1=e.endAngle||Math.PI*2;let sw=a1-a0;while(sw<=0)sw+=Math.PI*2;const o=[];for(let j=0;j<=64;j++){const t=a0+sw*j/64,x=a*Math.cos(t),y=b*Math.sin(t);o.push({x:e.center.x+x*Math.cos(rot)-y*Math.sin(rot),y:e.center.y+x*Math.sin(rot)+y*Math.cos(rot)})}poly(T,o);break}
+      case 'SPLINE':poly(T,(e.fitPoints&&e.fitPoints.length>1)?e.fitPoints:(e.controlPoints||[]));break;
+      case 'SOLID':poly(T,[e.corner1,e.corner2,e.corner4||e.corner3,e.corner3],true);break;
+      case 'TEXT':txt(T,e.startPoint,e.textHeight,e.rotation||0,e.text);break;
+      case 'MTEXT':txt(T,e.insertionPoint,e.textHeight,e.rotation||0,String(e.text||'').replace(/\\P/g,' / ').replace(/\\[A-Za-z][^;\\]*;/g,'').replace(/[{}]/g,''));break;
+      case 'INSERT':case 'DIMENSION':{const B=cad.blocks.get(e.name);if(e.type==='INSERT')(e.attribs||[]).forEach(a=>{const t=a.text&&typeof a.text==='object'?a.text:a;if(t&&t.text)txt(T,t.startPoint||{x:0,y:0},t.textHeight||1,t.rotation||0,t.text)});
+        if(!B||depth>8)break;if(e.type==='DIMENSION'){walk(B.entities,T,depth+1);break}
+        const c=Math.cos(e.rotation||0),s=Math.sin(e.rotation||0),sx=e.xScale||1,sy=e.yScale||1,ip=e.insertionPoint||{x:0,y:0},bp=B.base||{x:0,y:0};
+        const M=[c*sx,s*sx,-s*sy,c*sy,ip.x,ip.y],Tb=[1,0,0,1,-bp.x,-bp.y];walk(B.entities,mul(T,mul(M,Tb)),depth+1);break}}}}
+  walk(cad.entities,[1,0,0,1,0,0],0);return {polys,texts,truncated:n>MAX}}
+async function importCad(cad,name){const pr=cadPrims(cad);if(!pr.polys.length)throw new Error('Aucun trait lisible dans ce fichier (dessin dans l’espace papier ?)');
+  /* emprise : on écarte les objets isolés très loin du dessin (quantiles 0,5 % – 99,5 %) */
+  const xs=[],ys=[];const step=Math.max(1,Math.floor(pr.polys.reduce((t,p)=>t+p.length,0)/200000));let k=0;pr.polys.forEach(p=>p.forEach(q=>{if(k++%step===0){xs.push(q.x);ys.push(q.y)}}));
+  xs.sort((a,b)=>a-b);ys.sort((a,b)=>a-b);const qt=(a,f)=>a[Math.min(a.length-1,Math.max(0,Math.floor(f*(a.length-1))))];
+  let x0=qt(xs,.005),x1=qt(xs,.995),y0=qt(ys,.005),y1=qt(ys,.995);const mx=(x1-x0)*.04||1,my=(y1-y0)*.04||1;x0-=mx;x1+=mx;y0-=my;y1+=my;
+  let u=CAD_UNITS[cad.units];let guess=false;if(!u){const W=Math.max(x1-x0,y1-y0);u=W<2000?1:W<20000?.01:.001;guess=true}
+  const Wm=(x1-x0)*u,Hm=(y1-y0)*u;const ppm=Math.min(2600/Wm,2600/Hm,60);const cv=whiteCanvas(Wm*ppm,Hm*ppm);const g=cv.getContext('2d');
+  const X=x=>(x-x0)*u*ppm,Y=y=>(y1-y)*u*ppm;g.strokeStyle='#2b2b2b';g.lineWidth=Math.max(1,Math.min(2,ppm*.03));g.lineJoin='round';g.beginPath();
+  pr.polys.forEach(p=>{g.moveTo(X(p[0].x),Y(p[0].y));for(let j=1;j<p.length;j++)g.lineTo(X(p[j].x),Y(p[j].y))});g.stroke();
+  g.fillStyle='#2b2b2b';g.textBaseline='alphabetic';pr.texts.forEach(t=>{const px=t.h*u*ppm;if(px<5||px>400)return;g.save();g.translate(X(t.x),Y(t.y));g.rotate(-t.r);g.font=`${px}px Arial, sans-serif`;g.fillText(String(t.t).slice(0,120),0,0);g.restore()});
+  const unitName={1:'mètres',.01:'centimètres',.001:'millimètres',.0254:'pouces',.3048:'pieds',.1:'décimètres'}[u]||'';
+  await bgSet(cv,{kind:'cad',name,mppSrc:1/ppm,cadUnits:unitName,cadGuess:guess});
+  if(guess)setTimeout(()=>toast(`Unités du fichier non indiquées : lues en ${unitName}. Si l’échelle est fausse, utiliser « Caler l’échelle ».`),2600);
+  if(pr.truncated)setTimeout(()=>toast('Dessin très chargé : une partie seulement a été lue'),5200)}
+/* rotation du fond (sens horaire), autour de son centre */
+async function bgRotate(deg){const p=planObj(),b=p.bg;if(!b||!deg)return;const img=await loadImg(b.src);const a=deg*Math.PI/180,c=Math.abs(Math.cos(a)),s=Math.abs(Math.sin(a));
+  const W=img.width*c+img.height*s,H=img.width*s+img.height*c;const cv=whiteCanvas(W,H);const g=cv.getContext('2d');g.translate(W/2,H/2);g.rotate(a);g.drawImage(img,-img.width/2,-img.height/2);
+  const cx=b.x+b.iw*b.mpp/2,cy=b.y+b.ih*b.mpp/2;const enc=bgEncode(cv);b.mpp=b.mpp/enc.f;if(b.ppt)b.ppt*=enc.f;b.src=enc.src;b.iw=enc.iw;b.ih=enc.ih;b.x=cx-b.iw*b.mpp/2;b.y=cy-b.ih*b.mpp/2;b.rot=((b.rot||0)+deg)%360;
+  markDirty();planBgUpdate();bgSizeCheck()}
+/* fond dans les PDF : seule la partie visible est recadrée puis intégrée */
+async function bgDrawPdf(doc,page,xa,ya,xb,yb,X,Y){const b=quote.plan.bg;const bw=b.iw*b.mpp,bh=b.ih*b.mpp;
+  const x0=Math.max(xa,b.x),y0=Math.max(ya,b.y),x1=Math.min(xb,b.x+bw),y1=Math.min(yb,b.y+bh);if(x1<=x0||y1<=y0)return;
+  const img=await loadImg(b.src);const sx=(x0-b.x)/b.mpp,sy=(y0-b.y)/b.mpp,sw=(x1-x0)/b.mpp,sh=(y1-y0)/b.mpp;
+  const ow=Math.max(1,Math.min(Math.round(sw*1.5),3200)),oh=Math.max(1,Math.round(sh*ow/sw));const cv=whiteCanvas(ow,oh);const g=cv.getContext('2d');g.globalAlpha=Math.min(1,(b.op??.6)+.1);g.drawImage(img,sx,sy,sw,sh,0,0,ow,oh);
+  const im=await doc.embedJpg(dataUrlBytes(cv.toDataURL('image/jpeg',.85)));page.drawImage(im,{x:X(x0),y:Y(y1),width:X(x1)-X(x0),height:Y(y0)-Y(y1)})}
 function planPt(e){const svg=$('#pl-svg');const pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const q=pt.matrixTransform(svg.getScreenCTM().inverse());
   const w=+(quote.plan&&quote.plan.w)||60,h=Math.round(w*0.6);const sn=w<=60?0.5:w<=150?1:2;
   return {x:Math.max(0,Math.min(w,Math.round(q.x/sn)*sn)),y:Math.max(0,Math.min(h,Math.round(q.y/sn)*sn))}}
@@ -824,6 +1013,9 @@ function routeClean(){const p=planObj();if(!p.routes)return;const keys=new Set(p
 function planHit(pt){const w=+(quote.plan&&quote.plan.w)||60;const r=w/40;let best=null,bd=r;planItems().forEach(i=>{const d=Math.hypot(i.x-pt.x,i.y-pt.y);if(d<=bd){bd=d;best=i}});return best}
 function planChanged(){routeClean();const p=planObj();if(!p.on&&!p.userOff&&planItems().some(i=>i.k==='f')&&planItems().some(i=>i.k==='c'))p.on=true;planSync();markDirty();renderDevisKeepScroll()}
 function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.preventDefault();const p=planObj();const pt=planPt(e);
+  if(plTool==='cal'||plTool==='bg'){const bg=p.bg;if(!bg){toast('Importer d’abord un fond de plan');return}const q=planRaw(e);
+    if(plTool==='cal'){if(!plCal.A||plCal.B)plCal={A:q};else plCal.B=q;hintUpdate();planDraw();const ci=$('#pl-caldist');if(ci)ci.focus();return}
+    plDrag={bg:true,sx:q.x,sy:q.y,ox:bg.x,oy:bg.y,moved:false};svg.setPointerCapture?.(e.pointerId);return}
   if(plTool==='tr'||plTool==='del'){const rh=routeHit(pt);if(rh&&rh.idx!=null){if(plTool==='del'){p.routes[rh.key].splice(rh.idx,1);planChanged();return}plDrag={wp:rh,moved:false};svg.setPointerCapture?.(e.pointerId);return}
     if(plTool==='tr'){if(rh&&rh.ins!=null){p.routes=p.routes||{};if(!routeWps(rh.L.a).length)p.routes[rh.key]=rh.rt.slice(1,-1).map(q=>({x:q.x,y:q.y}));p.routes[rh.key].splice(rh.ins,0,{x:pt.x,y:pt.y});
       plDrag={wp:{key:rh.key,idx:rh.ins},moved:true};svg.setPointerCapture?.(e.pointerId);planDraw()}return}}
@@ -834,8 +1026,8 @@ function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.pr
   else if(plTool==='c0'||plTool==='c1'){const ci=plTool==='c1'?1:0;p.items=p.items.filter(i=>!(i.k==='c'&&(i.i||0)===ci));p.items.push({k:'c',i:ci,x:pt.x,y:pt.y})}
   else if(plTool==='ch'){p.items=p.items.filter(i=>i.k!=='ch');p.items.push({k:'ch',x:pt.x,y:pt.y})}
   planChanged()}
-function onPlanMove(e){if(!plDrag)return;const pt=planPt(e);if(plDrag.wp){const w=quote.plan.routes[plDrag.wp.key][plDrag.wp.idx];if(w&&(w.x!==pt.x||w.y!==pt.y)){w.x=pt.x;w.y=pt.y;plDrag.moved=true;planDraw()}return}if(pt.x!==plDrag.it.x||pt.y!==plDrag.it.y){plDrag.it.x=pt.x;plDrag.it.y=pt.y;plDrag.moved=true;planDraw()}}
-function onPlanUp(){if(!plDrag)return;const m=plDrag.moved;plDrag=null;if(m)planChanged()}
+function onPlanMove(e){if(!plDrag)return;if(plDrag.bg){const q=planRaw(e),bg=quote.plan.bg;bg.x=plDrag.ox+q.x-plDrag.sx;bg.y=plDrag.oy+q.y-plDrag.sy;plDrag.moved=true;planBgUpdate();return}const pt=planPt(e);if(plDrag.wp){const w=quote.plan.routes[plDrag.wp.key][plDrag.wp.idx];if(w&&(w.x!==pt.x||w.y!==pt.y)){w.x=pt.x;w.y=pt.y;plDrag.moved=true;planDraw()}return}if(pt.x!==plDrag.it.x||pt.y!==plDrag.it.y){plDrag.it.x=pt.x;plDrag.it.y=pt.y;plDrag.moved=true;planDraw()}}
+function onPlanUp(){if(!plDrag)return;const m=plDrag.moved,isBg=plDrag.bg;plDrag=null;if(m){if(isBg)markDirty();else planChanged()}}
 /* place les forages en ligne depuis le dimensionnement (N, E, collecteur au bout / au milieu, L, 2 collecteurs) */
 function planGen(){const p=planObj();const N=+quote.N||0;if(!N){toast('Indiquer d’abord le nombre de forages');return}
   const E=+quote.E||5,L=+quote.L||0,two=+quote.nc===2&&N>=2,mid=quote.coll==='milieu';
@@ -851,6 +1043,7 @@ function planGen(){const p=planObj();const N=+quote.N||0;if(!N){toast('Indiquer 
   p.items=items;p.routes={};p.w=w;p.on=true;p.userOff=false;planSync();markDirty();renderDevisKeepScroll();toast('Plan placé : déplacer les points pour coller au terrain')}
 document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#pl-svg'))onPlanDown(e)});
 document.addEventListener('dblclick',e=>{if(!(e.target.closest&&e.target.closest('#pl-svg'))||plTool!=='tr')return;const rh=routeHit(planPt(e));if(rh&&rh.idx!=null){quote.plan.routes[rh.key].splice(rh.idx,1);planChanged()}});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target&&(e.target.id==='pl-caldist'||e.target.id==='pl-bgech'||e.target.id==='pl-bgrot')){e.preventDefault();const b=$('#'+(e.target.id==='pl-caldist'?'pl-calok':e.target.id+'-ok'));if(b)b.click()}});
 document.addEventListener('pointermove',onPlanMove);document.addEventListener('pointerup',onPlanUp);document.addEventListener('pointercancel',onPlanUp);
 
 function lineRow(l,v){
@@ -1007,6 +1200,8 @@ function renderDevis(){
 
 function onDevisInput(e){
   const tg=e.target;
+  if(tg.id==='pl-bgop'){const b=quote.plan&&quote.plan.bg;if(b){b.op=+tg.value/100;markDirty();planBgUpdate()}return}
+  if(['pl-file','pl-bgech','pl-bgrot','pl-caldist','pl-bgpdf','pl-bgshow','pl-bgpage'].includes(tg.id))return;
   if(tg.id==='pl-w'||tg.id==='pl-trace'||tg.id==='pl-on'||tg.id==='pl-fmt'||tg.id==='pl-ech'||tg.id==='pl-ppm')return;
   if(tg.id==='pl-nord'){planObj().nord=pnum(tg.value)||0;markDirty();planDraw();return}
   if(tg.dataset.k){const k=tg.dataset.k;quote[k]=tg.dataset.nn?pnum(tg.value):tg.dataset.n?(pnum(tg.value)??0):tg.value;markDirty();
@@ -1030,6 +1225,10 @@ function onDevisInput(e){
 function onDevisChange(e){
   const tg=e.target;
   if(tg.id==='usedOnly'){usedOnly=tg.checked;store.set('usedOnly',usedOnly);renderDevis();return}
+  if(tg.id==='pl-file'){const f=tg.files&&tg.files[0];tg.value='';if(f)planImport(f);return}
+  if(tg.id==='pl-bgpage'){if(plLastFile)planImport(plLastFile,+tg.value);return}
+  if(tg.id==='pl-bgshow'){const b=quote.plan&&quote.plan.bg;if(b){b.show=tg.checked;markDirty();planBgUpdate()}return}
+  if(tg.id==='pl-bgpdf'){planObj().bgPdf=tg.checked;markDirty();return}
   if(tg.id==='pl-on'){const p=planObj();p.on=tg.checked;p.userOff=!tg.checked;if(p.on&&!planOn())toast('Placer au moins un forage et un collecteur');planSync();markDirty();renderDevisKeepScroll();return}
   if(tg.id==='pl-w'){planObj().w=+tg.value;markDirty();planDraw();return}
   if(tg.id==='pl-fmt'){planObj().fmt=tg.value;const fit=planFitScale();if(+planObj().ech&&+planObj().ech<fit)planObj().ech=0;markDirty();const w=$('#pl-exp-w');if(w)w.innerHTML=planExpHTML();return}
@@ -1041,9 +1240,17 @@ function onDevisChange(e){
 function renderDevisKeepScroll(){const y=window.scrollY;renderDevis();window.scrollTo(0,y)}
 function onDevisClick(e){
   const b=e.target.closest('button');if(!b)return;
-  if(b.dataset.pltool){plTool=b.dataset.pltool;document.querySelectorAll('[data-pltool]').forEach(x=>x.classList.toggle('primary',x===b));const sv=$('#pl-svg');if(sv)sv.classList.toggle('pl-edit',plTool==='tr');const ht=$('#pl-hint');if(ht)ht.hidden=plTool!=='tr';planDraw();return}
+  if(b.dataset.pltool){plTool=b.dataset.pltool;document.querySelectorAll('[data-pltool]').forEach(x=>x.classList.toggle('primary',x===b));const sv=$('#pl-svg');if(sv)sv.classList.toggle('pl-edit',plTool==='tr');if(sv)sv.classList.toggle('pl-move',plTool==='bg');plCal={};hintUpdate();planDraw();return}
   if(b.id==='pl-straight'){if(confirm('Supprimer tous les points de passage des liaisons ?')){planObj().routes={};planChanged()}return}
   if(b.id==='pl-pdf'){planPdf();return}
+  if(b.id==='pl-bgdel'){const p=planObj();if(p.bg){delete p.bg;plCal={};if(plTool==='cal'||plTool==='bg')plTool='f';markDirty();renderDevisKeepScroll()}return}
+  if(b.id==='pl-fit'){planFit();planChanged();return}
+  if(b.id==='pl-bgrot-ok'){const v=pnum(($('#pl-bgrot')||{}).value);if(v)bgRotate(v);return}
+  if(b.id==='pl-bgech-ok'){const p=planObj(),bg=p.bg,N=pnum(($('#pl-bgech')||{}).value);if(!bg||!bg.ppt||!(N>0)){toast('Indiquer l’échelle du PDF (ex. 200 pour 1/200)');return}
+    const cx=bg.x+bg.iw*bg.mpp/2,cy=bg.y+bg.ih*bg.mpp/2;bg.mpp=25.4/72*N/1000/bg.ppt;bg.ech=N;bg.cal=true;bg.x=cx-bg.iw*bg.mpp/2;bg.y=cy-bg.ih*bg.mpp/2;planFit();planChanged();toast('Fond mis au 1/'+N);return}
+  if(b.id==='pl-calre'){plCal={};hintUpdate();planDraw();return}
+  if(b.id==='pl-calok'){const p=planObj(),bg=p.bg,real=pnum(($('#pl-caldist')||{}).value);if(!bg||!plCal.A||!plCal.B)return;const d=Math.hypot(plCal.B.x-plCal.A.x,plCal.B.y-plCal.A.y);
+    if(!(real>0)||!(d>0)){toast('Indiquer la distance réelle en mètres');return}const k=real/d,A=plCal.A;bg.mpp*=k;bg.x=A.x+(bg.x-A.x)*k;bg.y=A.y+(bg.y-A.y)*k;bg.cal=true;plCal={};plTool='bg';planFit();planChanged();toast('Échelle calée : déplacer le fond pour l’aligner sur les forages');return}
   if(b.id==='pl-png'){planPng();return}
   if(b.id==='pl-dxf'){planDxf();return}
   if(b.id==='pl-gen'){if(planItems().length&&!confirm('Remplacer le plan actuel par une implantation en ligne ?'))return;planGen();return}
@@ -1561,7 +1768,7 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
         :[['Collecteur -> chaufferie',`${nf(v.L)} m, soit ${nf(v.LC)} m de PE Ø${v.D2}`]]),['Tranchée',`${nf(v.T)} m`]]);
   if(v.src==='plan'&&(mode==='descriptif'||hydroOnly)){h2('Plan d’implantation');const p=quote.plan,pw=+p.w||60,ph=Math.round(pw*0.6),bw=CW,bh=bw*0.6,sx=bw/pw;ensure(bh+24);
     const ox=M,oy=y-bh,P=(a)=>({x:ox+a.x*sx,y:oy+bh-a.y*sx});const FOR=rgb(164/255,88/255,28/255),LOC=rgb(79/255,107/255,58/255),GRID=rgb(.9,.92,.91);
-    const st=pw<=30?1:pw<=60?2:pw<=150?5:pw<=300?10:25,maj=st*5;page.drawRectangle({x:ox,y:oy,width:bw,height:bh,color:SOFT2,borderColor:LN,borderWidth:.6});
+    const st=pw<=30?1:pw<=60?2:pw<=150?5:pw<=300?10:25,maj=st*5;page.drawRectangle({x:ox,y:oy,width:bw,height:bh,color:SOFT2,borderColor:LN,borderWidth:.6});if(bgOn())await bgDrawPdf(doc,page,0,0,pw,ph,x=>ox+x*sx,y=>oy+bh-y*sx);
     for(let gx=maj;gx<pw;gx+=maj)page.drawLine({start:{x:ox+gx*sx,y:oy},end:{x:ox+gx*sx,y:oy+bh},thickness:.4,color:GRID});for(let gy=maj;gy<ph;gy+=maj)page.drawLine({start:{x:ox,y:oy+bh-gy*sx},end:{x:ox+bw,y:oy+bh-gy*sx},thickness:.4,color:GRID});
     const pg=planGeo(),eq=p.trace==='equerre';const ln=(a,b,th,dash)=>{const o={thickness:th,color:ACC,...(dash?{dashArray:[3,2]}:{})};legs(routeFor(a,b)).forEach(([p1,p2])=>page.drawLine({start:P(p1),end:P(p2),...o}))};
     pg.asg.forEach(a=>{const c=pg.C[a.j];if(c)ln(a.f,c,.7,true)});if(pg.ch)pg.C.forEach(c=>{ln(c,pg.ch,2,false);const rr=routeFor(c,pg.ch),mm=P(polyMid(rr)),mx=mm.x,my=mm.y;text(`${nf(r1(polyLen(rr)))} m`,mx-20,my+4,{size:7.5,f:B,align:'center',w:40})});
