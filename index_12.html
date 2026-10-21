@@ -621,7 +621,7 @@ function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tool
   <div class="pl-bar"><div class="pl-tools" role="group" aria-label="Outil">${tools.map(([k,t])=>`<button class="btn sm ${plTool===k?'primary':''}" data-pltool="${k}"><i class="pl-ic pl-ic-${k}"></i>${t}</button>`).join('')}</div>
   <div class="pl-opts"><span class="pl-zoom"><button class="btn sm" id="pl-zout" title="Dézoomer (ou pincer / Ctrl + molette)">−</button><button class="btn sm" id="pl-zin" title="Zoomer (ou pincer / Ctrl + molette)">+</button></span><label class="status">Vue <select id="pl-w">${(PL_W.includes(+p.w||60)?PL_W:[...PL_W,+p.w].sort((a,b)=>a-b)).map(w=>`<option value="${w}" ${(+p.w||60)===w?'selected':''}>${nf(Math.round(w))} m</option>`).join('')}</select></label><button class="btn sm" id="pl-zfit" title="Ajuste la vue sur le fond de plan (ou sur les forages s’il n’y a pas de fond)">Plein cadre</button><button class="btn sm" id="pl-full">${plFull?'Quitter le plein écran':'Plein écran'}</button>
   <label class="status">Tracé <select id="pl-trace"><option value="droit" ${p.trace!=='equerre'?'selected':''}>en ligne droite</option><option value="equerre" ${p.trace==='equerre'?'selected':''}>en équerre</option></select></label>
-  <button class="btn sm" id="pl-gen" title="Place les forages en ligne avec les valeurs du dimensionnement">Placer depuis le dimensionnement</button>${p.routes&&Object.keys(p.routes).length?'<button class="btn sm" id="pl-straight" title="Supprime tous les points de passage">Redresser les liaisons</button>':''}<button class="btn sm ghost danger" id="pl-clear">Tout effacer</button></div></div>
+  ${p.zone&&p.zone.closed?`<button class="btn sm primary" id="pl-gen" title="Implante les forages du dimensionnement (nombre et espacement) dans la zone de forage">Implanter dans la zone (${+quote.N||0} × ${nf(+quote.E||0)} m)</button>`:'<button class="btn sm" id="pl-gen" title="Place les forages en ligne avec les valeurs du dimensionnement">Placer depuis le dimensionnement</button>'}${p.routes&&Object.keys(p.routes).length?'<button class="btn sm" id="pl-straight" title="Supprime tous les points de passage">Redresser les liaisons</button>':''}<button class="btn sm ghost danger" id="pl-clear">Tout effacer</button></div></div>
   <div id="pl-bgbar-w">${planBgBar()}</div>
   <p class="pl-hint" id="pl-hint" ${plHint()?'':'hidden'}>${plHint()}</p>
   <div class="pl-wrap"><svg id="pl-svg" style="aspect-ratio:${plFull?'auto':(1/planAsp()).toFixed(4)}" class="pl-svg ${plTool==='tr'?'pl-edit':''}" viewBox="${planView().x} ${planView().y} ${planView().w} ${planView().h}" role="img" aria-label="Plan d’implantation"><g id="pl-bgl">${planBgSVG()}</g><g id="pl-fg">${planSVG()}</g></svg></div>
@@ -1131,7 +1131,7 @@ function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.pr
   const pt=planPt(e);
   if(plTool==='zone'){const Z=zoneObj(),P=Z.pts,r=planView().w/60;
     const hi=P.findIndex(q=>Math.hypot(q.x-pt.x,q.y-pt.y)<=r);
-    if(!Z.closed&&hi===0&&P.length>=3){Z.closed=true;plZoneHover=null;markDirty();hintUpdate();planDraw();return}
+    if(!Z.closed&&hi===0&&P.length>=3){Z.closed=true;plZoneHover=null;markDirty();renderDevisKeepScroll();return}
     if(hi>=0){plDrag={zv:hi,moved:false};svg.setPointerCapture?.(e.pointerId);return}
     if(Z.closed){toast('Zone fermée : déplacer ses sommets, ou « Effacer la zone » pour en tracer une autre');return}
     P.push({x:pt.x,y:pt.y});markDirty();hintUpdate();planDraw();return}
@@ -1171,6 +1171,7 @@ function zoneLayout(P,E,marg,N,anchor){const c=P.reduce((a,q)=>({x:a.x+q.x/P.len
 function geoMedian(F){let m=F.reduce((a,q)=>({x:a.x+q.x/F.length,y:a.y+q.y/F.length}),{x:0,y:0});
   for(let k=0;k<60;k++){let sx=0,sy=0,sw=0;F.forEach(q=>{const d=Math.max(.01,Math.hypot(q.x-m.x,q.y-m.y));sx+=q.x/d;sy+=q.y/d;sw+=1/d});m={x:sx/sw,y:sy/sw}}return m}
 function zoneImplant(){const p=planObj(),Z=p.zone;if(!Z||!Z.closed||Z.pts.length<3){toast('Tracer et fermer d’abord la zone de forage');return}
+  if(bgOn()&&!p.bg.cal&&!confirm('L’échelle de la photo n’est pas calée : les forages (en mètres réels) ne correspondront pas à la photo. Caler d’abord avec « Largeur réelle » ou « Caler l’échelle ». Implanter quand même ?'))return;
   const N=Math.max(1,Math.round(+quote.N||0)),E=+quote.E>0?+quote.E:10,marg=+Z.marg||0;
   const old=planItems(),ch=old.find(i=>i.k==='ch');const zc=Z.pts.reduce((a,q)=>({x:a.x+q.x/Z.pts.length,y:a.y+q.y/Z.pts.length}),{x:0,y:0});
   const anchor=ch||old.find(i=>i.k==='c')||zc;
@@ -1184,8 +1185,9 @@ function zoneImplant(){const p=planObj(),Z=p.zone;if(!Z||!Z.closed||Z.pts.length
     if(two){const m=F.reduce((a,q)=>({x:a.x+q.x/F.length,y:a.y+q.y/F.length}),{x:0,y:0});let sxx=0,syy=0,sxy=0;F.forEach(q=>{const dx=q.x-m.x,dy=q.y-m.y;sxx+=dx*dx;syy+=dy*dy;sxy+=dx*dy});
       const th=.5*Math.atan2(2*sxy,sxx-syy),ux=Math.cos(th),uy=Math.sin(th);const srt=[...F].sort((a,b)=>(a.x*ux+a.y*uy)-(b.x*ux+b.y*uy));
       const NB=Math.max(1,Math.min(F.length-1,quote.N2!=null&&quote.N2!==''?Math.round(+quote.N2):Math.floor(F.length/2)));groups=[srt.slice(0,F.length-NB),srt.slice(F.length-NB)]}
-    const C=groups.map((g,i)=>{let m=geoMedian(g);const nr=g.reduce((b,q)=>{const d=Math.hypot(q.x-m.x,q.y-m.y);return d<b.d?{q,d}:b},{d:Infinity});
-      if(nr.d<Math.min(1.5,E/3)){const t={x:anchor.x-m.x,y:anchor.y-m.y},L=Math.hypot(t.x,t.y)||1;m={x:m.x+t.x/L*Math.min(2,E/2),y:m.y+t.y/L*Math.min(2,E/2)}}
+    const C=groups.map((g,i)=>{/* collecteur : entre deux forages voisins (à mi-distance), au point qui raccourcit le plus les liaisons */
+      const md=geoMedian(g),cand=[];for(let a2=0;a2<g.length;a2++)for(let b2=a2+1;b2<g.length;b2++){const d=Math.hypot(g[a2].x-g[b2].x,g[a2].y-g[b2].y);if(d<=E*1.1)cand.push({x:(g[a2].x+g[b2].x)/2,y:(g[a2].y+g[b2].y)/2})}
+      const cost=q=>g.reduce((t,f)=>t+Math.hypot(f.x-q.x,f.y-q.y),0)+.3*Math.hypot(q.x-anchor.x,q.y-anchor.y);let m=cand.length?cand.reduce((bst,q)=>cost(q)<cost(bst)?q:bst,cand[0]):md;
       return {k:'c',i,x:Math.round(m.x*10)/10,y:Math.round(m.y*10)/10}});
     p.items=[...(ch?[ch]:[]),...F,...C];p.routes={};p.on=true;p.userOff=false;plTool='f';
     planChanged();
@@ -1207,7 +1209,7 @@ function planGen(){const p=planObj();const N=+quote.N||0;if(!N){toast('Indiquer 
   items.forEach(i=>{i.x=Math.round((i.x+ox)*10)/10;i.y=Math.round((i.y+oy)*10)/10});
   p.items=items;p.routes={};p.on=true;p.userOff=false;{const V=planView();if(items.some(i=>i.x<V.x||i.x>V.x+V.w||i.y<V.y||i.y>V.y+V.h))planFit(false)}if(bgOn()&&!p.bg.cal)setTimeout(()=>toast('Attention : l’échelle du fond n’est pas calée, les forages (en mètres réels) ne correspondent pas encore à la photo'),2600);planSync();markDirty();renderDevisKeepScroll();toast('Plan placé : déplacer les points pour coller au terrain')}
 document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#pl-svg'))onPlanDown(e)});
-document.addEventListener('dblclick',e=>{if(plTool==='zone'&&e.target.closest&&e.target.closest('#pl-svg')){const Z=quote.plan&&quote.plan.zone;if(Z&&!Z.closed){/* le double-clic a ajouté 2 points identiques */const P=Z.pts;while(P.length>1&&Math.hypot(P[P.length-1].x-P[P.length-2].x,P[P.length-1].y-P[P.length-2].y)<.01)P.pop();if(P.length>=3){Z.closed=true;plZoneHover=null;markDirty();hintUpdate();planDraw()}}return}});
+document.addEventListener('dblclick',e=>{if(plTool==='zone'&&e.target.closest&&e.target.closest('#pl-svg')){const Z=quote.plan&&quote.plan.zone;if(Z&&!Z.closed){/* le double-clic a ajouté 2 points identiques */const P=Z.pts;while(P.length>1&&Math.hypot(P[P.length-1].x-P[P.length-2].x,P[P.length-1].y-P[P.length-2].y)<.01)P.pop();if(P.length>=3){Z.closed=true;plZoneHover=null;markDirty();renderDevisKeepScroll()}}return}});
 document.addEventListener('dblclick',e=>{if(!(e.target.closest&&e.target.closest('#pl-svg'))||plTool!=='tr')return;const rh=routeHit(planPt(e));if(rh&&rh.idx!=null){quote.plan.routes[rh.key].splice(rh.idx,1);planChanged()}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&plFull){plSetFull(false);return}if(e.key==='Enter'&&e.target&&(e.target.id==='pl-caldist'||e.target.id==='pl-bgech'||e.target.id==='pl-bgrot'||e.target.id==='pl-bgwid')){e.preventDefault();const b=$('#'+(e.target.id==='pl-caldist'?'pl-calok':e.target.id+'-ok'));if(b)b.click()}});
 document.addEventListener('pointermove',onPlanMove);document.addEventListener('pointerup',onPlanUp);document.addEventListener('pointercancel',onPlanUp);
@@ -1410,7 +1412,7 @@ function onDevisClick(e){
   if(b.dataset.pltool){plTool=b.dataset.pltool;document.querySelectorAll('[data-pltool]').forEach(x=>x.classList.toggle('primary',x===b));const sv=$('#pl-svg');if(sv)sv.classList.toggle('pl-edit',plTool==='tr');if(sv)sv.classList.toggle('pl-move',plTool==='bg');if(sv)sv.classList.toggle('pl-pan',plTool==='pan');plCal={};hintUpdate();planDraw();return}
   if(b.id==='pl-straight'){if(confirm('Supprimer tous les points de passage des liaisons ?')){planObj().routes={};planChanged()}return}
   if(b.id==='pl-pdf'){planPdf();return}
-  if(b.id==='pl-zdel'){const p=planObj();delete p.zone;plZoneHover=null;markDirty();hintUpdate();planDraw();return}
+  if(b.id==='pl-zdel'){const p=planObj();delete p.zone;plZoneHover=null;markDirty();renderDevisKeepScroll();return}
   if(b.id==='pl-zimpl'){const m=pnum(($('#pl-zmarg')||{}).value);zoneObj().marg=m==null?1:Math.max(0,m);zoneImplant();return}
   if(b.id==='pl-kml'){planKml();return}
   if(b.id==='pl-kpts'){kmlPlacePoints();return}
@@ -1430,7 +1432,7 @@ function onDevisClick(e){
     if(!(real>0)||!(d>0)){toast('Indiquer la distance réelle en mètres');return}const k=real/d,A=plCal.A;bg.mpp*=k;bg.x=A.x+(bg.x-A.x)*k;bg.y=A.y+(bg.y-A.y)*k;bg.cal=true;plCal={};plTool='bg';planFit(true);planChanged();toast('Échelle calée : déplacer le fond pour l’aligner sur les forages');return}
   if(b.id==='pl-png'){planPng();return}
   if(b.id==='pl-dxf'){planDxf();return}
-  if(b.id==='pl-gen'){if(planItems().length&&!confirm('Remplacer le plan actuel par une implantation en ligne ?'))return;planGen();return}
+  if(b.id==='pl-gen'){const Z=quote.plan&&quote.plan.zone;if(Z&&Z.closed&&Z.pts.length>2){zoneImplant();return}if(planItems().length&&!confirm('Remplacer le plan actuel par une implantation en ligne ?'))return;planGen();return}
   if(b.id==='pl-clear'){if(!planItems().length||confirm('Effacer tout le plan ?')){const p=planObj();p.items=[];p.routes={};p.on=false;markDirty();renderDevisKeepScroll()}return}
   if(b.dataset.reset){delete quote.q[b.dataset.reset];markDirty();renderDevisKeepScroll();return}
   if(b.dataset.addx){quote.extra.push({id:'x_'+Math.random().toString(36).slice(2,8),sec:b.dataset.addx,grp:'Lignes libres',name:'',unit:'u',price:0,qty:1});markDirty();renderDevisKeepScroll();
