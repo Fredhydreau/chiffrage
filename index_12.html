@@ -651,7 +651,7 @@ function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tool
   <div class="pl-bar"><div class="pl-tools" role="group" aria-label="Outil">${tools.map(([k,t])=>`<button class="btn sm ${plTool===k?'primary':''}" data-pltool="${k}"><i class="pl-ic pl-ic-${k}"></i>${t}</button>`).join('')}</div>
   <div class="pl-opts"><span class="pl-zoom"><button class="btn sm" id="pl-zout" title="Dézoomer (ou pincer / Ctrl + molette)">−</button><button class="btn sm" id="pl-zin" title="Zoomer (ou pincer / Ctrl + molette)">+</button></span><label class="status">Vue <select id="pl-w">${(PL_W.includes(+p.w||60)?PL_W:[...PL_W,+p.w].sort((a,b)=>a-b)).map(w=>`<option value="${w}" ${(+p.w||60)===w?'selected':''}>${nf(Math.round(w))} m</option>`).join('')}</select></label><button class="btn sm" id="pl-zfit" title="Ajuste la vue sur le fond de plan (ou sur les forages s’il n’y a pas de fond)">Plein cadre</button><button class="btn sm" id="pl-full">${plFull?'Quitter le plein écran':'Plein écran'}</button>
   <label class="status" title="Taille des forages, collecteurs et chaufferie sur le plan">Symboles <input type="range" id="pl-symk" min="30" max="300" step="10" value="${Math.round((+p.symK||1)*100)}" style="vertical-align:middle;width:90px"></label><label class="status" title="Afficher la bande de tranchée sur le plan et dans les exports"><input type="checkbox" id="pl-tr" ${p.noTr?'':'checked'}> tranchées</label><label class="status">Tracé <select id="pl-trace"><option value="droit" ${p.trace!=='equerre'?'selected':''}>en ligne droite</option><option value="equerre" ${p.trace==='equerre'?'selected':''}>en équerre</option></select></label>
-  ${p.zone&&p.zone.closed?`<button class="btn sm primary" id="pl-gen" title="Implante les forages du dimensionnement (nombre et espacement) dans la zone de forage">Implanter dans la zone (${+quote.N||0} × ${nf(+quote.E||0)} m)</button>`:'<button class="btn sm" id="pl-gen" title="Place les forages en ligne avec les valeurs du dimensionnement">Placer depuis le dimensionnement</button>'}${p.routes&&Object.keys(p.routes).length?'<button class="btn sm" id="pl-straight" title="Supprime tous les points de passage">Redresser les liaisons</button>':''}<button class="btn sm ghost danger" id="pl-clear">Tout effacer</button></div></div>
+  ${p.zone&&p.zone.closed?`<button class="btn sm primary" id="pl-gen" title="Implante les forages du dimensionnement (nombre et espacement) dans la zone de forage">Implanter dans la zone (${+quote.N||0} × ${nf(+quote.E||0)} m)</button>`:'<button class="btn sm" id="pl-gen" title="Place les forages en ligne avec les valeurs du dimensionnement">Placer depuis le dimensionnement</button>'}${p.routes&&Object.keys(p.routes).length?'<button class="btn sm" id="pl-straight" title="Supprime tous les points de passage">Redresser les liaisons</button>':''}<button class="btn sm" id="pl-trauto2" title="Trace les tranchées qui relient les forages aux collecteurs avec le moins de tranchée et de tuyau (réglage dans l’outil Tranchée)">Tranchées auto</button><button class="btn sm ghost danger" id="pl-clear">Tout effacer</button></div></div>
   <div id="pl-bgbar-w">${planBgBar()}</div>
   <p class="pl-hint" id="pl-hint" ${plHint()?'':'hidden'}>${plHint()}</p>
   <div class="pl-wrap"><svg id="pl-svg" style="aspect-ratio:${plFull?'auto':(1/planAsp()).toFixed(4)}" class="pl-svg ${plTool==='tr'?'pl-edit':''}" viewBox="${planView().x} ${planView().y} ${planView().w} ${planView().h}" role="img" aria-label="Plan d’implantation"><g id="pl-bgl">${planBgSVG()}</g><g id="pl-fg">${planSVG()}</g></svg></div>
@@ -917,6 +917,31 @@ function trSnap(q){const w=planView().w,r=w/45;const it=planHit(q);if(it)return 
 function trFinish(){const p=planObj();if(plTch&&plTch.pts.length>1){const P=plTch.pts;p.trenches=p.trenches||[];p.trenches.push(P.map(q=>({x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100})));plTch=null;plLinkHover=null;planChanged();toast('Tranchée ajoutée : les liaisons passent par les tranchées')}
   else{plTch=null;plLinkHover=null;hintUpdate();planDraw()}}
 function trVertexHit(q){const r=planView().w/50;let best=null,bd=r;(quote.plan.trenches||[]).forEach((l,li)=>l.forEach((v,vi)=>{const d=Math.hypot(v.x-q.x,v.y-q.y);if(d<bd){bd=d;best={li,vi}}}));return best}
+/* ---------- tranchées automatiques : arbre qui relie chaque forage à son collecteur ----------
+   a = 0 : le moins de tranchée (arbre couvrant minimal, les forages se raccordent les uns aux autres)
+   a = 1 : le moins de tuyau (chaque forage en direct au collecteur) ; entre les deux : compromis (Prim-Dijkstra) */
+const TR_MODES=[['tranchee','récupérer les forages en passant (le moins de tranchée)',0],['equilibre','compromis tranchée / tuyau',.3],['tuyau','chaque forage en direct (le moins de tuyau)',1]];
+function trAuto(){const p=planObj();const F=planItems().filter(i=>i.k==='f'),C=planItems().filter(i=>i.k==='c').sort((a,b)=>(a.i||0)-(b.i||0)),ch=planItems().find(i=>i.k==='ch');
+  if(!F.length||!C.length){toast('Placer d’abord les forages et au moins un collecteur');return}
+  if((p.trenches||[]).length&&!confirm('Remplacer les tranchées dessinées par un tracé automatique ?'))return;
+  const a=(TR_MODES.find(m=>m[0]===(p.trMode||'tranchee'))||TR_MODES[0])[2];
+  /* rattachement : collecteur le plus proche à vol d'oiseau (ou celui choisi à la main) */
+  const asn=p.assign||{};const grp=C.map(()=>[]);F.forEach(f=>{let j=0,d=Infinity;C.forEach((c,k)=>{const dd=Math.hypot(f.x-c.x,f.y-c.y);if(dd<d){d=dd;j=k}});if(f.id&&asn[f.id]!=null){const k2=C.findIndex(c=>(c.i||0)===asn[f.id]);if(k2>=0)j=k2}grp[j].push(f)});
+  const T=[];
+  C.forEach((c,j)=>{const nodes=[c,...grp[j]],n=nodes.length;const inT=new Array(n).fill(false),pl=new Array(n).fill(0),best=new Array(n).fill(Infinity),par=new Array(n).fill(-1);inT[0]=true;
+    const D=(u,v)=>Math.hypot(nodes[u].x-nodes[v].x,nodes[u].y-nodes[v].y);
+    for(let v=1;v<n;v++){best[v]=D(0,v);par[v]=0}
+    for(let it=1;it<n;it++){let v=-1,bv=Infinity;for(let k=1;k<n;k++)if(!inT[k]&&best[k]<bv-1e-9){bv=best[k];v=k}if(v<0)break;inT[v]=true;pl[v]=pl[par[v]]+D(par[v],v);T.push([nodes[par[v]],nodes[v]]);
+      for(let k=1;k<n;k++)if(!inT[k]){const c2=a*pl[v]+D(v,k);if(c2<best[k]-1e-9){best[k]=c2;par[k]=v}}}
+    if(ch)T.push([c,ch])});
+  /* segments bout à bout réunis en polylignes (plus simples à modifier) */
+  const key=q=>Math.round(q.x*100)+','+Math.round(q.y*100);const deg=new Map();T.forEach(([u,v])=>{[u,v].forEach(q=>deg.set(key(q),(deg.get(key(q))||0)+1))});
+  const used=new Array(T.length).fill(false),lines=[];
+  T.forEach((sg,i)=>{if(used[i])return;used[i]=true;let L=[sg[0],sg[1]];
+    for(let grow=true;grow;){grow=false;const end=L[L.length-1];if(deg.get(key(end))!==2)break;const k=T.findIndex((t,j)=>!used[j]&&(key(t[0])===key(end)||key(t[1])===key(end)));if(k<0)break;used[k]=true;L.push(key(T[k][0])===key(end)?T[k][1]:T[k][0]);grow=true}
+    lines.push(L.map(q=>({x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100})))});
+  p.trenches=lines;p.routes={};planChanged();const v=vars();
+  toast(`Tranchées tracées (${TR_MODES.find(m=>m[2]===a)[1]}) : ${nf(r1(v.T))} m de tranchée, ${nf(r1(v.LF))} m de PE forages`)}
 function linkFinish(hit){const p=planObj();p.routes=p.routes||{};p.routes[routeKey(plLink.from)]=plLink.pts.map(q=>({x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100}));
   if(plLink.from.k==='f'){p.assign=p.assign||{};p.assign[plId(plLink.from)]=hit.i||0}
   const L=plLink;plLink=null;plLinkHover=null;planChanged();toast(`Liaison ${L.from.k==='f'?'du forage → C'+((hit.i||0)+1):'du collecteur → chaufferie'} tracée`)}
@@ -945,7 +970,7 @@ function plHint(){if(plTool==='tr'){if(plLink)return `Tracé en cours depuis ${p
     if(!Z||!Z.closed)return `Zone de forage : cliquer les coins de la zone autorisée (à l’échelle du plan), puis cliquer le 1er point (ou double-clic) pour la fermer. <button class="btn sm ghost danger" id="pl-zdel" ${Z&&Z.pts.length?'':'disabled'}>Effacer</button>${warn}`;
     return `Zone de ${nf(Math.round(polyArea(Z.pts)))} m². Les sommets se déplacent. Retrait des bords <span class="unit-in pl-calw" style="width:80px"><input id="pl-zmarg" inputmode="decimal" value="${Z.marg??1}"><span>m</span></span> <button class="btn sm primary" id="pl-zimpl">Implanter ${N} forage${pl(N)} à ${nf(E)} m</button> <label class="status">Disposition <select id="pl-zmode"><option value="grille" ${(Z.mode||'grille')==='grille'?'selected':''}>quadrillage régulier, espacement maxi</option><option value="groupe" ${Z.mode==='groupe'?'selected':''}>groupée près du collecteur (espacement mini)</option></select></label> <label class="status">Maille <select id="pl-zpat"><option value="carre" ${(Z.pat||'carre')==='carre'?'selected':''}>carrée</option><option value="quinconce" ${Z.pat==='quinconce'?'selected':''}>quinconce</option><option value="auto" ${Z.pat==='auto'?'selected':''}>la meilleure</option></select></label> <label class="status" title="Décoché : le collecteur et la chaufferie placés à la main restent où ils sont"><input type="checkbox" id="pl-zautoc" ${Z.autoC?'checked':''}> replacer le collecteur au mieux</label> <button class="btn sm ghost danger" id="pl-zdel">Effacer la zone</button><span class="status" style="display:block;margin-top:4px">Nombre et espacement : ceux du dimensionnement. Quadrillage régulier : le logiciel écarte les forages au maximum (jamais moins que l’espacement demandé) pour remplir la zone. Groupée : espacement demandé, au plus près du collecteur.</span>${warn}`}
   if(plTool==='tch'){if(plTch)return `Tranchée en cours (${nf(r1(polyLen(plTch.pts)))} m) : dessiner en faisant glisser, ou cliquer les points ; double-clic, Échap ou re-clic sur le dernier point pour terminer.`;
-    return 'Tranchée : dessiner librement (faire glisser) ou point par point la tranchée principale, en passant par les forages ; les bouts s’accrochent aux forages, collecteurs, chaufferie et aux autres tranchées. Les liaisons suivent alors les tranchées par le chemin le plus court, et chaque forage est raccordé au point le plus proche. Sommets déplaçables ; Gomme sur une tranchée pour l’effacer.'+((quote.plan&&quote.plan.trenches&&quote.plan.trenches.length)?` <button class="btn sm ghost danger" id="pl-tchdel">Effacer toutes les tranchées</button>`:'')}
+    return 'Tranchée : dessiner librement (faire glisser) ou point par point la tranchée principale, en passant par les forages ; les bouts s’accrochent aux forages, collecteurs, chaufferie et aux autres tranchées. Les liaisons suivent alors les tranchées par le chemin le plus court, et chaque forage est raccordé au point le plus proche. Sommets déplaçables ; Gomme sur un tronçon pour l’effacer (ex. contourner un arbre), puis redessiner le passage.'+` <span style="display:block;margin-top:4px"><button class="btn sm primary" id="pl-trauto">Tracer automatiquement</button> <label class="status">Priorité <select id="pl-trmode">${TR_MODES.map(m=>`<option value="${m[0]}" ${((quote.plan&&quote.plan.trMode)||'tranchee')===m[0]?'selected':''}>${m[1]}</option>`).join('')}</select></label></span>`+((quote.plan&&quote.plan.trenches&&quote.plan.trenches.length)?` <button class="btn sm ghost danger" id="pl-tchdel">Effacer toutes les tranchées</button>`:'')}
   if(plTool==='pan')return 'Main : faire glisser pour déplacer la vue (aussi : glisser à deux doigts sur le pavé tactile). Pincer, Ctrl + molette ou les boutons − / + pour zoomer.';
   if(plTool==='bg')return 'Déplacer le fond : faire glisser le plan pour aligner le fond sur les forages (ou l’inverse). Les forages ne bougent pas.';
   if(plTool==='cal'){const b=quote.plan&&quote.plan.bg;if(!b)return 'Importer d’abord un fond de plan.';
@@ -1221,8 +1246,8 @@ function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.pr
       plDrag={wp:{key:rh.key,idx:rh.ins},moved:true};svg.setPointerCapture?.(e.pointerId);planDraw()}return}}
   const hit=planHit(pt);
   if(plTool==='del'){if(hit){p.items=p.items.filter(i=>i!==hit);planChanged();return}
-    {const tol2=planView().w/70;let bi=-1,bd2=tol2;(p.trenches||[]).forEach((l,li)=>{for(let k=1;k<l.length;k++){const d=segDist(pt.x,pt.y,l[k-1],l[k]);if(d<bd2){bd2=d;bi=li}}});
-      if(bi>=0){p.trenches.splice(bi,1);planChanged();toast('Tranchée supprimée');return}}
+    {const tol2=planView().w/70;let bi=-1,bk=-1,bd2=tol2;(p.trenches||[]).forEach((l,li)=>{for(let k=1;k<l.length;k++){const d=segDist(pt.x,pt.y,l[k-1],l[k]);if(d<bd2){bd2=d;bi=li;bk=k}}});
+      if(bi>=0){/* on n'efface que le tronçon cliqué (entre deux sommets) */const l=p.trenches[bi];p.trenches.splice(bi,1,...[l.slice(0,bk),l.slice(bk)].filter(x=>x.length>1));planChanged();toast('Tronçon de tranchée supprimé : redessiner le passage avec l’outil Tranchée si besoin');return}}
     /* gomme sur une liaison : on supprime son tracé à la main (et le rattachement choisi), elle redevient droite */
     const tol=planView().w/60;let best=null,bd=tol;planLinks().forEach(L=>{legs(routeFor(L.a,L.b)).forEach(([a,b2])=>{const d=segDist(pt.x,pt.y,a,b2);if(d<bd){bd=d;best=L}})});
     if(best){const key=routeKey(best.a),had=(p.routes&&p.routes[key]&&p.routes[key].length)||(best.a.k==='f'&&p.assign&&p.assign[best.a.id]!=null);
@@ -1476,7 +1501,7 @@ function onDevisInput(e){
   const tg=e.target;
   if(tg.id==='pl-bgop'){const b=quote.plan&&quote.plan.bg;if(b){b.op=+tg.value/100;markDirty();planBgUpdate()}return}
   if(tg.id==='pl-symk'){planObj().symK=+tg.value/100;markDirty();planDraw();return}
-  if(['pl-file','pl-bgech','pl-bgrot','pl-caldist','pl-bgpdf','pl-bgshow','pl-bgpage','pl-bgwid','pl-grid','pl-zmarg','pl-tr','pl-zautoc','pl-zmode','pl-zpat'].includes(tg.id))return;
+  if(['pl-file','pl-bgech','pl-bgrot','pl-caldist','pl-bgpdf','pl-bgshow','pl-bgpage','pl-bgwid','pl-grid','pl-zmarg','pl-tr','pl-zautoc','pl-zmode','pl-zpat','pl-trmode'].includes(tg.id))return;
   if(tg.id==='pl-w'||tg.id==='pl-trace'||tg.id==='pl-on'||tg.id==='pl-fmt'||tg.id==='pl-ech'||tg.id==='pl-ppm')return;
   if(tg.id==='pl-nord'){planObj().nord=pnum(tg.value)||0;markDirty();planDraw();return}
   if(tg.dataset.k){const k=tg.dataset.k;quote[k]=tg.dataset.nn?pnum(tg.value):tg.dataset.n?(pnum(tg.value)??0):tg.value;markDirty();
@@ -1507,6 +1532,7 @@ function onDevisChange(e){
   if(tg.id==='pl-grid'){planObj().pdfGrid=tg.checked;markDirty();return}
   if(tg.id==='pl-tr'){planObj().noTr=!tg.checked;markDirty();renderDevisKeepScroll();return}
   if(tg.id==='pl-zautoc'){zoneObj().autoC=tg.checked;markDirty();return}
+  if(tg.id==='pl-trmode'){planObj().trMode=tg.value;markDirty();return}
   if(tg.id==='pl-zmode'){zoneObj().mode=tg.value;markDirty();return}
   if(tg.id==='pl-zpat'){zoneObj().pat=tg.value;markDirty();return}
   if(tg.id==='pl-on'){const p=planObj();p.on=tg.checked;p.userOff=!tg.checked;if(p.on&&!planOn())toast('Placer au moins un forage et un collecteur');planSync();markDirty();renderDevisKeepScroll();return}
@@ -1523,6 +1549,7 @@ function onDevisClick(e){
   if(b.dataset.pltool){plTool=b.dataset.pltool;document.querySelectorAll('[data-pltool]').forEach(x=>x.classList.toggle('primary',x===b));const sv=$('#pl-svg');if(sv)sv.classList.toggle('pl-edit',plTool==='tr');if(sv)sv.classList.toggle('pl-move',plTool==='bg');if(sv)sv.classList.toggle('pl-pan',plTool==='pan');plCal={};plLink=null;plLinkHover=null;if(plTch)trFinish();hintUpdate();planDraw();return}
   if(b.id==='pl-straight'){if(confirm('Supprimer tous les points de passage des liaisons et les rattachements choisis à la main ?')){planObj().routes={};planObj().assign={};planChanged()}return}
   if(b.id==='pl-pdf'){planPdf();return}
+  if(b.id==='pl-trauto'||b.id==='pl-trauto2'){const sel=$('#pl-trmode');if(sel)planObj().trMode=sel.value;trAuto();return}
   if(b.id==='pl-tchdel'){if(confirm('Effacer toutes les tranchées dessinées ?')){planObj().trenches=[];planChanged()}return}
   if(b.id==='pl-zdel'){const p=planObj();delete p.zone;plZoneHover=null;markDirty();renderDevisKeepScroll();return}
   if(b.id==='pl-zimpl'){const m=pnum(($('#pl-zmarg')||{}).value);zoneObj().marg=m==null?1:Math.max(0,m);const ac=$('#pl-zautoc');if(ac)zoneObj().autoC=ac.checked;zoneImplant();return}
