@@ -235,6 +235,7 @@ table.list tr.row:hover td{background:var(--panel2)}
 .pl-calw{display:inline-block;width:110px;vertical-align:middle}.pl-calw input{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:3px 24px 3px 6px;font-family:var(--mono);color:var(--ink)}
 .pl-svg.pl-move{cursor:move}.pl-svg.pl-pan{cursor:grab}
 .pl-zoom{display:inline-flex;gap:2px}.pl-zoom .btn{min-width:30px;justify-content:center;font-size:16px;line-height:1;padding:3px 8px}
+.pl-ic-zone{border:1.5px dashed var(--plf)!important;width:13px;height:10px;border-radius:2px;background:color-mix(in srgb,var(--plf) 12%,transparent)!important}
 .pl-ic-pan{border:0!important;width:10px;height:10px;background:radial-gradient(circle,var(--ink2) 35%,transparent 40%)}
 .card.pl-full{position:fixed;inset:0;z-index:40;margin:0!important;border-radius:0;display:flex;flex-direction:column;overflow:hidden}
 .pl-full .card-b{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
@@ -615,7 +616,7 @@ function coupeSVG(){
 const PL_W=[20,30,40,60,80,100,150,200,300,500,750,1000];
 let plTool='f',plDrag=null;
 function planObj(){if(!quote.plan)quote.plan={on:false,w:60,trace:'droit',items:[]};if(!Array.isArray(quote.plan.items))quote.plan.items=[];return quote.plan}
-function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tools=[['f','Forage'],['c0','Collecteur 1'],['c1','Collecteur 2'],['ch','Chaufferie'],['tr','Tracé des liaisons'],['del','Gomme'],['pan','Main']];
+function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tools=[['zone','Zone de forage'],['f','Forage'],['c0','Collecteur 1'],['c1','Collecteur 2'],['ch','Chaufferie'],['tr','Tracé des liaisons'],['del','Gomme'],['pan','Main']];
   return `<div class="card ${plFull?'pl-full':''}" id="plan-card" style="margin-top:18px"><div class="card-h"><h2>Plan d’implantation</h2><span class="status">facultatif</span><label class="status" style="margin-left:auto;display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="pl-on" ${p.on?'checked':''}> Utiliser le plan pour les longueurs</label></div><div class="card-b">
   <div class="pl-bar"><div class="pl-tools" role="group" aria-label="Outil">${tools.map(([k,t])=>`<button class="btn sm ${plTool===k?'primary':''}" data-pltool="${k}"><i class="pl-ic pl-ic-${k}"></i>${t}</button>`).join('')}</div>
   <div class="pl-opts"><span class="pl-zoom"><button class="btn sm" id="pl-zout" title="Dézoomer (ou pincer / Ctrl + molette)">−</button><button class="btn sm" id="pl-zin" title="Zoomer (ou pincer / Ctrl + molette)">+</button></span><label class="status">Vue <select id="pl-w">${(PL_W.includes(+p.w||60)?PL_W:[...PL_W,+p.w].sort((a,b)=>a-b)).map(w=>`<option value="${w}" ${(+p.w||60)===w?'selected':''}>${nf(Math.round(w))} m</option>`).join('')}</select></label><button class="btn sm" id="pl-zfit" title="Ajuste la vue sur le fond de plan (ou sur les forages s’il n’y a pas de fond)">Plein cadre</button><button class="btn sm" id="pl-full">${plFull?'Quitter le plein écran':'Plein écran'}</button>
@@ -652,6 +653,12 @@ function planSVG(){const p=quote.plan||{w:60};const V=planView(),w=V.w,h=V.h,X0=
   for(let k=Math.ceil(X0/st);k*st<X0+w;k++){const x=k*st,M=k%5===0;s+=`<line x1="${x}" x2="${x}" y1="${Y0}" y2="${Y0+h}" stroke="var(--line)" stroke-width="${M?1:.5}" opacity="${M?1:.6}" vector-effect="non-scaling-stroke"/>`}
   for(let k=Math.ceil(Y0/st);k*st<Y0+h;k++){const y=k*st,M=k%5===0;s+=`<line y1="${y}" y2="${y}" x1="${X0}" x2="${X0+w}" stroke="var(--line)" stroke-width="${M?1:.5}" opacity="${M?1:.6}" vector-effect="non-scaling-stroke"/>`}
   if(!it.length)s+=`<text x="${X0+w/2}" y="${Y0+h/2}" text-anchor="middle" font-size="${fi*1.2}" fill="var(--ink3)" font-family="Barlow,sans-serif">Choisir un outil puis cliquer pour placer forages, collecteurs et chaufferie</text>`;
+  const Z=p.zone;if(Z&&Z.pts&&Z.pts.length){const P=Z.pts,zt=plTool==='zone';const pts=P.map(q=>`${q.x},${q.y}`).join(' ');
+    if(Z.closed){s+=`<polygon points="${pts}" fill="var(--plf)" fill-opacity=".09" stroke="var(--plf)" stroke-width="2" stroke-dasharray="7 5" vector-effect="non-scaling-stroke"/>`;
+      if((+Z.marg||0)>0){/* retrait des bords, indicatif */}
+      const c=P.reduce((a,q)=>({x:a.x+q.x/P.length,y:a.y+q.y/P.length}),{x:0,y:0});if(zt)s+=`<text x="${c.x}" y="${c.y}" text-anchor="middle" font-size="${fi*.85}" font-weight="700" fill="var(--plf)" font-family="Barlow,sans-serif" paint-order="stroke" stroke="var(--panel)" stroke-width="${fi/3.5}">Zone de forage · ${nf(Math.round(polyArea(P)))} m²</text>`}
+    else s+=`<polyline points="${pts}${plZoneHover?` ${plZoneHover.x},${plZoneHover.y}`:''}" fill="none" stroke="var(--plf)" stroke-width="2" stroke-dasharray="7 5" vector-effect="non-scaling-stroke"/>`;
+    if(zt)P.forEach((q,k)=>{const z=ui*.8;s+=`<rect x="${q.x-z}" y="${q.y-z}" width="${2*z}" height="${2*z}" fill="${k===0&&!Z.closed?'var(--plf)':'#fff'}" stroke="var(--plf)" stroke-width="2" vector-effect="non-scaling-stroke"/>`})}
   const eq=p.trace==='equerre';const path=(a,b)=>'M'+routeFor(a,b).map(q=>`${q.x} ${q.y}`).join('L');
   const pg=planGeo();let lf='',lc='';
   pg.asg.forEach(a=>{const c=pg.C[a.j];if(c)lf+=path(a.f,c)});if(pg.ch)pg.C.forEach(c=>{lc+=path(c,pg.ch)});
@@ -733,6 +740,7 @@ async function planPdf(){
   if(quote.plan.pdfGrid)for(let y=Math.ceil(ya/gm)*gm;y<yb;y+=gm)line({x:ax*K,y:Y(y)},{x:(ax+aw)*K,y:Y(y)},.3,GRID);
   const pg=planGeo(),eq=p.trace==='equerre';
   const segs=(a,b)=>legs(routeFor(a,b));
+  if(p.zone&&p.zone.closed&&p.zone.pts.length>2){const Q=p.zone.pts;Q.forEach((a,k)=>{const b2=Q[(k+1)%Q.length];page.drawLine({start:{x:X(a.x),y:Y(a.y)},end:{x:X(b2.x),y:Y(b2.y)},thickness:.9,color:FOR,dashArray:[4,3]})})}
   const lf=[],lc=[];pg.asg.forEach(q=>{const c=pg.C[q.j];if(c)lf.push(...segs(q.f,c))});if(pg.ch)pg.C.forEach(c=>lc.push(...segs(c,pg.ch)));
   const tw=Math.max(.6*mm*K,2.2);[...lf,...lc].forEach(([a,b])=>line({x:X(a.x),y:Y(a.y)},{x:X(b.x),y:Y(b.y)},tw,SAND,true));
   lf.forEach(([a,b])=>line({x:X(a.x),y:Y(a.y)},{x:X(b.x),y:Y(b.y)},.7,ACC,true));
@@ -832,8 +840,9 @@ async function planDxf(){
     if(i.k==='f'){E.push(`0\nCIRCLE\n8\nFORAGES\n10\n${X(i.x)}\n20\n${Y(i.y)}\n30\n0\n40\n0.5`);E.push(`0\nPOINT\n8\nFORAGES\n10\n${X(i.x)}\n20\n${Y(i.y)}\n30\n0`);tx('FORAGES',i.x+.7,i.y-.7,.6,'F'+num.get(i))}
     if(i.k==='c'){const z=.6,c=[[-z,-z],[z,-z],[z,z],[-z,z]].map(([a,b])=>({x:i.x+a,y:i.y+b}));c.forEach((q,k)=>ln('COLLECTEURS',q,c[(k+1)%4]));tx('COLLECTEURS',i.x+.9,i.y-.9,.6,'C'+((i.i||0)+1))}
     if(i.k==='ch'){const c=[[-1.5,-1],[1.5,-1],[1.5,1],[-1.5,1]].map(([a,b])=>({x:i.x+a,y:i.y+b}));c.forEach((q,k)=>ln('CHAUFFERIE',q,c[(k+1)%4]));tx('CHAUFFERIE',i.x,i.y+1.8,.6,'Chaufferie',1)}});
+  if(p.zone&&p.zone.closed&&p.zone.pts.length>2){const Q=p.zone.pts;Q.forEach((a,k)=>ln('ZONE_FORAGE',a,Q[(k+1)%Q.length]))}
   const bb=planBBox(3);tx('TEXTES',bb.x0,bb.y0+bb.h+1.5,.8,`Plan d'implantation ${quote.nom||''} - Hydreau Forage - unites : metres (1 unite = 1 m)`);
-  const layers=[['FORAGES',30],['COLLECTEURS',5],['CHAUFFERIE',3],['PE_FORAGES',4],['PE_CHAUFFERIE',5],['COTES',7],['TEXTES',7]];
+  const layers=[['ZONE_FORAGE',1],['FORAGES',30],['COLLECTEURS',5],['CHAUFFERIE',3],['PE_FORAGES',4],['PE_CHAUFFERIE',5],['COTES',7],['TEXTES',7]];
   const dxf=['0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1009\n9\n$INSBASE\n10\n0\n20\n0\n30\n0\n0\nENDSEC',
     '0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLTYPE\n70\n1\n0\nLTYPE\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0.0\n0\nENDTAB',
     `0\nTABLE\n2\nLAYER\n70\n${layers.length}\n`+layers.map(([n,c])=>`0\nLAYER\n2\n${n}\n70\n0\n62\n${c}\n6\nCONTINUOUS`).join('\n')+'\n0\nENDTAB\n0\nENDSEC',
@@ -865,6 +874,10 @@ function planBgUpdate(){const L=$('#pl-bgl');if(!L)return;const p=quote.plan||{w
   if(im.getAttribute('href')!==b.src)im.setAttribute('href',b.src);
   im.setAttribute('x',b.x);im.setAttribute('y',b.y);im.setAttribute('width',b.iw*b.mpp);im.setAttribute('height',b.ih*b.mpp);im.setAttribute('opacity',b.op??.6)}
 function plHint(){if(plTool==='tr')return 'Tracé des liaisons : tirer un <b>+</b> pour créer un point de passage, déplacer les carrés pour modifier le tracé ; double-clic (ou Gomme) sur un carré pour le supprimer. Les longueurs de PE, la tranchée et la perte de charge suivent le tracé.';
+  if(plTool==='zone'){const Z=quote.plan&&quote.plan.zone,N=+quote.N||0,E=+quote.E||0;
+    const warn=bgOn()&&!quote.plan.bg.cal?' <b class="bad">L’échelle du fond n’est pas calée : la zone et les espacements ne correspondront pas à la photo.</b>':'';
+    if(!Z||!Z.closed)return `Zone de forage : cliquer les coins de la zone autorisée (à l’échelle du plan), puis cliquer le 1er point (ou double-clic) pour la fermer. <button class="btn sm ghost danger" id="pl-zdel" ${Z&&Z.pts.length?'':'disabled'}>Effacer</button>${warn}`;
+    return `Zone de ${nf(Math.round(polyArea(Z.pts)))} m². Les sommets se déplacent. Retrait des bords <span class="unit-in pl-calw" style="width:80px"><input id="pl-zmarg" inputmode="decimal" value="${Z.marg??1}"><span>m</span></span> <button class="btn sm primary" id="pl-zimpl">Implanter ${N} forage${pl(N)} à ${nf(E)} m</button> <button class="btn sm ghost danger" id="pl-zdel">Effacer la zone</button><span class="status" style="display:block;margin-top:4px">Nombre et espacement : ceux du dimensionnement. Le logiciel cherche la disposition (carrée ou en quinconce, orientation) qui tient dans la zone au plus près de la chaufferie.</span>${warn}`}
   if(plTool==='pan')return 'Main : faire glisser pour déplacer la vue (aussi : glisser à deux doigts sur le pavé tactile). Pincer, Ctrl + molette ou les boutons − / + pour zoomer.';
   if(plTool==='bg')return 'Déplacer le fond : faire glisser le plan pour aligner le fond sur les forages (ou l’inverse). Les forages ne bougent pas.';
   if(plTool==='cal'){const b=quote.plan&&quote.plan.bg;if(!b)return 'Importer d’abord un fond de plan.';
@@ -1116,6 +1129,12 @@ function planChanged(){routeClean();const p=planObj();if(!p.on&&!p.userOff&&plan
 function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.preventDefault();const p=planObj();
   if(plTool==='pan'||e.button===1){const V=planView(),r=svg.getBoundingClientRect();plDrag={pan:true,sx:e.clientX,sy:e.clientY,vx:V.x,vy:V.y,k:V.w/r.width};svg.setPointerCapture?.(e.pointerId);return}
   const pt=planPt(e);
+  if(plTool==='zone'){const Z=zoneObj(),P=Z.pts,r=planView().w/60;
+    const hi=P.findIndex(q=>Math.hypot(q.x-pt.x,q.y-pt.y)<=r);
+    if(!Z.closed&&hi===0&&P.length>=3){Z.closed=true;plZoneHover=null;markDirty();hintUpdate();planDraw();return}
+    if(hi>=0){plDrag={zv:hi,moved:false};svg.setPointerCapture?.(e.pointerId);return}
+    if(Z.closed){toast('Zone fermée : déplacer ses sommets, ou « Effacer la zone » pour en tracer une autre');return}
+    P.push({x:pt.x,y:pt.y});markDirty();hintUpdate();planDraw();return}
   if(plTool==='cal'||plTool==='bg'){const bg=p.bg;if(!bg){toast('Importer d’abord un fond de plan');return}const q=planRaw(e);
     if(plTool==='cal'){if(!plCal.A||plCal.B)plCal={A:q};else plCal.B=q;hintUpdate();planDraw();const ci=$('#pl-caldist');if(ci)ci.focus();return}
     plDrag={bg:true,sx:q.x,sy:q.y,ox:bg.x,oy:bg.y,moved:false};svg.setPointerCapture?.(e.pointerId);return}
@@ -1129,8 +1148,49 @@ function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.pr
   else if(plTool==='c0'||plTool==='c1'){const ci=plTool==='c1'?1:0;p.items=p.items.filter(i=>!(i.k==='c'&&(i.i||0)===ci));p.items.push({k:'c',i:ci,x:pt.x,y:pt.y})}
   else if(plTool==='ch'){p.items=p.items.filter(i=>i.k!=='ch');p.items.push({k:'ch',x:pt.x,y:pt.y})}
   planChanged()}
-function onPlanMove(e){if(!plDrag)return;if(plDrag.pan){const p=quote.plan;p.vx=plDrag.vx-(e.clientX-plDrag.sx)*plDrag.k;p.vy=plDrag.vy-(e.clientY-plDrag.sy)*plDrag.k;planDraw();return}if(plDrag.bg){const q=planRaw(e),bg=quote.plan.bg;bg.x=plDrag.ox+q.x-plDrag.sx;bg.y=plDrag.oy+q.y-plDrag.sy;plDrag.moved=true;planBgUpdate();return}const pt=planPt(e);if(plDrag.wp){const w=quote.plan.routes[plDrag.wp.key][plDrag.wp.idx];if(w&&(w.x!==pt.x||w.y!==pt.y)){w.x=pt.x;w.y=pt.y;plDrag.moved=true;planDraw()}return}if(pt.x!==plDrag.it.x||pt.y!==plDrag.it.y){plDrag.it.x=pt.x;plDrag.it.y=pt.y;plDrag.moved=true;planDraw()}}
-function onPlanUp(){if(!plDrag)return;if(plDrag.pan){plDrag=null;return}const m=plDrag.moved,isBg=plDrag.bg;plDrag=null;if(m){if(isBg)markDirty();else planChanged()}}
+function onPlanMove(e){if(!plDrag){if(plTool==='zone'&&quote.plan&&quote.plan.zone&&!quote.plan.zone.closed&&quote.plan.zone.pts.length&&e.target.closest&&e.target.closest('#pl-svg')){plZoneHover=planPt(e);planDraw()}return}if(plDrag.zv!=null){const q=planPt(e),v=quote.plan.zone.pts[plDrag.zv];if(v&&(v.x!==q.x||v.y!==q.y)){v.x=q.x;v.y=q.y;plDrag.moved=true;planDraw()}return}if(plDrag.pan){const p=quote.plan;p.vx=plDrag.vx-(e.clientX-plDrag.sx)*plDrag.k;p.vy=plDrag.vy-(e.clientY-plDrag.sy)*plDrag.k;planDraw();return}if(plDrag.bg){const q=planRaw(e),bg=quote.plan.bg;bg.x=plDrag.ox+q.x-plDrag.sx;bg.y=plDrag.oy+q.y-plDrag.sy;plDrag.moved=true;planBgUpdate();return}const pt=planPt(e);if(plDrag.wp){const w=quote.plan.routes[plDrag.wp.key][plDrag.wp.idx];if(w&&(w.x!==pt.x||w.y!==pt.y)){w.x=pt.x;w.y=pt.y;plDrag.moved=true;planDraw()}return}if(pt.x!==plDrag.it.x||pt.y!==plDrag.it.y){plDrag.it.x=pt.x;plDrag.it.y=pt.y;plDrag.moved=true;planDraw()}}
+function onPlanUp(){if(!plDrag)return;if(plDrag.pan){plDrag=null;return}if(plDrag.zv!=null){const m=plDrag.moved;plDrag=null;if(m){markDirty();hintUpdate();planDraw()}return}const m=plDrag.moved,isBg=plDrag.bg;plDrag=null;if(m){if(isBg)markDirty();else planChanged()}}
+/* ---------- zone de forage : implantation automatique ---------- */
+let plZoneHover=null;
+function zoneObj(){const p=planObj();if(!p.zone)p.zone={pts:[],closed:false,marg:1};return p.zone}
+function polyArea(P){let a=0;for(let i=0;i<P.length;i++){const p=P[i],q=P[(i+1)%P.length];a+=p.x*q.y-q.x*p.y}return Math.abs(a)/2}
+function inPoly(x,y,P){let c=false;for(let i=0,j=P.length-1;i<P.length;j=i++){const a=P[i],b=P[j];if(((a.y>y)!==(b.y>y))&&(x<(b.x-a.x)*(y-a.y)/(b.y-a.y)+a.x))c=!c}return c}
+function segDist(x,y,a,b){const dx=b.x-a.x,dy=b.y-a.y,L=dx*dx+dy*dy;let t=L?((x-a.x)*dx+(y-a.y)*dy)/L:0;t=Math.max(0,Math.min(1,t));return Math.hypot(x-a.x-t*dx,y-a.y-t*dy)}
+function edgeDist(x,y,P){let d=Infinity;for(let i=0;i<P.length;i++)d=Math.min(d,segDist(x,y,P[i],P[(i+1)%P.length]));return d}
+/* essaie des réseaux carrés et en quinconce (pas = espacement), orientés tous les 5° et décalés, garde celui qui loge N forages au plus près du point d'ancrage */
+function zoneLayout(P,E,marg,N,anchor){const c=P.reduce((a,q)=>({x:a.x+q.x/P.length,y:a.y+q.y/P.length}),{x:0,y:0});const R=Math.max(...P.map(q=>Math.hypot(q.x-c.x,q.y-c.y)))+E;
+  const n=Math.ceil(R/E)+1;let best=null;
+  for(const pat of ['carre','quinconce']){const dy=pat==='carre'?E:E*Math.sqrt(3)/2,amax=pat==='carre'?90:180;
+    for(let ad=0;ad<amax;ad+=5){const a=ad*Math.PI/180,ca=Math.cos(a),sa=Math.sin(a);
+      for(let fx=0;fx<4;fx++)for(let fy=0;fy<4;fy++){const ox=fx*E/4,oy=fy*dy/4;const pts=[];
+        for(let j=-n;j<=n;j++){const yy=j*dy+oy,sh=pat==='quinconce'&&(j&1)?E/2:0;for(let i=-n;i<=n;i++){const xx=i*E+sh+ox;const x=c.x+xx*ca-yy*sa,y=c.y+xx*sa+yy*ca;
+          if(inPoly(x,y,P)&&edgeDist(x,y,P)>=marg-1e-9)pts.push({x,y,d:Math.hypot(x-anchor.x,y-anchor.y)})}}
+        let score;if(pts.length>=N){pts.sort((p,q)=>p.d-q.d);score=1e9-pts.slice(0,N).reduce((t,q)=>t+q.d,0)}else score=pts.length;
+        if(!best||score>best.score)best={score,pts,pat,ad}}}}
+  return best}
+function geoMedian(F){let m=F.reduce((a,q)=>({x:a.x+q.x/F.length,y:a.y+q.y/F.length}),{x:0,y:0});
+  for(let k=0;k<60;k++){let sx=0,sy=0,sw=0;F.forEach(q=>{const d=Math.max(.01,Math.hypot(q.x-m.x,q.y-m.y));sx+=q.x/d;sy+=q.y/d;sw+=1/d});m={x:sx/sw,y:sy/sw}}return m}
+function zoneImplant(){const p=planObj(),Z=p.zone;if(!Z||!Z.closed||Z.pts.length<3){toast('Tracer et fermer d’abord la zone de forage');return}
+  const N=Math.max(1,Math.round(+quote.N||0)),E=+quote.E>0?+quote.E:10,marg=+Z.marg||0;
+  const old=planItems(),ch=old.find(i=>i.k==='ch');const zc=Z.pts.reduce((a,q)=>({x:a.x+q.x/Z.pts.length,y:a.y+q.y/Z.pts.length}),{x:0,y:0});
+  const anchor=ch||old.find(i=>i.k==='c')||zc;
+  if(old.some(i=>i.k==='f')&&!confirm('Remplacer les forages déjà placés par une implantation automatique dans la zone ?'))return;
+  toast('Calcul de l’implantation…');
+  setTimeout(()=>{const best=zoneLayout(Z.pts,E+.02,marg,N,anchor);const got=best?best.pts.length:0;
+    if(!got){toast(`Aucun forage ne tient dans la zone avec ${nf(marg)} m de retrait : agrandir la zone ou réduire le retrait`);return}
+    const F=best.pts.sort((a,b)=>a.d-b.d).slice(0,N).map(q=>({k:'f',x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100}));
+    /* collecteur(s) : point qui minimise les liaisons, décalé s'il tombe sur un forage */
+    const two=+quote.nc===2&&F.length>=2;let groups=[F];
+    if(two){const m=F.reduce((a,q)=>({x:a.x+q.x/F.length,y:a.y+q.y/F.length}),{x:0,y:0});let sxx=0,syy=0,sxy=0;F.forEach(q=>{const dx=q.x-m.x,dy=q.y-m.y;sxx+=dx*dx;syy+=dy*dy;sxy+=dx*dy});
+      const th=.5*Math.atan2(2*sxy,sxx-syy),ux=Math.cos(th),uy=Math.sin(th);const srt=[...F].sort((a,b)=>(a.x*ux+a.y*uy)-(b.x*ux+b.y*uy));
+      const NB=Math.max(1,Math.min(F.length-1,quote.N2!=null&&quote.N2!==''?Math.round(+quote.N2):Math.floor(F.length/2)));groups=[srt.slice(0,F.length-NB),srt.slice(F.length-NB)]}
+    const C=groups.map((g,i)=>{let m=geoMedian(g);const nr=g.reduce((b,q)=>{const d=Math.hypot(q.x-m.x,q.y-m.y);return d<b.d?{q,d}:b},{d:Infinity});
+      if(nr.d<Math.min(1.5,E/3)){const t={x:anchor.x-m.x,y:anchor.y-m.y},L=Math.hypot(t.x,t.y)||1;m={x:m.x+t.x/L*Math.min(2,E/2),y:m.y+t.y/L*Math.min(2,E/2)}}
+      return {k:'c',i,x:Math.round(m.x*10)/10,y:Math.round(m.y*10)/10}});
+    p.items=[...(ch?[ch]:[]),...F,...C];p.routes={};p.on=true;p.userOff=false;plTool='f';
+    planChanged();
+    const pat=best.pat==='carre'?'en carré':'en quinconce';
+    toast(got<N?`Seulement ${got} forage${pl(got)} tiennent dans la zone à ${nf(E)} m d’espacement (${pat})`:`${N} forages implantés ${pat} à ${nf(E)} m, orientation ${best.ad}°`)},30)}
 /* place les forages en ligne depuis le dimensionnement (N, E, collecteur au bout / au milieu, L, 2 collecteurs) */
 function planGen(){const p=planObj();const N=+quote.N||0;if(!N){toast('Indiquer d’abord le nombre de forages');return}
   const E=+quote.E||5,L=+quote.L||0,two=+quote.nc===2&&N>=2,mid=quote.coll==='milieu';
@@ -1139,12 +1199,15 @@ function planGen(){const p=planObj();const N=+quote.N||0;if(!N){toast('Indiquer 
   const row=(n,cx,y,ci)=>{if(mid){const n1=Math.ceil(n/2);for(let k=1;k<=n1;k++)items.push({k:'f',x:cx-k*E,y});for(let k=1;k<=n-n1;k++)items.push({k:'f',x:cx+k*E,y})}else for(let k=1;k<=n;k++)items.push({k:'f',x:cx+k*E,y});items.push({k:'c',i:ci,x:cx,y})};
   const chx=-Math.max(L,0);items.push({k:'ch',x:chx,y:0});row(NA,0,0,0);
   if(two){const dy=Math.max((Math.max(NA,NB)+1)*E*(mid?0.6:1),6),dx=Math.sqrt(Math.max(L2*L2-dy*dy,0));row(NB,chx+dx,dy,1)}
-  const xs=items.map(i=>i.x),ys=items.map(i=>i.y),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
-  const w=PL_W.find(w=>w*0.84>=x1-x0&&w*0.6*0.7>=y1-y0)||PL_W[PL_W.length-1];const h=Math.round(w*0.6);
-  const ox=(w-(x1-x0))/2-x0,oy=(h-(y1-y0))/2-y0;const sn=w<=60?0.5:w<=150?1:2;
-  items.forEach(i=>{i.x=Math.round((i.x+ox)/sn)*sn;i.y=Math.round((i.y+oy)/sn)*sn});
-  p.items=items;p.routes={};p.w=w;p.vx=0;p.vy=0;p.on=true;p.userOff=false;planSync();markDirty();renderDevisKeepScroll();toast('Plan placé : déplacer les points pour coller au terrain')}
+  /* ancrage : sur la chaufferie déjà placée (ou le collecteur 1), sinon au centre du fond / de la vue ; la vue et le fond ne bougent pas */
+  const old=planItems(),och=old.find(i=>i.k==='ch'),oc=old.find(i=>i.k==='c'&&!(i.i||0));let ox,oy;
+  if(och){ox=och.x-chx;oy=och.y}else if(oc){ox=oc.x;oy=oc.y}
+  else{const xs=items.map(i=>i.x),ys=items.map(i=>i.y),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+    const b=p.bg,V=planView();const c=bgOn()?{x:b.x+b.iw*b.mpp/2,y:b.y+b.ih*b.mpp/2}:{x:V.x+V.w/2,y:V.y+V.h/2};ox=c.x-(x0+x1)/2;oy=c.y-(y0+y1)/2}
+  items.forEach(i=>{i.x=Math.round((i.x+ox)*10)/10;i.y=Math.round((i.y+oy)*10)/10});
+  p.items=items;p.routes={};p.on=true;p.userOff=false;{const V=planView();if(items.some(i=>i.x<V.x||i.x>V.x+V.w||i.y<V.y||i.y>V.y+V.h))planFit(false)}if(bgOn()&&!p.bg.cal)setTimeout(()=>toast('Attention : l’échelle du fond n’est pas calée, les forages (en mètres réels) ne correspondent pas encore à la photo'),2600);planSync();markDirty();renderDevisKeepScroll();toast('Plan placé : déplacer les points pour coller au terrain')}
 document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#pl-svg'))onPlanDown(e)});
+document.addEventListener('dblclick',e=>{if(plTool==='zone'&&e.target.closest&&e.target.closest('#pl-svg')){const Z=quote.plan&&quote.plan.zone;if(Z&&!Z.closed){/* le double-clic a ajouté 2 points identiques */const P=Z.pts;while(P.length>1&&Math.hypot(P[P.length-1].x-P[P.length-2].x,P[P.length-1].y-P[P.length-2].y)<.01)P.pop();if(P.length>=3){Z.closed=true;plZoneHover=null;markDirty();hintUpdate();planDraw()}}return}});
 document.addEventListener('dblclick',e=>{if(!(e.target.closest&&e.target.closest('#pl-svg'))||plTool!=='tr')return;const rh=routeHit(planPt(e));if(rh&&rh.idx!=null){quote.plan.routes[rh.key].splice(rh.idx,1);planChanged()}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&plFull){plSetFull(false);return}if(e.key==='Enter'&&e.target&&(e.target.id==='pl-caldist'||e.target.id==='pl-bgech'||e.target.id==='pl-bgrot'||e.target.id==='pl-bgwid')){e.preventDefault();const b=$('#'+(e.target.id==='pl-caldist'?'pl-calok':e.target.id+'-ok'));if(b)b.click()}});
 document.addEventListener('pointermove',onPlanMove);document.addEventListener('pointerup',onPlanUp);document.addEventListener('pointercancel',onPlanUp);
@@ -1304,7 +1367,7 @@ function renderDevis(){
 function onDevisInput(e){
   const tg=e.target;
   if(tg.id==='pl-bgop'){const b=quote.plan&&quote.plan.bg;if(b){b.op=+tg.value/100;markDirty();planBgUpdate()}return}
-  if(['pl-file','pl-bgech','pl-bgrot','pl-caldist','pl-bgpdf','pl-bgshow','pl-bgpage','pl-bgwid','pl-grid'].includes(tg.id))return;
+  if(['pl-file','pl-bgech','pl-bgrot','pl-caldist','pl-bgpdf','pl-bgshow','pl-bgpage','pl-bgwid','pl-grid','pl-zmarg'].includes(tg.id))return;
   if(tg.id==='pl-w'||tg.id==='pl-trace'||tg.id==='pl-on'||tg.id==='pl-fmt'||tg.id==='pl-ech'||tg.id==='pl-ppm')return;
   if(tg.id==='pl-nord'){planObj().nord=pnum(tg.value)||0;markDirty();planDraw();return}
   if(tg.dataset.k){const k=tg.dataset.k;quote[k]=tg.dataset.nn?pnum(tg.value):tg.dataset.n?(pnum(tg.value)??0):tg.value;markDirty();
@@ -1347,6 +1410,8 @@ function onDevisClick(e){
   if(b.dataset.pltool){plTool=b.dataset.pltool;document.querySelectorAll('[data-pltool]').forEach(x=>x.classList.toggle('primary',x===b));const sv=$('#pl-svg');if(sv)sv.classList.toggle('pl-edit',plTool==='tr');if(sv)sv.classList.toggle('pl-move',plTool==='bg');if(sv)sv.classList.toggle('pl-pan',plTool==='pan');plCal={};hintUpdate();planDraw();return}
   if(b.id==='pl-straight'){if(confirm('Supprimer tous les points de passage des liaisons ?')){planObj().routes={};planChanged()}return}
   if(b.id==='pl-pdf'){planPdf();return}
+  if(b.id==='pl-zdel'){const p=planObj();delete p.zone;plZoneHover=null;markDirty();hintUpdate();planDraw();return}
+  if(b.id==='pl-zimpl'){const m=pnum(($('#pl-zmarg')||{}).value);zoneObj().marg=m==null?1:Math.max(0,m);zoneImplant();return}
   if(b.id==='pl-kml'){planKml();return}
   if(b.id==='pl-kpts'){kmlPlacePoints();return}
   if(b.id==='pl-bgdel'){const p=planObj();if(p.bg){delete p.bg;plCal={};if(plTool==='cal'||plTool==='bg')plTool='f';markDirty();renderDevisKeepScroll()}return}
