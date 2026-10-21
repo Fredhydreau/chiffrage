@@ -323,7 +323,7 @@ let dirty=false, view='devis', usedOnly=false, catDraft=null, listFilter='';
 
 function blankQuote(){
   return {id:null,nom:'',lieu:'',client:'',tel:'',mail:'',archi:'',interlocuteur:'',chiffreur:'Fred',
-    date:new Date().toISOString().slice(0,10),N:1,P:100,L:20,D2:0,mpj:100,jr:2,com:0,ffm:20,obj:80,h:{wpm:null,dT:3,conc:30,sing:30,pac:0,model:'',qPac:null,dispo:null},E:10,D1:0,nc:1,N2:null,L2:null,D2b:0,pn:0,plan:null,coef:{...DEF_COEF},q:{},snap:{},extra:[],prixRetenu:null,tva:20,notes:'',updated:0,dvs:null};
+    date:new Date().toISOString().slice(0,10),N:1,P:100,L:20,D2:0,mpj:100,jr:2,com:0,ffm:20,obj:80,h:{wpm:null,dT:3,conc:30,sing:30,pac:0,model:'',qPac:null,dispo:null},E:10,D1:0,nc:1,N2:null,L2:null,D2b:0,df1:null,df2:null,pn:0,plan:null,coef:{...DEF_COEF},q:{},snap:{},extra:[],prixRetenu:null,tva:20,notes:'',updated:0,dvs:null};
 }
 function normQuote(q){const b=blankQuote();const o=Object.assign(b,clone(q));o.h=Object.assign(blankQuote().h,o.h||{});o.coef=Object.assign({...DEF_COEF},o.coef||{});o.q=o.q||{};o.snap=o.snap||{};o.extra=o.extra||[];return o}
 
@@ -358,6 +358,8 @@ function baseVars(){const P=+quote.P||0,mpj=+quote.mpj||100,E=+quote.E||0,D1=+qu
     G=[{...grp(N-NB),L}];if(two)G.push({...grp(NB),L:L2});
     /* tranchée : ligne(s) des forages + collecteur(s) → chaufferie */
     T=E*N+G.reduce((a,g)=>a+g.L,0)}
+  /* distance du forage le plus éloigné saisie à la main (vide = calculée) : sert à la perte de charge */
+  G.forEach((g,i)=>{const d=pnum(i?quote.df2:quote.df1);g.DFcalc=g.DF;g.DFman=d!=null&&d>0;if(g.DFman)g.DF=d});
   const Z={n:0,LF:0,DF:0,L:0};const g0=G[0]||Z,g1=G[1]||Z;const M=N*P;
   return {N,P,L:g0.L,L2:g1.L,M,J:mpj>0?Math.ceil(M/mpj):0,E,D1,D2,D2B:G.length>1?D2B:0,NA:g0.n,NB:g1.n,NC:Math.max(1,G.length),LF:g0.LF+g1.LF,LC:2*g0.L,LCB:2*g1.L,T,JR:+quote.jr||0,ZO:quote.zone==='orange'?1:0,DF:Math.max(g0.DF,g1.DF),G:G.length?G:[{...Z}],src}}
 /* Glycol : ancienne règle forfaitaire (M+L)/25*20 remplacée par le volume réel du réseau */
@@ -458,7 +460,7 @@ function hydroFor(v){
   const so=segment('Sonde (une boucle du double U)',Ds,2*v.P,Q/(2*N),fl,`${nf(v.P)} m × 2 (descente + remontée) · Ø${Ds} PN${pn}`,sdr);
   const G=v.G&&v.G.length?v.G:[{n:v.N,DF:v.DF,L:v.L}],two=G.length>1,sf=1+(+h.sing||0)/100;
   const groups=G.map((g,i)=>{const lab=two?' '+(i+1):'';const D2g=i?v.D2B:v.D2;const au=i?v.D2Bauto:v.D2auto;
-    const br=segment('Forage le plus éloigné → collecteur'+lab,v.D1||40,2*g.DF,Q/N,fl,`${nf(g.DF)} m × 2 (aller + retour) · ${v.src==='plan'?'mesuré sur le plan':'collecteur '+(quote.coll==='milieu'?'au milieu':'au bout')}${v.D1auto?' · Ø selon profondeur':''}`);
+    const br=segment('Forage le plus éloigné → collecteur'+lab,v.D1||40,2*g.DF,Q/N,fl,`${nf(g.DF)} m × 2 (aller + retour) · ${g.DFman?'distance saisie':v.src==='plan'?'mesuré sur le plan':'collecteur '+(quote.coll==='milieu'?'au milieu':'au bout')}${v.D1auto?' · Ø selon profondeur':''}`);
     const mn=segment('Collecteur'+lab+' → chaufferie',D2g||63,2*g.L,Q*(g.n||0)/N,fl,`${two?g.n+' forage'+pl(g.n)+' · ':''}${nf(g.L)} m × 2 (aller + retour)${au?' · Ø choisi selon le débit':''}`);
     const path=so.dp+br.dp+mn.dp;return {i,n:g.n,br,mn,path,pathRes:path*sf}});
   const crit=groups.reduce((a,g)=>!a||g.path>a.path?g:a,null);
@@ -469,17 +471,20 @@ function hydroFor(v){
     :{ok:false,txt:`Circulateur de la PAC insuffisant : il manque ${nf(reseau-dispo)} kPa (${nf((reseau-dispo)*1000/(fl.rho*9.81))} mCE). Prévoir un circulateur complémentaire ou augmenter les diamètres.`}):null;
   return {kw,kwAuto,wpm,qCalc,Q,fl,segs,so,groups,crit,two,pn,sdr,lin,sing,pac,tot,reseau,dispo,verdict,mce:tot*1000/(fl.rho*9.81)}
 }
+function dfFields(){const v=vars();const two=v.NC>1;
+  return (v.G||[]).slice(0,two?2:1).map((g,i)=>{const k=i?'df2':'df1';const val=quote[k];
+    return `<div class="f"><label for="q-${k}">Forage le plus loin → collecteur${two?' '+(i+1):''}</label><div class="unit-in"><input id="q-${k}" data-k="${k}" data-n="1" data-nn="1" data-df="1" inputmode="decimal" value="${val==null?'':esc(val)}" placeholder="${nf(g.DFcalc)}" title="Distance réelle entre le forage le plus éloigné et le collecteur (un sens). Vide = calculée : ${nf(g.DFcalc)} m"><span>m</span></div></div>`}).join('')}
 function hfield(k,label,unit,ph){const val=quote.h[k];return `<div class="f"><label for="h-${k}">${label}</label><div class="unit-in"><input id="h-${k}" data-h="${k}" inputmode="decimal" value="${val==null?'':esc(val)}" placeholder="${ph??''}"><span>${unit}</span></div></div>`}
 function hydroHTML(){
   return `<div class="card" id="perte-de-charge" style="margin-top:18px;scroll-margin-top:80px"><div class="card-h"><h2>Perte de charge du réseau</h2><span class="status" id="h-sdr" style="margin-left:auto">PE100 SDR11</span><button class="btn sm" id="b-pdfh">PDF pour le chauffagiste</button></div><div class="card-b">
-  <div class="pgrid hgrid">${hfield('wpm','Extraction du sol (vide = 50)','W/m','50')}${hfield('dT','Écart aller / retour','K')}${hfield('conc','Dosage glycol (vide = 30 %)','%','30')}${hfield('sing','Pertes singulières','% linéaire')}<div class="f"><label for="q-pn">PN des sondes</label><select id="q-pn" data-k="pn" data-n="1" title="Auto : PN16 jusqu’à 150 m, PN20 au-delà">${[[0,'Auto (selon profondeur)'],[16,'PN16 (SDR11)'],[20,'PN20 (SDR9)'],[25,'PN25 (SDR7,4)']].map(([o,t])=>`<option value="${o}" ${(+quote.pn||0)===o?'selected':''}>${t}</option>`).join('')}</select></div><div class="f"><label for="q-coll">${+quote.nc===2?'Position des collecteurs':'Position du collecteur'}</label><select id="q-coll" data-k="coll" ${planOn()?'disabled title="Les longueurs viennent du plan"':''}><option value="bout" ${quote.coll!=='milieu'?'selected':''}>Au bout de la ligne</option><option value="milieu" ${quote.coll==='milieu'?'selected':''}>Au milieu du champ</option></select></div></div>
+  <div class="pgrid hgrid">${hfield('wpm','Extraction du sol (vide = 50)','W/m','50')}${hfield('dT','Écart aller / retour','K')}${hfield('conc','Dosage glycol (vide = 30 %)','%','30')}${hfield('sing','Pertes singulières','% linéaire')}<div class="f"><label for="q-pn">PN des sondes</label><select id="q-pn" data-k="pn" data-n="1" title="Auto : PN16 jusqu’à 150 m, PN20 au-delà">${[[0,'Auto (selon profondeur)'],[16,'PN16 (SDR11)'],[20,'PN20 (SDR9)'],[25,'PN25 (SDR7,4)']].map(([o,t])=>`<option value="${o}" ${(+quote.pn||0)===o?'selected':''}>${t}</option>`).join('')}</select></div><div class="f"><label for="q-coll">${+quote.nc===2?'Position des collecteurs':'Position du collecteur'}</label><select id="q-coll" data-k="coll" ${planOn()?'disabled title="Les longueurs viennent du plan"':''}><option value="bout" ${quote.coll!=='milieu'?'selected':''}>Au bout de la ligne</option><option value="milieu" ${quote.coll==='milieu'?'selected':''}>Au milieu du champ</option></select></div>${dfFields()}</div>
   <p class="help" id="h-kwinfo" style="margin:8px 0 0"></p>
   <p class="help" style="margin:14px 0 4px;font-weight:600">PAC – facultatif, à remplir seulement si tu as la fiche</p>
   <div class="pgrid hgrid"><div class="f"><label for="h-model">Modèle de PAC</label><input id="h-model" data-ht="model" value="${esc(quote.h.model||'')}" placeholder="Marque, modèle, puissance"></div>${hfield('qPac','Débit nominal PAC (vide = calculé)','m³/h','')}${hfield('dispo','Pression disponible PAC','kPa','')}${hfield('pac','Échangeur PAC','kPa','0')}</div>
   <div id="h-alerts" class="alerts"></div>
   <div class="tbl-wrap" style="margin-top:14px"><table class="htbl"><thead><tr><th>Tronçon</th><th class="r">Ø ext / int</th><th class="r">Longueur</th><th class="r">Débit</th><th class="r">Vitesse</th><th class="r">Reynolds</th><th class="r">Perte</th></tr></thead><tbody id="h-body"></tbody></table></div>
   <div class="hres" id="h-res"></div>
-  <p class="note" style="padding:6px 0 0">Darcy-Weisbach, rugosité PE 0,01 mm. Forages en parallèle, chacun relié en direct à son collecteur ; le chemin le plus long (forage le plus éloigné, et avec 2 collecteurs le collecteur le plus défavorisé) fixe la perte de charge. Paroi des sondes selon le PN (PN16 = SDR11, PN20 = SDR9, PN25 = SDR7,4) ; liaisons en PE100 SDR11. Propriétés du glycol à 0 °C, valeurs approchées : à confirmer avec la fiche du fluide et de la PAC.</p>
+  <p class="note" style="padding:6px 0 0">Darcy-Weisbach, rugosité PE 0,01 mm. Forages en parallèle, chacun relié en direct à son collecteur (distance du forage le plus éloigné calculée, mesurée sur le plan ou saisie) ; le chemin le plus long (forage le plus éloigné, et avec 2 collecteurs le collecteur le plus défavorisé) fixe la perte de charge. Paroi des sondes selon le PN (PN16 = SDR11, PN20 = SDR9, PN25 = SDR7,4) ; liaisons en PE100 SDR11. Propriétés du glycol à 0 °C, valeurs approchées : à confirmer avec la fiche du fluide et de la PAC.</p>
   </div></div>`;
 }
 /* alertes de dimensionnement des tuyaux */
@@ -521,6 +526,7 @@ function updateHydro(){
     zb.hidden=!al.length;zb.className='banner '+(nb?'bad':'');zb.innerHTML=al.length?`<span><b>À vérifier :</b> ${nb?nb+' point'+(nb>1?'s':'')+' à corriger':''}${nb&&nw?', ':''}${nw?nw+' point'+(nw>1?'s':'')+' à surveiller':''}.</span><a class="btn sm" href="#perte-de-charge">Voir le détail</a>`:''}
   const kin=$('#h-kwinfo');if(kin)kin.textContent=`Calcul sans PAC : ${nf(r.wpm)} W/m × ${nf(vars().M)} m forés = ${nf(r.kw)} kW extraits du sol → débit ${nf(r.qCalc)} m³/h.${+quote.h.qPac>0?' Débit PAC saisi : '+nf(+quote.h.qPac)+' m³/h (utilisé).':''}`;
   const qin=$('#h-qPac');if(qin)qin.placeholder=nf(r.qCalc);
+  {const vv=vars();['df1','df2'].forEach((k,i)=>{const el=$('#q-'+k);const g=vv.G&&vv.G[i];if(el&&g){el.placeholder=nf(g.DFcalc);el.title=`Distance réelle entre le forage le plus éloigné et le collecteur (un sens). Vide = calculée : ${nf(g.DFcalc)} m`}})}
   const hs=$('#h-sdr');if(hs)hs.textContent=`Sondes PN${r.pn} (SDR${nf(r.sdr)}) · liaisons PE100 SDR11`;
   b.innerHTML=r.segs.map(s=>{const lam=s.Re<2300,tr=s.Re>=2300&&s.Re<4000;
     return `<tr><td><b>${s.name}</b><div class="status">${s.note}</div>${s.crit?'<div class="status warnc">chemin le plus défavorisé</div>':''}</td><td class="r num">${s.D} / ${nf(s.DI)}</td><td class="r num">${nf(s.L)} m</td><td class="r num">${nf(s.Q)} m³/h</td><td class="r num ${s.v>1.5?'bad':''}">${nf(s.v)} m/s</td><td class="r num ${lam?'bad':tr?'warnc':''}">${Math.round(s.Re).toLocaleString('fr-FR')}${lam?'<div class="status bad">laminaire</div>':tr?'<div class="status warnc">transitoire</div>':''}</td><td class="r num">${nf(s.dp)} kPa</td></tr>`}).join('')+
