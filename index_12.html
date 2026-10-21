@@ -380,7 +380,7 @@ function mstLen(pts){if(pts.length<2)return 0;const inT=[true,...pts.slice(1).ma
   for(let k=1;k<pts.length;k++){let bi=-1,bd=Infinity;for(let i=0;i<pts.length;i++)if(!inT[i]&&best[i]<bd){bd=best[i];bi=i}inT[bi]=true;tot+=bd;for(let i=0;i<pts.length;i++)if(!inT[i]){const d=planDist(pts[bi],pts[i]);if(d<best[i])best[i]=d}}return tot}
 function planGeo(){
   const it=planItems();const F=it.filter(i=>i.k==='f'),C=it.filter(i=>i.k==='c').sort((a,b)=>(a.i||0)-(b.i||0)).slice(0,2),ch=it.find(i=>i.k==='ch');
-  const asg=F.map(f=>{let j=0,d=Infinity;C.forEach((c,k)=>{const dd=planDist(f,c);if(dd<d){d=dd;j=k}});const r=C[j]?routeFor(f,C[j]):[f];return {f,j,d:C[j]?polyLen(r):0,r}});
+  const asn=(quote.plan&&quote.plan.assign)||{};const asg=F.map(f=>{let j=0,d=Infinity;C.forEach((c,k)=>{const dd=planDist(f,c);if(dd<d){d=dd;j=k}});if(f.id&&asn[f.id]!=null){const k2=C.findIndex(c=>(c.i||0)===asn[f.id]);if(k2>=0)j=k2}const r=C[j]?routeFor(f,C[j]):[f];return {f,j,d:C[j]?polyLen(r):0,r}});
   const Lq=k=>k&&quote.L2!=null&&quote.L2!==''?+quote.L2:(+quote.L||0);
   const all=C.map((c,k)=>{const a=asg.filter(x=>x.j===k);const rc=ch?routeFor(c,ch):null;const custom=a.some(x=>routeWps(x.f).length);
     return {n:a.length,LF:r1(2*a.reduce((t,x)=>t+x.d,0)),DF:r1(a.reduce((m,x)=>Math.max(m,x.d),0)),L:ch?r1(polyLen(rc)):Lq(k),c,rc,mst:custom?unionLen(a.flatMap(x=>legs(x.r))):mstLen([c,...a.map(x=>x.f)])}});
@@ -680,6 +680,11 @@ function planSVG(){const p=quote.plan||{w:60};const V=planView(),w=V.w,h=V.h,X0=
   if(edit)planLinks().forEach(L=>{const r=routeFor(L.a,L.b);const wn=routeWps(L.a).length;
     routeHandles(L,u).H.forEach(hh=>{const mx=hh.x,my=hh.y;s+=`<g class="pl-h"><circle cx="${mx}" cy="${my}" r="${u*1.05}" fill="var(--panel)" stroke="var(--racc)" stroke-width="1.5" vector-effect="non-scaling-stroke"/><path d="M${mx-u*.55} ${my}H${mx+u*.55}M${mx} ${my-u*.55}V${my+u*.55}" stroke="var(--racc)" stroke-width="1.5" vector-effect="non-scaling-stroke"/></g>`});
     if(wn)r.slice(1,-1).forEach(q=>{const z=u*.95;s+=`<rect x="${q.x-z}" y="${q.y-z}" width="${2*z}" height="${2*z}" fill="var(--racc)" stroke="var(--panel)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`})});
+  if(plTool==='tr'&&plLink){const P=[plLink.from,...plLink.pts,...(plLinkHover?[plLinkHover]:[])];
+    s+=`<polyline points="${P.map(q=>q.x+','+q.y).join(' ')}" fill="none" stroke="var(--racc)" stroke-width="3" stroke-dasharray="8 5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+    plLink.pts.forEach(q=>{const z=u*.8;s+=`<rect x="${q.x-z}" y="${q.y-z}" width="${2*z}" height="${2*z}" fill="var(--racc)"/>`});
+    s+=`<circle cx="${plLink.from.x}" cy="${plLink.from.y}" r="${u*2}" fill="none" stroke="var(--racc)" stroke-width="2.5" vector-effect="non-scaling-stroke"/>`;
+    if(plLinkHover){const d=polyLen(P);s+=`<text x="${plLinkHover.x+u*1.5}" y="${plLinkHover.y-u*1.5}" font-size="${fi*.85}" font-weight="700" fill="var(--racc)" font-family="IBM Plex Mono,monospace" ${halo}>${nf(r1(d))} m</text>`}}
   if(plTool==='cal'&&plCal.A){const mk=(q,t)=>`<g><path d="M${q.x-ui*1.6} ${q.y}H${q.x+ui*1.6}M${q.x} ${q.y-ui*1.6}V${q.y+ui*1.6}" stroke="#D2321E" stroke-width="2" vector-effect="non-scaling-stroke"/><text x="${q.x+ui*1.2}" y="${q.y-ui*1.2}" font-size="${fi}" font-weight="700" fill="#D2321E" font-family="Barlow,sans-serif" ${halo}>${t}</text></g>`;
     if(plCal.B)s+=`<line x1="${plCal.A.x}" y1="${plCal.A.y}" x2="${plCal.B.x}" y2="${plCal.B.y}" stroke="#D2321E" stroke-width="2" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>`+mk(plCal.B,'B');s+=mk(plCal.A,'A')}
   /* cotes pendant le déplacement d'un élément : distances aux voisins les plus proches et longueur de sa liaison */
@@ -858,7 +863,7 @@ function planLocks(){const on=planOn(),ch=on&&planGeo().ch;
   [['N',on],['E',on],['nc',on],['N2',on],['L',ch],['L2',ch]].forEach(([k,lk])=>{const el=$('#q-'+k);if(!el)return;el.disabled=!!lk;el.title=lk?'Donné par le plan d’implantation':''});
   const cl=$('#q-coll');if(cl){cl.disabled=on;cl.title=on?'Les longueurs viennent du plan':''}}
 /* ---------- fond de plan importé (PDF, DWG, DXF, image) ---------- */
-let plCal={},plLastFile=null;
+let plCal={},plLastFile=null,plLink=null,plLinkHover=null;
 function plSetFull(on){plFull=on;const c=$('#plan-card');if(c)c.classList.toggle('pl-full',on);document.body.style.overflow=on?'hidden':'';const b=$('#pl-full');if(b)b.textContent=on?'Quitter le plein écran':'Plein écran';
   requestAnimationFrame(()=>{if(on&&bgOn())planFit(true);planDraw()})}
 document.addEventListener('wheel',e=>{const svg=e.target.closest&&e.target.closest('#pl-svg');if(!svg)return;e.preventDefault();const V=planView(),r=svg.getBoundingClientRect(),k=V.w/r.width;
@@ -874,7 +879,8 @@ function planBgUpdate(){const L=$('#pl-bgl');if(!L)return;const p=quote.plan||{w
   if(!im){im=document.createElementNS('http://www.w3.org/2000/svg','image');im.id='pl-bgimg';im.setAttribute('preserveAspectRatio','none');L.appendChild(im)}
   if(im.getAttribute('href')!==b.src)im.setAttribute('href',b.src);
   im.setAttribute('x',b.x);im.setAttribute('y',b.y);im.setAttribute('width',b.iw*b.mpp);im.setAttribute('height',b.ih*b.mpp);im.setAttribute('opacity',b.op??.6)}
-function plHint(){if(plTool==='tr')return 'Tracé des liaisons : tirer un <b>+</b> pour créer un point de passage, déplacer les carrés pour modifier le tracé ; double-clic (ou Gomme) sur un carré pour le supprimer. Les longueurs de PE, la tranchée et la perte de charge suivent le tracé.';
+function plHint(){if(plTool==='tr'){if(plLink)return `Tracé en cours depuis ${plLink.from.k==='f'?'le forage':'le collecteur'} : cliquer les points de passage, puis <b>${plLink.from.k==='f'?'un collecteur':'la chaufferie'}</b> pour terminer (${plLink.pts.length} point${pl(plLink.pts.length)}). Échap ou clic sur le point de départ pour annuler.`;
+    return 'Tracer une liaison soi-même : cliquer un <b>forage</b> (ou un collecteur), puis les points de passage, puis le <b>collecteur</b> (ou la chaufferie) d’arrivée — le forage est alors rattaché à ce collecteur. Modifier : tirer un <b>+</b> ou déplacer les carrés ; double-clic (ou Gomme) sur un carré pour le supprimer. Les longueurs de PE, la tranchée et la perte de charge suivent le tracé.'}
   if(plTool==='zone'){const Z=quote.plan&&quote.plan.zone,N=+quote.N||0,E=+quote.E||0;
     const warn=bgOn()&&!quote.plan.bg.cal?' <b class="bad">L’échelle du fond n’est pas calée : la zone et les espacements ne correspondront pas à la photo.</b>':'';
     if(!Z||!Z.closed)return `Zone de forage : cliquer les coins de la zone autorisée (à l’échelle du plan), puis cliquer le 1er point (ou double-clic) pour la fermer. <button class="btn sm ghost danger" id="pl-zdel" ${Z&&Z.pts.length?'':'disabled'}>Effacer</button>${warn}`;
@@ -1088,7 +1094,7 @@ function kmlPlacePoints(){const p=planObj(),b=p.bg;if(!b||!b.geo||!b.kpts||!b.kp
     if(isCh(nm)){if(!items.some(i=>i.k==='ch'))items.push({k:'ch',...pt})}
     else if(isC(nm)){const m=/(\d+)/.exec(nm);const i=m?Math.min(1,Math.max(0,+m[1]-1)):ci;if(ci<2&&!items.some(x=>x.k==='c'&&x.i===i)){items.push({k:'c',i,...pt});ci++}}
     else if(isF(nm)||!named)items.push({k:'f',...pt})});
-  p.items=items;p.routes={};const nF=items.filter(i=>i.k==='f').length;planChanged();
+  p.items=items;p.routes={};p.assign={};const nF=items.filter(i=>i.k==='f').length;planChanged();
   toast(`${nF} forage${pl(nF)}${items.some(i=>i.k==='c')?', collecteur(s)':''}${items.some(i=>i.k==='ch')?', chaufferie':''} placés depuis le KML`)}
 /* export KML : positions réelles, à ouvrir dans Google Earth */
 async function planKml(){if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}const b=quote.plan&&quote.plan.bg;if(!b||!b.geo){toast('Importer d’abord un fond KML/KMZ');return}
@@ -1124,7 +1130,7 @@ function routeHit(pt){const w=planView().w;const r=w/45,u=planSymU(w);let best=n
     if(wn)rt.slice(1,-1).forEach((q,k)=>{const d=Math.hypot(q.x-pt.x,q.y-pt.y);if(d<=bd){bd=d;best={key,idx:k,L}}});
     routeHandles(L,u).H.forEach(hh=>{const d=Math.hypot(hh.x-pt.x,hh.y-pt.y);if(d<bd){bd=d;best={key,ins:hh.ins,L,rt}}})});
   return best}
-function routeClean(){const p=planObj();if(!p.routes)return;const keys=new Set(planLinks().map(L=>routeKey(L.a)));Object.keys(p.routes).forEach(k=>{if(!keys.has(k)||!(p.routes[k]||[]).length)delete p.routes[k]})}
+function routeClean(){const p=planObj();if(p.assign){const ids=new Set(planItems().filter(i=>i.k==='f').map(i=>i.id));Object.keys(p.assign).forEach(k=>{if(!ids.has(k))delete p.assign[k]})}if(!p.routes)return;const keys=new Set(planLinks().map(L=>routeKey(L.a)));Object.keys(p.routes).forEach(k=>{if(!keys.has(k)||!(p.routes[k]||[]).length)delete p.routes[k]})}
 function planHit(pt){const w=planView().w;const r=w/40;let best=null,bd=r;planItems().forEach(i=>{const d=Math.hypot(i.x-pt.x,i.y-pt.y);if(d<=bd){bd=d;best=i}});return best}
 function planChanged(){routeClean();const p=planObj();if(!p.on&&!p.userOff&&planItems().some(i=>i.k==='f')&&planItems().some(i=>i.k==='c'))p.on=true;planSync();markDirty();renderDevisKeepScroll()}
 function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.preventDefault();const p=planObj();
@@ -1139,7 +1145,14 @@ function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.pr
   if(plTool==='cal'||plTool==='bg'){const bg=p.bg;if(!bg){toast('Importer d’abord un fond de plan');return}const q=planRaw(e);
     if(plTool==='cal'){if(!plCal.A||plCal.B)plCal={A:q};else plCal.B=q;hintUpdate();planDraw();const ci=$('#pl-caldist');if(ci)ci.focus();return}
     plDrag={bg:true,sx:q.x,sy:q.y,ox:bg.x,oy:bg.y,moved:false};svg.setPointerCapture?.(e.pointerId);return}
+  if(plTool==='tr'&&plLink){const hit=planHit(pt),want=plLink.from.k==='f'?'c':'ch';
+    if(hit&&hit.k===want){p.routes=p.routes||{};p.routes[routeKey(plLink.from)]=plLink.pts.map(q=>({x:q.x,y:q.y}));
+      if(plLink.from.k==='f'){p.assign=p.assign||{};p.assign[plId(plLink.from)]=hit.i||0}
+      const L=plLink;plLink=null;plLinkHover=null;planChanged();toast(`Liaison ${L.from.k==='f'?'du forage → C'+((hit.i||0)+1):'du collecteur → chaufferie'} tracée`);return}
+    if(hit&&hit===plLink.from){plLink=null;plLinkHover=null;hintUpdate();planDraw();return}
+    plLink.pts.push({x:pt.x,y:pt.y});hintUpdate();planDraw();return}
   if(plTool==='tr'||plTool==='del'){const rh=routeHit(pt);if(rh&&rh.idx!=null){if(plTool==='del'){p.routes[rh.key].splice(rh.idx,1);planChanged();return}plDrag={wp:rh,moved:false};svg.setPointerCapture?.(e.pointerId);return}
+    if(plTool==='tr'&&!(rh&&rh.ins!=null)){const hit=planHit(pt);if(hit&&(hit.k==='f'||hit.k==='c')){plLink={from:hit,pts:[]};plLinkHover=null;hintUpdate();planDraw();return}}
     if(plTool==='tr'){if(rh&&rh.ins!=null){p.routes=p.routes||{};if(!routeWps(rh.L.a).length)p.routes[rh.key]=rh.rt.slice(1,-1).map(q=>({x:q.x,y:q.y}));p.routes[rh.key].splice(rh.ins,0,{x:pt.x,y:pt.y});
       plDrag={wp:{key:rh.key,idx:rh.ins},moved:true};svg.setPointerCapture?.(e.pointerId);planDraw()}return}}
   const hit=planHit(pt);
@@ -1149,7 +1162,7 @@ function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.pr
   else if(plTool==='c0'||plTool==='c1'){const ci=plTool==='c1'?1:0;p.items=p.items.filter(i=>!(i.k==='c'&&(i.i||0)===ci));p.items.push({k:'c',i:ci,x:pt.x,y:pt.y})}
   else if(plTool==='ch'){p.items=p.items.filter(i=>i.k!=='ch');p.items.push({k:'ch',x:pt.x,y:pt.y})}
   planChanged()}
-function onPlanMove(e){if(!plDrag){if(plTool==='zone'&&quote.plan&&quote.plan.zone&&!quote.plan.zone.closed&&quote.plan.zone.pts.length&&e.target.closest&&e.target.closest('#pl-svg')){plZoneHover=planPt(e);planDraw()}return}if(plDrag.zv!=null){const q=planPt(e),v=quote.plan.zone.pts[plDrag.zv];if(v&&(v.x!==q.x||v.y!==q.y)){v.x=q.x;v.y=q.y;plDrag.moved=true;planDraw()}return}if(plDrag.pan){const p=quote.plan;p.vx=plDrag.vx-(e.clientX-plDrag.sx)*plDrag.k;p.vy=plDrag.vy-(e.clientY-plDrag.sy)*plDrag.k;planDraw();return}if(plDrag.bg){const q=planRaw(e),bg=quote.plan.bg;bg.x=plDrag.ox+q.x-plDrag.sx;bg.y=plDrag.oy+q.y-plDrag.sy;plDrag.moved=true;planBgUpdate();return}const pt=planPt(e);if(plDrag.wp){const w=quote.plan.routes[plDrag.wp.key][plDrag.wp.idx];if(w&&(w.x!==pt.x||w.y!==pt.y)){w.x=pt.x;w.y=pt.y;plDrag.moved=true;planDraw()}return}if(pt.x!==plDrag.it.x||pt.y!==plDrag.it.y){plDrag.it.x=pt.x;plDrag.it.y=pt.y;plDrag.moved=true;planDraw()}}
+function onPlanMove(e){if(!plDrag&&plTool==='tr'&&plLink&&e.target.closest&&e.target.closest('#pl-svg')){plLinkHover=planPt(e);planDraw();return}if(!plDrag){if(plTool==='zone'&&quote.plan&&quote.plan.zone&&!quote.plan.zone.closed&&quote.plan.zone.pts.length&&e.target.closest&&e.target.closest('#pl-svg')){plZoneHover=planPt(e);planDraw()}return}if(plDrag.zv!=null){const q=planPt(e),v=quote.plan.zone.pts[plDrag.zv];if(v&&(v.x!==q.x||v.y!==q.y)){v.x=q.x;v.y=q.y;plDrag.moved=true;planDraw()}return}if(plDrag.pan){const p=quote.plan;p.vx=plDrag.vx-(e.clientX-plDrag.sx)*plDrag.k;p.vy=plDrag.vy-(e.clientY-plDrag.sy)*plDrag.k;planDraw();return}if(plDrag.bg){const q=planRaw(e),bg=quote.plan.bg;bg.x=plDrag.ox+q.x-plDrag.sx;bg.y=plDrag.oy+q.y-plDrag.sy;plDrag.moved=true;planBgUpdate();return}const pt=planPt(e);if(plDrag.wp){const w=quote.plan.routes[plDrag.wp.key][plDrag.wp.idx];if(w&&(w.x!==pt.x||w.y!==pt.y)){w.x=pt.x;w.y=pt.y;plDrag.moved=true;planDraw()}return}if(pt.x!==plDrag.it.x||pt.y!==plDrag.it.y){plDrag.it.x=pt.x;plDrag.it.y=pt.y;plDrag.moved=true;planDraw()}}
 function onPlanUp(){if(!plDrag)return;if(plDrag.pan){plDrag=null;return}if(plDrag.zv!=null){const m=plDrag.moved;plDrag=null;if(m){markDirty();hintUpdate();planDraw()}return}const m=plDrag.moved,isBg=plDrag.bg;plDrag=null;if(m){if(isBg)markDirty();else planChanged()}}
 /* ---------- zone de forage : implantation automatique ---------- */
 let plZoneHover=null;
@@ -1197,7 +1210,7 @@ function zoneImplant(){const p=planObj(),Z=p.zone;if(!Z||!Z.closed||Z.pts.length
         const md=geoMedian(g),cand=[];for(let a2=0;a2<g.length;a2++)for(let b2=a2+1;b2<g.length;b2++){const d=Math.hypot(g[a2].x-g[b2].x,g[a2].y-g[b2].y);if(d<=E*1.1)cand.push({x:(g[a2].x+g[b2].x)/2,y:(g[a2].y+g[b2].y)/2})}
         const cost=q=>g.reduce((t,f)=>t+Math.hypot(f.x-q.x,f.y-q.y),0)+.3*Math.hypot(q.x-anchor.x,q.y-anchor.y);const m=cand.length?cand.reduce((bst,q)=>cost(q)<cost(bst)?q:bst,cand[0]):md;
         return {k:'c',i,x:Math.round(m.x*10)/10,y:Math.round(m.y*10)/10}})}
-    p.items=[...(ch?[ch]:[]),...F,...C];p.routes={};p.on=true;p.userOff=false;plTool='f';
+    p.items=[...(ch?[ch]:[]),...F,...C];p.routes={};p.assign={};p.on=true;p.userOff=false;plTool='f';
     planChanged();{const V=planView();if(F.some(i=>i.x<V.x||i.x>V.x+V.w||i.y<V.y||i.y>V.y+V.h)){planFit(false);planDraw()}}
     const pat=best.pat==='carre'?'en carré':'en quinconce';
     toast(inZ<N?`${N} forages implantés ${pat} à ${nf(E)} m : ${inZ} dans la zone, ${N-inZ} juste autour (à déplacer si besoin)`:`${N} forages implantés ${pat} à ${nf(E)} m, orientation ${best.ad}°${keepC?' (collecteur conservé)':''}`)},30)}
@@ -1215,11 +1228,11 @@ function planGen(){const p=planObj();const N=+quote.N||0;if(!N){toast('Indiquer 
   else{const xs=items.map(i=>i.x),ys=items.map(i=>i.y),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
     const b=p.bg,V=planView();const c=bgOn()?{x:b.x+b.iw*b.mpp/2,y:b.y+b.ih*b.mpp/2}:{x:V.x+V.w/2,y:V.y+V.h/2};ox=c.x-(x0+x1)/2;oy=c.y-(y0+y1)/2}
   items.forEach(i=>{i.x=Math.round((i.x+ox)*10)/10;i.y=Math.round((i.y+oy)*10)/10});
-  p.items=items;p.routes={};p.on=true;p.userOff=false;{const V=planView();if(items.some(i=>i.x<V.x||i.x>V.x+V.w||i.y<V.y||i.y>V.y+V.h))planFit(false)}if(bgOn()&&!p.bg.cal)setTimeout(()=>toast('Attention : l’échelle du fond n’est pas calée, les forages (en mètres réels) ne correspondent pas encore à la photo'),2600);planSync();markDirty();renderDevisKeepScroll();toast('Plan placé : déplacer les points pour coller au terrain')}
+  p.items=items;p.routes={};p.assign={};p.on=true;p.userOff=false;{const V=planView();if(items.some(i=>i.x<V.x||i.x>V.x+V.w||i.y<V.y||i.y>V.y+V.h))planFit(false)}if(bgOn()&&!p.bg.cal)setTimeout(()=>toast('Attention : l’échelle du fond n’est pas calée, les forages (en mètres réels) ne correspondent pas encore à la photo'),2600);planSync();markDirty();renderDevisKeepScroll();toast('Plan placé : déplacer les points pour coller au terrain')}
 document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#pl-svg'))onPlanDown(e)});
 document.addEventListener('dblclick',e=>{if(plTool==='zone'&&e.target.closest&&e.target.closest('#pl-svg')){const Z=quote.plan&&quote.plan.zone;if(Z&&!Z.closed){/* le double-clic a ajouté 2 points identiques */const P=Z.pts;while(P.length>1&&Math.hypot(P[P.length-1].x-P[P.length-2].x,P[P.length-1].y-P[P.length-2].y)<.01)P.pop();if(P.length>=3){Z.closed=true;plZoneHover=null;markDirty();renderDevisKeepScroll()}}return}});
 document.addEventListener('dblclick',e=>{if(!(e.target.closest&&e.target.closest('#pl-svg'))||plTool!=='tr')return;const rh=routeHit(planPt(e));if(rh&&rh.idx!=null){quote.plan.routes[rh.key].splice(rh.idx,1);planChanged()}});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&plFull){plSetFull(false);return}if(e.key==='Enter'&&e.target&&(e.target.id==='pl-caldist'||e.target.id==='pl-bgech'||e.target.id==='pl-bgrot'||e.target.id==='pl-bgwid')){e.preventDefault();const b=$('#'+(e.target.id==='pl-caldist'?'pl-calok':e.target.id+'-ok'));if(b)b.click()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&plLink){plLink=null;plLinkHover=null;hintUpdate();planDraw();return}if(e.key==='Escape'&&plFull){plSetFull(false);return}if(e.key==='Enter'&&e.target&&(e.target.id==='pl-caldist'||e.target.id==='pl-bgech'||e.target.id==='pl-bgrot'||e.target.id==='pl-bgwid')){e.preventDefault();const b=$('#'+(e.target.id==='pl-caldist'?'pl-calok':e.target.id+'-ok'));if(b)b.click()}});
 document.addEventListener('pointermove',onPlanMove);document.addEventListener('pointerup',onPlanUp);document.addEventListener('pointercancel',onPlanUp);
 
 function lineRow(l,v){
@@ -1420,8 +1433,8 @@ function onDevisChange(e){
 function renderDevisKeepScroll(){const y=window.scrollY;renderDevis();window.scrollTo(0,y)}
 function onDevisClick(e){
   const b=e.target.closest('button');if(!b)return;
-  if(b.dataset.pltool){plTool=b.dataset.pltool;document.querySelectorAll('[data-pltool]').forEach(x=>x.classList.toggle('primary',x===b));const sv=$('#pl-svg');if(sv)sv.classList.toggle('pl-edit',plTool==='tr');if(sv)sv.classList.toggle('pl-move',plTool==='bg');if(sv)sv.classList.toggle('pl-pan',plTool==='pan');plCal={};hintUpdate();planDraw();return}
-  if(b.id==='pl-straight'){if(confirm('Supprimer tous les points de passage des liaisons ?')){planObj().routes={};planChanged()}return}
+  if(b.dataset.pltool){plTool=b.dataset.pltool;document.querySelectorAll('[data-pltool]').forEach(x=>x.classList.toggle('primary',x===b));const sv=$('#pl-svg');if(sv)sv.classList.toggle('pl-edit',plTool==='tr');if(sv)sv.classList.toggle('pl-move',plTool==='bg');if(sv)sv.classList.toggle('pl-pan',plTool==='pan');plCal={};plLink=null;plLinkHover=null;hintUpdate();planDraw();return}
+  if(b.id==='pl-straight'){if(confirm('Supprimer tous les points de passage des liaisons et les rattachements choisis à la main ?')){planObj().routes={};planObj().assign={};planChanged()}return}
   if(b.id==='pl-pdf'){planPdf();return}
   if(b.id==='pl-zdel'){const p=planObj();delete p.zone;plZoneHover=null;markDirty();renderDevisKeepScroll();return}
   if(b.id==='pl-zimpl'){const m=pnum(($('#pl-zmarg')||{}).value);zoneObj().marg=m==null?1:Math.max(0,m);const ac=$('#pl-zautoc');if(ac)zoneObj().autoC=ac.checked;zoneImplant();return}
@@ -1444,7 +1457,7 @@ function onDevisClick(e){
   if(b.id==='pl-png'){planPng();return}
   if(b.id==='pl-dxf'){planDxf();return}
   if(b.id==='pl-gen'){const Z=quote.plan&&quote.plan.zone;if(Z&&Z.closed&&Z.pts.length>2){const ac=$('#pl-zautoc');if(ac)Z.autoC=ac.checked;zoneImplant();return}if(planItems().length&&!confirm('Remplacer le plan actuel par une implantation en ligne ?'))return;planGen();return}
-  if(b.id==='pl-clear'){if(!planItems().length||confirm('Effacer tout le plan ?')){const p=planObj();p.items=[];p.routes={};p.on=false;markDirty();renderDevisKeepScroll()}return}
+  if(b.id==='pl-clear'){if(!planItems().length||confirm('Effacer tout le plan ?')){const p=planObj();p.items=[];p.routes={};p.assign={};p.on=false;markDirty();renderDevisKeepScroll()}return}
   if(b.dataset.reset){delete quote.q[b.dataset.reset];markDirty();renderDevisKeepScroll();return}
   if(b.dataset.addx){quote.extra.push({id:'x_'+Math.random().toString(36).slice(2,8),sec:b.dataset.addx,grp:'Lignes libres',name:'',unit:'u',price:0,qty:1});markDirty();renderDevisKeepScroll();
     const rows=document.querySelectorAll(`[data-sec="${b.dataset.addx}"] tr.line`);const last=[...rows].pop();last?.querySelector('input')?.focus();return}
