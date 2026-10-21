@@ -225,6 +225,14 @@ table.list tr.row:hover td{background:var(--panel2)}
 .pl-svg{display:block;width:100%;height:auto;aspect-ratio:5/3;touch-action:none;cursor:crosshair;user-select:none}
 .pl-ic{display:inline-block;width:10px;height:10px;flex:none}.pl-ic-f{border-radius:50%;background:var(--forage)}.pl-ic-c0,.pl-ic-c1{border-radius:2px;background:var(--racc)}.pl-ic-ch{border-radius:2px;background:var(--loc);width:14px}.pl-ic-del{border:1.5px solid currentColor;border-radius:2px}
 .btn.primary .pl-ic{outline:1.5px solid var(--accent-ink)}
+.pl-wrap{box-shadow:inset 0 0 0 1px var(--line)}
+.pl-leg{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:8px;font-size:12px;color:var(--ink2)}.pl-leg span{display:inline-flex;align-items:center;gap:6px}
+.pl-ln{display:inline-block;width:18px;height:2px;background:var(--racc);border-radius:1px}.pl-ln2{height:4px}.pl-tr{height:7px;background:var(--forage-soft);border-radius:4px}
+.pl-ic-f{background:var(--panel)!important;border:2.5px solid var(--forage);width:11px;height:11px}
+.pl-exp{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:12px;padding:10px 12px;background:var(--panel2);border-radius:8px}
+.pl-exp-t{font-weight:700;font-size:13px;margin-right:4px}.pl-exp-b{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-left:auto}
+.pl-exp select{color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:3px 6px;margin-left:4px}
+.pl-nord{display:inline-block;width:70px;margin-left:4px;vertical-align:middle}.pl-nord input{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:3px 22px 3px 6px;color:var(--ink);font-family:var(--mono)}
 .banner{padding:10px 14px;border-radius:8px;background:var(--forage-soft);color:var(--ink);font-size:14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--ground);padding:9px 16px;border-radius:8px;font-weight:600;font-size:14px;z-index:50;box-shadow:var(--shadow)}
@@ -582,8 +590,10 @@ function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tool
   <label class="status">Tracé <select id="pl-trace"><option value="droit" ${p.trace!=='equerre'?'selected':''}>en ligne droite</option><option value="equerre" ${p.trace==='equerre'?'selected':''}>en équerre</option></select></label>
   <button class="btn sm" id="pl-gen" title="Place les forages en ligne avec les valeurs du dimensionnement">Placer depuis le dimensionnement</button><button class="btn sm ghost danger" id="pl-clear">Tout effacer</button></div></div>
   <div class="pl-wrap"><svg id="pl-svg" class="pl-svg" viewBox="0 0 ${+p.w||60} ${Math.round((+p.w||60)*0.6)}" role="img" aria-label="Plan d’implantation">${planSVG()}</svg></div>
+  <div class="pl-leg"><span><i class="pl-ic pl-ic-f"></i>Forage</span><span><i class="pl-ic pl-ic-c0"></i>Collecteur</span><span><i class="pl-ic pl-ic-ch"></i>Chaufferie</span><span><i class="pl-ln"></i>Liaison PE</span><span><i class="pl-ln pl-ln2"></i>vers chaufferie</span><span><i class="pl-ln pl-tr"></i>Tranchée indicative</span></div>
   <p class="help" id="pl-info" style="margin:8px 0 0">${planInfo()}</p>
-  <p class="note" style="padding:4px 0 0">Choisir un outil puis cliquer sur la grille ; on peut déplacer un point en le faisant glisser. Chaque forage est relié au collecteur le plus proche. Liaisons aller + retour ; tranchée estimée par le chemin le plus court qui relie les forages de chaque collecteur, plus les liaisons vers la chaufferie. Sans chaufferie placée, les longueurs collecteur → chaufferie restent celles saisies.</p>
+  <div id="pl-exp-w">${planExpHTML()}</div>
+  <p class="note" style="padding:4px 0 0">Choisir un outil puis cliquer sur la grille ; on peut déplacer un point en le faisant glisser. Chaque forage est relié au collecteur le plus proche. Liaisons aller + retour ; tranchée estimée par le chemin le plus court qui relie les forages de chaque collecteur, plus les liaisons vers la chaufferie. Sans chaufferie placée, les longueurs collecteur → chaufferie restent celles saisies. Exports : PDF à imprimer à 100 % (taille réelle) pour le superposer à un plan de masse à la même échelle ; PNG à fond transparent (1 m = la résolution choisie) pour une vue satellite ; DXF en mètres réels pour AutoCAD.</p>
   </div></div>`}
 function planInfo(){const it=planItems();if(!it.length)return 'Plan vide : placer les forages, le ou les collecteurs et la chaufferie, ou partir du dimensionnement.';
   const pg=planGeo();const parts=[`<b>${pg.N}</b> forage${pl(pg.N)}`];
@@ -593,21 +603,184 @@ function planInfo(){const it=planItems();if(!it.length)return 'Plan vide : place
   const on=quote.plan&&quote.plan.on;
   return parts.join(' · ')+(miss.length?` · <span class="warnc">manque ${miss.join(' et ')}</span>`:'')+(on?(planOn()?' · <span class="good">longueurs du chiffrage prises sur le plan</span>':''):' · <span class="status">cocher « Utiliser le plan » pour l’appliquer au chiffrage</span>')}
 function planSVG(){const p=quote.plan||{w:60};const w=+p.w||60,h=Math.round(w*0.6);const it=planItems();
-  const st=w<=30?1:w<=60?2:w<=150?5:w<=300?10:25,maj=st*5;const fs=w/48,rr=w/110;
-  let s=`<rect x="0" y="0" width="${w}" height="${h}" fill="var(--panel2)"/>`;
-  for(let x=0;x<=w+1e-9;x+=st)s+=`<line x1="${x}" x2="${x}" y1="0" y2="${h}" stroke="var(--line)" stroke-width="${Math.abs(x/maj-Math.round(x/maj))<1e-6?1.2:.5}" vector-effect="non-scaling-stroke"/>`;
-  for(let y=0;y<=h+1e-9;y+=st)s+=`<line y1="${y}" y2="${y}" x1="0" x2="${w}" stroke="var(--line)" stroke-width="${Math.abs(y/maj-Math.round(y/maj))<1e-6?1.2:.5}" vector-effect="non-scaling-stroke"/>`;
-  const eq=p.trace==='equerre';const seg=(a,b,col,wd,dash)=>eq?`<polyline points="${a.x},${a.y} ${b.x},${a.y} ${b.x},${b.y}" fill="none" stroke="${col}" stroke-width="${wd}" ${dash?'stroke-dasharray="4 3"':''} vector-effect="non-scaling-stroke"/>`:`<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="${col}" stroke-width="${wd}" ${dash?'stroke-dasharray="4 3"':''} vector-effect="non-scaling-stroke"/>`;
-  const pg=planGeo();
-  pg.asg.forEach(a=>{const c=pg.C[a.j];if(c)s+=seg(a.f,c,'var(--racc)',1.4,true)});
-  if(pg.ch)pg.C.forEach(c=>{s+=seg(c,pg.ch,'var(--racc)',3,false);const mx=eq?pg.ch.x:(c.x+pg.ch.x)/2,my=eq?c.y:(c.y+pg.ch.y)/2;s+=`<text x="${mx}" y="${my-fs*.6}" text-anchor="middle" font-size="${fs}" fill="var(--ink)" font-family="IBM Plex Mono,monospace" paint-order="stroke" stroke="var(--panel2)" stroke-width="${fs/4}">${nf(r1(planDist(c,pg.ch)))} m</text>`});
-  let nF=0;for(const i of it){if(i.k==='f'){nF++;s+=`<circle cx="${i.x}" cy="${i.y}" r="${rr*1.6}" fill="var(--forage)" stroke="var(--panel)" stroke-width="1" vector-effect="non-scaling-stroke"/><text x="${i.x}" y="${i.y-rr*2.4}" text-anchor="middle" font-size="${fs*.8}" fill="var(--ink2)" font-family="IBM Plex Mono,monospace">${nF}</text>`}}
-  for(const i of it){if(i.k==='c'){const z=rr*2.6;s+=`<rect x="${i.x-z}" y="${i.y-z}" width="${2*z}" height="${2*z}" rx="${z/4}" fill="var(--racc)"/><text x="${i.x}" y="${i.y+fs*.35}" text-anchor="middle" font-size="${fs*.85}" font-weight="700" fill="var(--accent-ink)" font-family="Barlow,sans-serif">C${(i.i||0)+1}</text>`}
-    if(i.k==='ch'){const zw=Math.max(rr*7,fs*5.2),zh=Math.max(rr*3.6,fs*1.5);s+=`<rect x="${i.x-zw/2}" y="${i.y-zh/2}" width="${zw}" height="${zh}" rx="${zh/6}" fill="var(--loc)"/><text x="${i.x}" y="${i.y+fs*.35}" text-anchor="middle" font-size="${fs*.8}" font-weight="700" fill="var(--panel)" font-family="Barlow,sans-serif">Chaufferie</text>`}}
-  /* échelle */
-  const sb=maj;s+=`<g font-family="IBM Plex Mono,monospace" font-size="${fs*.85}" fill="var(--ink2)"><line x1="${w*.03}" x2="${w*.03+sb}" y1="${h-h*.05}" y2="${h-h*.05}" stroke="var(--ink)" stroke-width="2" vector-effect="non-scaling-stroke"/><text x="${w*.03+sb/2}" y="${h-h*.05-fs*.5}" text-anchor="middle">${sb} m</text></g>`;
+  const st=w<=30?1:w<=60?2:w<=150?5:w<=300?10:25,maj=st*5;const u=w/100,fs=u*1.9;
+  let s=`<rect x="0" y="0" width="${w}" height="${h}" fill="var(--panel)"/>`;
+  for(let x=st;x<w;x+=st){const M=Math.abs(x/maj-Math.round(x/maj))<1e-6;s+=`<line x1="${x}" x2="${x}" y1="0" y2="${h}" stroke="var(--line)" stroke-width="${M?1:.5}" opacity="${M?1:.6}" vector-effect="non-scaling-stroke"/>`}
+  for(let y=st;y<h;y+=st){const M=Math.abs(y/maj-Math.round(y/maj))<1e-6;s+=`<line y1="${y}" y2="${y}" x1="0" x2="${w}" stroke="var(--line)" stroke-width="${M?1:.5}" opacity="${M?1:.6}" vector-effect="non-scaling-stroke"/>`}
+  if(!it.length)s+=`<text x="${w/2}" y="${h/2}" text-anchor="middle" font-size="${fs*1.2}" fill="var(--ink3)" font-family="Barlow,sans-serif">Choisir un outil puis cliquer pour placer forages, collecteurs et chaufferie</text>`;
+  const eq=p.trace==='equerre';const path=(a,b)=>eq?`M${a.x} ${a.y}H${b.x}V${b.y}`:`M${a.x} ${a.y}L${b.x} ${b.y}`;
+  const pg=planGeo();let lf='',lc='';
+  pg.asg.forEach(a=>{const c=pg.C[a.j];if(c)lf+=path(a.f,c)});if(pg.ch)pg.C.forEach(c=>{lc+=path(c,pg.ch)});
+  /* bande de tranchée (indicative), puis liaisons PE */
+  if(lf+lc)s+=`<path d="${lf}${lc}" fill="none" stroke="var(--forage-soft)" stroke-width="${u*2.2}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  if(lf)s+=`<path d="${lf}" fill="none" stroke="var(--racc)" stroke-width="1.6" stroke-linecap="round" opacity=".85" vector-effect="non-scaling-stroke"/>`;
+  if(lc)s+=`<path d="${lc}" fill="none" stroke="var(--racc)" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+  const pill=(x,y,t)=>{const tw=t.length*fs*.62+fs*.9,th=fs*1.45;return `<g><rect x="${x-tw/2}" y="${y-th/2}" width="${tw}" height="${th}" rx="${th/2}" fill="var(--panel)" stroke="var(--racc)" stroke-width="1" vector-effect="non-scaling-stroke"/><text x="${x}" y="${y+fs*.36}" text-anchor="middle" font-size="${fs}" font-weight="500" fill="var(--ink)" font-family="IBM Plex Mono,monospace">${t}</text></g>`};
+  if(pg.ch)pg.C.forEach(c=>{const ch=pg.ch;const mx=eq?ch.x:(c.x+ch.x)/2,my=eq?c.y:(c.y+ch.y)/2;s+=pill(mx,my,nf(r1(planDist(c,ch)))+' m')});
+  const halo=`paint-order="stroke" stroke="var(--panel)" stroke-width="${fs/3.5}" stroke-linejoin="round"`;
+  let nF=0;for(const i of it){if(i.k!=='f')continue;nF++;
+    s+=`<circle cx="${i.x}" cy="${i.y}" r="${u*1.35}" fill="var(--panel)" stroke="var(--forage)" stroke-width="2.4" vector-effect="non-scaling-stroke"/><circle cx="${i.x}" cy="${i.y}" r="${u*.5}" fill="var(--forage)"/>`+
+       `<text x="${i.x+u*1.7}" y="${i.y-u*1.5}" font-size="${fs*.82}" font-weight="600" fill="var(--forage)" font-family="Barlow,sans-serif" ${halo}>F${nF}</text>`}
+  for(const i of it){if(i.k==='c'){const z=u*2.3;s+=`<rect x="${i.x-z}" y="${i.y-z}" width="${2*z}" height="${2*z}" rx="${z/3}" fill="var(--racc)" stroke="var(--panel)" stroke-width="1.5" vector-effect="non-scaling-stroke"/><text x="${i.x}" y="${i.y+fs*.36}" text-anchor="middle" font-size="${fs*.9}" font-weight="700" fill="var(--accent-ink)" font-family="Barlow,sans-serif">C${(i.i||0)+1}</text>`}
+    if(i.k==='ch'){const q=u*1.25,x=i.x,y=i.y;s+=`<polygon points="${x-3*q},${y+1.8*q} ${x-3*q},${y-.5*q} ${x},${y-2.6*q} ${x+3*q},${y-.5*q} ${x+3*q},${y+1.8*q}" fill="var(--loc)" stroke="var(--panel)" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><rect x="${x-.55*q}" y="${y+.3*q}" width="${1.1*q}" height="${1.5*q}" fill="var(--panel)" opacity=".85"/><text x="${x}" y="${y+1.8*q+fs*1.1}" text-anchor="middle" font-size="${fs*.85}" font-weight="700" fill="var(--loc)" font-family="Barlow,sans-serif" ${halo}>Chaufferie</text>`}}
+  /* nord */
+  const nd=+p.nord||0,nx=w-u*5,ny=u*7;
+  s+=`<g transform="translate(${nx} ${ny}) rotate(${nd})"><circle r="${u*3.6}" fill="var(--panel)" stroke="var(--line)" stroke-width="1" vector-effect="non-scaling-stroke"/><polygon points="0,${-u*2.9} ${u*1.4},${u*1.8} 0,${u*.8} ${-u*1.4},${u*1.8}" fill="var(--ink)"/><text y="${-u*3.9}" text-anchor="middle" font-size="${fs*.9}" font-weight="700" fill="var(--ink)" font-family="Barlow,sans-serif">N</text></g>`;
+  /* barre d'échelle graduée */
+  const sx=u*3,sy=h-u*4,seg=maj/4,bh=u*.9;let sb='';
+  for(let k=0;k<4;k++)sb+=`<rect x="${sx+k*seg}" y="${sy}" width="${seg}" height="${bh}" fill="${k%2?'var(--panel)':'var(--ink)'}" stroke="var(--ink)" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+  s+=`<rect x="${sx-u}" y="${sy-fs*1.6}" width="${maj+u*2+fs*2}" height="${bh+fs*2.4}" rx="${u}" fill="var(--panel)" opacity=".85"/>`+sb+
+     `<g font-size="${fs*.8}" fill="var(--ink2)" font-family="IBM Plex Mono,monospace"><text x="${sx}" y="${sy-fs*.4}" text-anchor="middle">0</text><text x="${sx+maj/2}" y="${sy-fs*.4}" text-anchor="middle">${maj/2}</text><text x="${sx+maj}" y="${sy-fs*.4}" text-anchor="middle">${maj} m</text></g>`;
   return s}
-function planDraw(){const svg=$('#pl-svg');if(!svg)return;const p=quote.plan||{w:60};const w=+p.w||60;svg.setAttribute('viewBox',`0 0 ${w} ${Math.round(w*0.6)}`);svg.innerHTML=planSVG();const pin=$('#pl-info');if(pin)pin.innerHTML=planInfo()}
+/* ---------- plan : exports à l'échelle ---------- */
+const PL_SC=[50,100,200,250,500,1000,2000,2500,5000];
+function planBBox(pad){const it=planItems();let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;it.forEach(i=>{x0=Math.min(x0,i.x);y0=Math.min(y0,i.y);x1=Math.max(x1,i.x);y1=Math.max(y1,i.y)});
+  if(!isFinite(x0)){x0=y0=0;x1=y1=10}x0-=pad;y0-=pad;x1+=pad;y1+=pad;const cw=Math.max(10,x1-x0),ch=Math.max(8,y1-y0);const mx=(x0+x1)/2,my=(y0+y1)/2;
+  return {x0:mx-cw/2,y0:my-ch/2,w:cw,h:ch}}
+function planPaper(){const p=quote.plan||{};const A3=p.fmt==='A3';return {A3,PW:A3?420:297,PH:A3?297:210,aw:(A3?420:297)-20-80-6,ah:(A3?297:210)-20}}
+function planFitScale(){const P=planPaper();const bb=planBBox(3);return PL_SC.find(n=>bb.w*1000/n<=P.aw&&bb.h*1000/n<=P.ah)||PL_SC[PL_SC.length-1]}
+function planExpHTML(){const p=quote.plan||{};const fit=planFitScale();
+  return `<div class="pl-exp"><span class="pl-exp-t">Exporter à l’échelle</span>
+  <label class="status">Format <select id="pl-fmt"><option value="A4" ${p.fmt!=='A3'?'selected':''}>A4 paysage</option><option value="A3" ${p.fmt==='A3'?'selected':''}>A3 paysage</option></select></label>
+  <label class="status">Échelle <select id="pl-ech"><option value="0">Auto (1/${fit})</option>${PL_SC.map(n=>`<option value="${n}" ${+p.ech===n?'selected':''} ${n<fit?'disabled':''}>1/${n}${n<fit?' – trop grand':''}</option>`).join('')}</select></label>
+  <label class="status" title="Angle du nord par rapport au haut du plan, dans le sens des aiguilles d’une montre">Nord <span class="unit-in pl-nord"><input id="pl-nord" inputmode="decimal" value="${p.nord?esc(p.nord):''}" placeholder="0"><span>°</span></span></label>
+  <span class="pl-exp-b"><button class="btn sm" id="pl-pdf" title="Plan à l’échelle avec cartouche, à imprimer à 100 %">PDF à l’échelle</button>
+  <button class="btn sm" id="pl-png" title="Image à fond transparent, à poser sur une vue satellite">Image PNG</button>
+  <label class="status">résolution <select id="pl-ppm">${[10,20,40].map(n=>`<option value="${n}" ${(+p.ppm||20)===n?'selected':''}>${n} px/m</option>`).join('')}</select></label>
+  <button class="btn sm" id="pl-dxf" title="Fichier DXF en mètres réels, pour AutoCAD ou un plan de masse">DXF (AutoCAD)</button></span></div>`}
+function plNum(){const it=planItems();const m=new Map();let n=0;it.forEach(i=>{if(i.k==='f')m.set(i,++n)});return m}
+function plName(){return slug(quote.nom||'chantier')}
+
+async function planPdf(){
+  if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}if(!planItems().length){toast('Plan vide');return}
+  toast('Préparation du plan…');
+  try{const L=await getPdfLib();const {PDFDocument,StandardFonts,rgb,LineCapStyle}=L;
+  const doc=await PDFDocument.create();const F=await doc.embedFont(StandardFonts.Helvetica),B=await doc.embedFont(StandardFonts.HelveticaBold);
+  const p=planObj(),P=planPaper(),K=72/25.4;const page=doc.addPage([P.PW*K,P.PH*K]);
+  const fit=planFitScale();let N=+p.ech>0?+p.ech:fit;if(N<fit){toast(`1/${N} ne tient pas sur la feuille : 1/${fit} retenue`);N=fit}
+  const mm=1000/N,mg=10,ax=mg,ay=mg,aw=P.aw,ah=P.ah,bb=planBBox(3),cx=bb.x0+bb.w/2,cy=bb.y0+bb.h/2;
+  const X=x=>(ax+aw/2+(x-cx)*mm)*K,Y=y=>(ay+ah/2-(y-cy)*mm)*K;
+  const INK=rgb(.09,.13,.12),GR=rgb(.4,.45,.44),LN=rgb(.83,.86,.85),GRID=rgb(.91,.93,.92),ACC=rgb(14/255,94/255,120/255),FOR=rgb(164/255,88/255,28/255),LOC=rgb(79/255,107/255,58/255),SAND=rgb(.96,.91,.85),WH=rgb(1,1,1);
+  const T=(t,x,y,o={})=>{t=pt(t);const f=o.f||F,sz=o.s||7;let xx=x;if(o.c)xx=x-f.widthOfTextAtSize(t,sz)/2;if(o.r)xx=x-f.widthOfTextAtSize(t,sz);page.drawText(t,{x:xx,y,size:sz,font:f,color:o.col||INK})};
+  const line=(a,b,th,col,cap)=>page.drawLine({start:a,end:b,thickness:th,color:col,...(cap?{lineCap:LineCapStyle.Round}:{})});
+  /* cadre et zone de dessin */
+  page.drawRectangle({x:5*K,y:5*K,width:(P.PW-10)*K,height:(P.PH-10)*K,borderColor:INK,borderWidth:.8});
+  page.drawRectangle({x:ax*K,y:ay*K,width:aw*K,height:ah*K,borderColor:LN,borderWidth:.5});
+  /* quadrillage */
+  const gm=[1,2,5,10,20,50,100,200,500].find(g=>g*mm>=8)||500;
+  const xa=cx-aw/2/mm,xb=cx+aw/2/mm,ya=cy-ah/2/mm,yb=cy+ah/2/mm;
+  for(let x=Math.ceil(xa/gm)*gm;x<xb;x+=gm)line({x:X(x),y:ay*K},{x:X(x),y:(ay+ah)*K},.3,GRID);
+  for(let y=Math.ceil(ya/gm)*gm;y<yb;y+=gm)line({x:ax*K,y:Y(y)},{x:(ax+aw)*K,y:Y(y)},.3,GRID);
+  const pg=planGeo(),eq=p.trace==='equerre';
+  const segs=(a,b)=>eq?[[a,{x:b.x,y:a.y}],[{x:b.x,y:a.y},b]]:[[a,b]];
+  const lf=[],lc=[];pg.asg.forEach(q=>{const c=pg.C[q.j];if(c)lf.push(...segs(q.f,c))});if(pg.ch)pg.C.forEach(c=>lc.push(...segs(c,pg.ch)));
+  const tw=Math.max(.6*mm*K,2.2);[...lf,...lc].forEach(([a,b])=>line({x:X(a.x),y:Y(a.y)},{x:X(b.x),y:Y(b.y)},tw,SAND,true));
+  lf.forEach(([a,b])=>line({x:X(a.x),y:Y(a.y)},{x:X(b.x),y:Y(b.y)},.7,ACC,true));
+  lc.forEach(([a,b])=>line({x:X(a.x),y:Y(a.y)},{x:X(b.x),y:Y(b.y)},1.6,ACC,true));
+  const pill=(x,y,t)=>{t=pt(t);const w=F.widthOfTextAtSize(t,6.5)+6;page.drawRectangle({x:x-w/2,y:y-4.5,width:w,height:9,color:WH,borderColor:ACC,borderWidth:.5});T(t,x,y-2.2,{s:6.5,c:1})};
+  if(pg.ch)pg.C.forEach(c=>{const ch=pg.ch;const mx=eq?ch.x:(c.x+ch.x)/2,my=eq?c.y:(c.y+ch.y)/2;pill(X(mx),Y(my),nf(r1(planDist(c,ch)))+' m')});
+  const num=plNum();
+  planItems().forEach(i=>{const x=X(i.x),y=Y(i.y);
+    if(i.k==='f'){page.drawCircle({x,y,size:1.7*K,color:WH,borderColor:FOR,borderWidth:1.1});page.drawCircle({x,y,size:.6*K,color:FOR});T('F'+num.get(i),x+2.1*K,y+1.6*K,{s:6,f:B,col:FOR})}});
+  planItems().forEach(i=>{const x=X(i.x),y=Y(i.y);
+    if(i.k==='c'){const z=2.2*K;page.drawRectangle({x:x-z,y:y-z,width:2*z,height:2*z,color:ACC,borderColor:WH,borderWidth:.6});T('C'+((i.i||0)+1),x,y-2.3,{s:6.5,f:B,c:1,col:WH})}
+    if(i.k==='ch'){const q=1.4*K;page.drawSvgPath(`M${-3*q} ${1.8*q} L${-3*q} ${-.5*q} L0 ${-2.6*q} L${3*q} ${-.5*q} L${3*q} ${1.8*q} Z`,{x,y,color:LOC,borderColor:WH,borderWidth:.6});T('Chaufferie',x,y-1.8*q-7,{s:6.5,f:B,c:1,col:LOC})}});
+  /* nord, dans la zone de dessin */
+  const nd=(+p.nord||0)*Math.PI/180,nx=(ax+aw-12)*K,ny=(ay+ah-14)*K,R=(qx,qy)=>[qx*Math.cos(nd)-qy*Math.sin(nd),qx*Math.sin(nd)+qy*Math.cos(nd)];
+  page.drawCircle({x:nx,y:ny,size:7*K,color:WH,borderColor:LN,borderWidth:.5});
+  const tri=[[0,-5.5],[2.6,3.4],[0,1.6],[-2.6,3.4]].map(([a,b])=>R(a*K,b*K));page.drawSvgPath('M'+tri.map(([a,b])=>`${a} ${b}`).join(' L')+' Z',{x:nx,y:ny,color:INK});
+  const [tx,ty]=R(0,-8.6*K);T('N',nx+tx,ny-ty-2.5,{s:8,f:B,c:1});
+  /* cartouche */
+  const kx=(P.PW-mg-80)*K,kw=80*K;let ky=(P.PH-mg)*K;page.drawRectangle({x:kx,y:mg*K,width:kw,height:(P.PH-2*mg)*K,borderColor:INK,borderWidth:.6});
+  const pad=4*K,tx0=kx+pad,tw0=kw-2*pad;
+  try{const bin=atob(LOGO_SRC.split(',')[1]);const u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);const img=await doc.embedPng(u8);const lh=14*K,lw=lh*img.width/img.height;page.drawImage(img,{x:tx0,y:ky-pad-lh,width:lw,height:lh});ky-=pad+lh+4*K}
+  catch(e){T('HYDREAU FORAGE',tx0,ky-pad-10,{s:10,f:B,col:ACC});ky-=pad+16}
+  T('PLAN D’IMPLANTATION',tx0,ky-11,{s:11,f:B});ky-=14;T('Sondes géothermiques verticales',tx0,ky-8,{s:7.5,col:GR});ky-=14;
+  line({x:tx0,y:ky},{x:tx0+tw0,y:ky},.5,LN);ky-=4;
+  const v=vars();const row=(k,val)=>{if(!val)return;T(k,tx0,ky-7,{s:6,col:GR});const ls=[];let cur='';for(const w of pt(val).split(/\s+/)){const t=cur?cur+' '+w:w;if(F.widthOfTextAtSize(t,8)>tw0&&cur){ls.push(cur);cur=w}else cur=t}ls.push(cur);ls.slice(0,2).forEach((l,j)=>T(l,tx0,ky-16-j*9.5,{s:8,f:B}));ky-=12+ls.slice(0,2).length*9.5};
+  row('Chantier',quote.nom);row('Lieu',quote.lieu);row('Client',quote.client);
+  row('Forages',`${v.N} × ${nf(v.P)} m, soit ${nf(v.M)} m forés`);row('Collecteurs',pg.groups.length>1?`2 (${pg.groups.map(g=>g.n).join(' + ')} forages)`:'1');
+  row('Date',quote.date?new Date(quote.date).toLocaleDateString('fr-FR'):new Date().toLocaleDateString('fr-FR'));row('Établi par',quote.chiffreur);
+  line({x:tx0,y:ky},{x:tx0+tw0,y:ky},.5,LN);ky-=6;
+  T('ÉCHELLE',tx0,ky-7,{s:6,col:GR});T(`1/${N}`,tx0,ky-24,{s:20,f:B});T(`Format ${P.A3?'A3':'A4'} paysage`,tx0+tw0,ky-24,{s:7,col:GR,r:1});ky-=34;
+  /* barre d'échelle */
+  const sb=[1,2,5,10,20,25,50,100,200,500].filter(n=>n*mm<=62).pop()||1;const bw=sb*mm*K,bh2=2.2*K;
+  for(let k=0;k<5;k++)page.drawRectangle({x:tx0+k*bw/5,y:ky-bh2,width:bw/5,height:bh2,color:k%2?WH:INK,borderColor:INK,borderWidth:.4});
+  T('0',tx0,ky-bh2-8,{s:6,c:1});T(nf(sb/2),tx0+bw/2,ky-bh2-8,{s:6,c:1});T(nf(sb)+' m',tx0+bw,ky-bh2-8,{s:6,c:1});ky-=bh2+14;
+  for(const l of [`Imprimer à 100 % (taille réelle), sans « ajuster à la page ».`,`Contrôle : la barre de ${nf(sb)} m mesure ${nf(sb*mm)} mm.`])
+    {T(l,tx0,ky-7,{s:6.3,col:GR});ky-=8.5}
+  ky-=4;line({x:tx0,y:ky},{x:tx0+tw0,y:ky},.5,LN);ky-=6;T('LÉGENDE',tx0,ky-7,{s:6,col:GR});ky-=12;
+  const lg=(draw,txt)=>{draw(tx0+4*K,ky-3.5);T(txt,tx0+10*K,ky-6,{s:7});ky-=11};
+  lg((x,y)=>{page.drawCircle({x,y,size:1.7*K,color:WH,borderColor:FOR,borderWidth:1.1});page.drawCircle({x,y,size:.6*K,color:FOR})},`Forage géothermique (${nf(v.P)} m)`);
+  lg((x,y)=>{page.drawRectangle({x:x-2*K,y:y-2*K,width:4*K,height:4*K,color:ACC})},'Collecteur');
+  lg((x,y)=>{page.drawRectangle({x:x-3*K,y:y-1.6*K,width:6*K,height:3.2*K,color:LOC})},'Chaufferie');
+  lg((x,y)=>line({x:x-3.5*K,y},{x:x+3.5*K,y},.7,ACC),`Liaison PE forage → collecteur (Ø${v.D1})`);
+  lg((x,y)=>line({x:x-3.5*K,y},{x:x+3.5*K,y},1.6,ACC),'Liaison PE collecteur → chaufferie');
+  lg((x,y)=>line({x:x-3.5*K,y},{x:x+3.5*K,y},4,SAND),'Tranchée (tracé indicatif)');
+  const foot=['Implantation indicative à valider sur site :','réseaux enterrés, limites de propriété,','distances réglementaires, accès foreuse.'];
+  foot.forEach((l,j)=>T(l,tx0,(mg+4)*K+(foot.length-1-j)*8.5,{s:6.3,col:GR}));
+  T(`Hydreau Forage — ${quote.nom||''}`,ax*K,6.5*K,{s:6,col:GR});
+  const bytes=await doc.save();
+  await dlApi.save({filename:`plan-implantation-${plName()}-1-${N}.pdf`,data:new Blob([bytes],{type:'application/pdf'})})}
+  catch(e){if(e&&(e.code==='cancelled'||e.code==='declined'))return;console.error(e);toast(e?.message==='pdf-lib indisponible'?'Impossible de charger le module PDF':'Échec de la création du plan')}}
+
+async function planPng(){
+  if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}if(!planItems().length){toast('Plan vide');return}
+  const p=planObj(),ppm=+p.ppm||20,bb=planBBox(5);const W=Math.round(bb.w*ppm),H=Math.round(bb.h*ppm);
+  if(Math.max(W,H)>8000){toast('Image trop grande : choisir une résolution plus faible');return}
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d');
+  const X=x=>(x-bb.x0)*ppm,Y=y=>(y-bb.y0)*ppm,m=Math.max(ppm,10);/* m : pixels par « mètre de symbole », lisible même en basse résolution */
+  const FOR='#A4581C',ACC='#0E5E78',LOC='#4F6B3A',INK='#17221F';
+  const pg=planGeo(),eq=p.trace==='equerre';
+  const pth=(a,b)=>{g.moveTo(X(a.x),Y(a.y));if(eq)g.lineTo(X(b.x),Y(a.y));g.lineTo(X(b.x),Y(b.y))};
+  g.lineCap='round';g.lineJoin='round';
+  const draw=(list,width,col)=>{g.beginPath();list.forEach(([a,b])=>pth(a,b));g.lineWidth=width;g.strokeStyle=col;g.stroke()};
+  const lf=[],lc=[];pg.asg.forEach(q=>{const c=pg.C[q.j];if(c)lf.push([q.f,c])});if(pg.ch)pg.C.forEach(c=>lc.push([c,pg.ch]));
+  draw([...lf,...lc],Math.max(.6*ppm,6),'rgba(255,255,255,.55)');
+  draw(lf,Math.max(.12*m,2),ACC);draw(lc,Math.max(.25*m,3.5),ACC);
+  const txt=(t,x,y,sz,col,al='left',bold=true)=>{g.font=`${bold?'700 ':''}${sz}px Barlow, Arial, sans-serif`;g.textAlign=al;g.textBaseline='middle';g.lineWidth=sz/4;g.strokeStyle='rgba(255,255,255,.95)';g.strokeText(t,x,y);g.fillStyle=col;g.fillText(t,x,y)};
+  if(pg.ch)pg.C.forEach(c=>{const ch=pg.ch;const mx=eq?ch.x:(c.x+ch.x)/2,my=eq?c.y:(c.y+ch.y)/2;const t=nf(r1(planDist(c,ch)))+' m',sz=.9*m;g.font=`600 ${sz}px Barlow, Arial, sans-serif`;const tw=g.measureText(t).width+sz;
+    g.fillStyle='#fff';g.strokeStyle=ACC;g.lineWidth=Math.max(1,.06*m);g.beginPath();g.roundRect?g.roundRect(X(mx)-tw/2,Y(my)-sz*.75,tw,sz*1.5,sz*.75):g.rect(X(mx)-tw/2,Y(my)-sz*.75,tw,sz*1.5);g.fill();g.stroke();g.fillStyle=INK;g.textAlign='center';g.textBaseline='middle';g.fillText(t,X(mx),Y(my))});
+  const num=plNum();
+  planItems().forEach(i=>{const x=X(i.x),y=Y(i.y);if(i.k!=='f')return;g.beginPath();g.arc(x,y,.7*m,0,7);g.fillStyle='#fff';g.fill();g.lineWidth=Math.max(.2*m,2);g.strokeStyle=FOR;g.stroke();g.beginPath();g.arc(x,y,.25*m,0,7);g.fillStyle=FOR;g.fill();txt('F'+num.get(i),x+.9*m,y-.9*m,.8*m,FOR)});
+  planItems().forEach(i=>{const x=X(i.x),y=Y(i.y);
+    if(i.k==='c'){const z=.9*m;g.fillStyle=ACC;g.strokeStyle='#fff';g.lineWidth=Math.max(.1*m,1.5);g.beginPath();g.rect(x-z,y-z,2*z,2*z);g.fill();g.stroke();g.fillStyle='#fff';g.font=`700 ${.85*m}px Barlow, Arial, sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText('C'+((i.i||0)+1),x,y)}
+    if(i.k==='ch'){const q=.55*m;g.beginPath();g.moveTo(x-3*q,y+1.8*q);g.lineTo(x-3*q,y-.5*q);g.lineTo(x,y-2.6*q);g.lineTo(x+3*q,y-.5*q);g.lineTo(x+3*q,y+1.8*q);g.closePath();g.fillStyle=LOC;g.strokeStyle='#fff';g.lineWidth=Math.max(.1*m,1.5);g.fill();g.stroke();txt('Chaufferie',x,y+1.8*q+.8*m,.8*m,LOC,'center')}});
+  /* nord et barre d'échelle */
+  const nd=(+p.nord||0)*Math.PI/180,nx=W-2.5*m,ny=H-2.6*m;g.save();g.translate(nx,ny);g.rotate(nd);g.beginPath();g.arc(0,0,1.8*m,0,7);g.fillStyle='rgba(255,255,255,.9)';g.fill();
+  g.beginPath();g.moveTo(0,-1.4*m);g.lineTo(.7*m,.9*m);g.lineTo(0,.4*m);g.lineTo(-.7*m,.9*m);g.closePath();g.fillStyle=INK;g.fill();g.restore();txt('N',nx+Math.sin(nd)*2.4*m,ny-Math.cos(nd)*2.4*m,.9*m,INK,'center');
+  const sb=[2,5,10,20,50,100].filter(n=>n<=bb.w*.35).pop()||2,sx=1.5*m,sy=H-1.6*m,seg=sb*ppm/4,bh=Math.max(.35*m,4);
+  g.fillStyle='rgba(255,255,255,.85)';g.fillRect(sx-.6*m,sy-1.6*m,sb*ppm+2.4*m,bh+2.2*m);
+  for(let k=0;k<4;k++){g.fillStyle=k%2?'#fff':INK;g.fillRect(sx+k*seg,sy,seg,bh);g.strokeStyle=INK;g.lineWidth=1;g.strokeRect(sx+k*seg,sy,seg,bh)}
+  txt('0',sx,sy-.6*m,.7*m,INK,'center',false);txt(sb+' m',sx+sb*ppm,sy-.6*m,.7*m,INK,'center',false);
+  const blob=await new Promise(r=>cv.toBlob(r,'image/png'));
+  try{await dlApi.save({filename:`plan-implantation-${plName()}_${ppm}px-par-m.png`,data:blob});toast(`Image : 1 m = ${ppm} pixels, fond transparent`)}
+  catch(e){if(e?.code!=='cancelled'&&e?.code!=='declined')toast('Export annulé')}}
+
+async function planDxf(){
+  if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}if(!planItems().length){toast('Plan vide');return}
+  const p=planObj(),pg=planGeo(),eq=p.trace==='equerre';const o=pg.ch||pg.C[0]||planItems()[0];
+  /* repère : origine sur la chaufferie (ou le collecteur 1), X vers la droite, Y vers le haut, 1 unité = 1 m */
+  const X=x=>+(x-o.x).toFixed(3),Y=y=>+(o.y-y).toFixed(3);const ascii=t=>String(t).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\x20-\x7e]/g,'-');
+  const E=[];const ln=(lay,a,b)=>E.push(`0\nLINE\n8\n${lay}\n10\n${X(a.x)}\n20\n${Y(a.y)}\n30\n0\n11\n${X(b.x)}\n21\n${Y(b.y)}\n31\n0`);
+  const tx=(lay,x,y,h,t,c)=>E.push(`0\nTEXT\n8\n${lay}\n10\n${X(x)}\n20\n${Y(y)}\n30\n0\n40\n${h}\n1\n${ascii(t)}`+(c?`\n72\n1\n11\n${X(x)}\n21\n${Y(y)}\n31\n0`:''));
+  const seg=(lay,a,b)=>{if(eq){const k={x:b.x,y:a.y};ln(lay,a,k);ln(lay,k,b)}else ln(lay,a,b)};
+  pg.asg.forEach(q=>{const c=pg.C[q.j];if(c)seg('PE_FORAGES',q.f,c)});
+  if(pg.ch)pg.C.forEach(c=>{seg('PE_CHAUFFERIE',c,pg.ch);const mx=eq?pg.ch.x:(c.x+pg.ch.x)/2,my=eq?c.y:(c.y+pg.ch.y)/2;tx('COTES',mx,my-.4,.6,nf(r1(planDist(c,pg.ch))).replace(/\s/g,'')+' m',1)});
+  const num=plNum();
+  planItems().forEach(i=>{
+    if(i.k==='f'){E.push(`0\nCIRCLE\n8\nFORAGES\n10\n${X(i.x)}\n20\n${Y(i.y)}\n30\n0\n40\n0.5`);E.push(`0\nPOINT\n8\nFORAGES\n10\n${X(i.x)}\n20\n${Y(i.y)}\n30\n0`);tx('FORAGES',i.x+.7,i.y-.7,.6,'F'+num.get(i))}
+    if(i.k==='c'){const z=.6,c=[[-z,-z],[z,-z],[z,z],[-z,z]].map(([a,b])=>({x:i.x+a,y:i.y+b}));c.forEach((q,k)=>ln('COLLECTEURS',q,c[(k+1)%4]));tx('COLLECTEURS',i.x+.9,i.y-.9,.6,'C'+((i.i||0)+1))}
+    if(i.k==='ch'){const c=[[-1.5,-1],[1.5,-1],[1.5,1],[-1.5,1]].map(([a,b])=>({x:i.x+a,y:i.y+b}));c.forEach((q,k)=>ln('CHAUFFERIE',q,c[(k+1)%4]));tx('CHAUFFERIE',i.x,i.y+1.8,.6,'Chaufferie',1)}});
+  const bb=planBBox(3);tx('TEXTES',bb.x0,bb.y0+bb.h+1.5,.8,`Plan d'implantation ${quote.nom||''} - Hydreau Forage - unites : metres (1 unite = 1 m)`);
+  const layers=[['FORAGES',30],['COLLECTEURS',5],['CHAUFFERIE',3],['PE_FORAGES',4],['PE_CHAUFFERIE',5],['COTES',7],['TEXTES',7]];
+  const dxf=['0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1009\n9\n$INSBASE\n10\n0\n20\n0\n30\n0\n0\nENDSEC',
+    '0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLTYPE\n70\n1\n0\nLTYPE\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0.0\n0\nENDTAB',
+    `0\nTABLE\n2\nLAYER\n70\n${layers.length}\n`+layers.map(([n,c])=>`0\nLAYER\n2\n${n}\n70\n0\n62\n${c}\n6\nCONTINUOUS`).join('\n')+'\n0\nENDTAB\n0\nENDSEC',
+    '0\nSECTION\n2\nENTITIES\n'+E.join('\n')+'\n0\nENDSEC\n0\nEOF\n'].join('\n');
+  try{await dlApi.save({filename:`plan-implantation-${plName()}.dxf`,data:new Blob([dxf.replace(/\n/g,'\r\n')],{type:'application/dxf'})});toast('DXF : 1 unité = 1 m, origine sur la '+(pg.ch?'chaufferie':'collecteur 1'))}
+  catch(e){if(e?.code!=='cancelled'&&e?.code!=='declined')toast('Export annulé')}}
+function planDraw(){const ew=$('#pl-exp-w');if(ew&&!ew.contains(document.activeElement))ew.innerHTML=planExpHTML();const svg=$('#pl-svg');if(!svg)return;const p=quote.plan||{w:60};const w=+p.w||60;svg.setAttribute('viewBox',`0 0 ${w} ${Math.round(w*0.6)}`);svg.innerHTML=planSVG();const pin=$('#pl-info');if(pin)pin.innerHTML=planInfo()}
 /* recopie dans le chiffrage ce que donne le plan (nombre de forages, collecteurs, longueurs vers la chaufferie) */
 function planSync(){if(!planOn())return;const pg=planGeo();quote.N=pg.N;quote.nc=pg.groups.length>1?2:1;quote.N2=pg.groups[1]?pg.groups[1].n:null;
   if(pg.ch){quote.L=pg.groups[0]?pg.groups[0].L:0;quote.L2=pg.groups[1]?pg.groups[1].L:null}}
@@ -798,7 +971,8 @@ function renderDevis(){
 
 function onDevisInput(e){
   const tg=e.target;
-  if(tg.id==='pl-w'||tg.id==='pl-trace'||tg.id==='pl-on')return;
+  if(tg.id==='pl-w'||tg.id==='pl-trace'||tg.id==='pl-on'||tg.id==='pl-fmt'||tg.id==='pl-ech'||tg.id==='pl-ppm')return;
+  if(tg.id==='pl-nord'){planObj().nord=pnum(tg.value)||0;markDirty();planDraw();return}
   if(tg.dataset.k){const k=tg.dataset.k;quote[k]=tg.dataset.nn?pnum(tg.value):tg.dataset.n?(pnum(tg.value)??0):tg.value;markDirty();
     if(k==='nc'||k==='pn'){renderDevisKeepScroll();return}
     if(k==='nom')$('.toolbar .title').textContent=quote.nom||'Nouveau chiffrage';
@@ -822,6 +996,9 @@ function onDevisChange(e){
   if(tg.id==='usedOnly'){usedOnly=tg.checked;store.set('usedOnly',usedOnly);renderDevis();return}
   if(tg.id==='pl-on'){const p=planObj();p.on=tg.checked;p.userOff=!tg.checked;if(p.on&&!planOn())toast('Placer au moins un forage et un collecteur');planSync();markDirty();renderDevisKeepScroll();return}
   if(tg.id==='pl-w'){planObj().w=+tg.value;markDirty();planDraw();return}
+  if(tg.id==='pl-fmt'){planObj().fmt=tg.value;const fit=planFitScale();if(+planObj().ech&&+planObj().ech<fit)planObj().ech=0;markDirty();const w=$('#pl-exp-w');if(w)w.innerHTML=planExpHTML();return}
+  if(tg.id==='pl-ech'){planObj().ech=+tg.value;markDirty();return}
+  if(tg.id==='pl-ppm'){planObj().ppm=+tg.value;markDirty();return}
   if(tg.id==='pl-trace'){planObj().trace=tg.value;planSync();markDirty();renderDevisKeepScroll();return}
   if(tg.dataset.q){const tr=tg.closest('tr');const l=lines().find(x=>x.id===tg.dataset.q);if(tr&&l)tr.outerHTML=lineRow(l,vars())}
 }
@@ -829,6 +1006,9 @@ function renderDevisKeepScroll(){const y=window.scrollY;renderDevis();window.scr
 function onDevisClick(e){
   const b=e.target.closest('button');if(!b)return;
   if(b.dataset.pltool){plTool=b.dataset.pltool;document.querySelectorAll('[data-pltool]').forEach(x=>x.classList.toggle('primary',x===b));return}
+  if(b.id==='pl-pdf'){planPdf();return}
+  if(b.id==='pl-png'){planPng();return}
+  if(b.id==='pl-dxf'){planDxf();return}
   if(b.id==='pl-gen'){if(planItems().length&&!confirm('Remplacer le plan actuel par une implantation en ligne ?'))return;planGen();return}
   if(b.id==='pl-clear'){if(!planItems().length||confirm('Effacer tout le plan ?')){const p=planObj();p.items=[];p.on=false;markDirty();renderDevisKeepScroll()}return}
   if(b.dataset.reset){delete quote.q[b.dataset.reset];markDirty();renderDevisKeepScroll();return}
