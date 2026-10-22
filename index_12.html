@@ -442,6 +442,8 @@ function baseVars(){const P=+quote.P||0,mpj=+quote.mpj||100,E=+quote.E||0,D1=+qu
 function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String(i.rule||'').replace(/\s/g,'')==='(M+L)/25*20')i.rule='GLY';if(i&&i.id==='glycol'&&i.name==='Glycol')i.name='Glycol pur'});if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='decl')){const k=items.findIndex(i=>i.id==='trt');items.splice(k,0,{id:'decl',sec:'loc',grp:'Administratif',name:'Déclarations (BRGM, DICT, rapport de fin de travaux)',unit:'forfait',price:0,qty:1,rule:'',kind:'frais'})}
   if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='zo')){const k=items.findIndex(i=>i.id==='trt');items.splice(k+1,0,{id:'zo',sec:'loc',grp:'Sous-traitance',name:'Déclaration zone orange (avis d’expert agréé)',unit:'forfait',price:0,rule:'ZO',kind:'st',poste:'zoneorange'})}
   (items||[]).forEach(i=>{if(i&&i.id==='zo'&&!i.poste)i.poste='zoneorange'});
+  /* grillage avertisseur : posé sur toute la longueur des tranchées */
+  (items||[]).forEach(i=>{if(i&&/grillage/i.test((i.grp||'')+' '+(i.name||''))&&!String(i.rule||'').trim()&&!(+i.qty>0))i.rule='ceil(T)'});
   (items||[]).forEach(i=>{if(i&&/manchon\s*[øØ]\s*40\b/i.test(i.name||'')&&String(i.rule||'').replace(/\s/g,'')==='D1==40?4*N:0')i.rule='(P>150?4*N:0)+(D1==40?4*N:0)'});
   (items||[]).forEach(i=>{if(i&&/manchon\s*[øØ]\s*32\b/i.test(i.name||'')&&String(i.rule||'').replace(/\s/g,'')==='D1==32?4*N:0')i.rule='(P<=150?4*N:0)+(D1==32?4*N:0)'});
   /* sondes 150 m (Ø32) et 160 à 190 m (Ø40) : l'ancienne règle prenait une sonde de 200 m dès 141 m */
