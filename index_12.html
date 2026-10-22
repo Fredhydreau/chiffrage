@@ -509,7 +509,7 @@ async function saveQuote(){
   quote.updated=Date.now();
   const t=totals();quote.totalHT=Math.round(t.tp*100)/100;quote.coutHT=Math.round(t.tc*100)/100;
   try{await db.doc('devis/'+quote.id).set(clone(quote));dirty=false;store.set('draft',quote);toast('Chiffrage enregistré');renderDevis()}
-  catch(e){if(e&&e.code==='invalid_argument'){canWrite=false;toast('Vous n’avez pas le droit d’enregistrer ici')}else if(e&&e.code==='quota_exceeded'){toast('Espace plein : supprimez d’anciens chiffrages')}else toast('Échec de l’enregistrement, réessayez')}
+  catch(e){if(e&&e.code==='invalid_argument'){canWrite=false;toast('Vous n’avez pas le droit d’enregistrer ici')}else if(e&&e.code==='quota_exceeded'){toast('Espace plein : supprimez d’anciens chiffrages')}else if(e&&e.code==='too_big'){toast(`Chiffrage trop lourd (${e.message} Ko, maxi 1 Mo) : réimporter le fond de plan en plus léger ou le retirer`)}else{console.error(e);toast('Échec de l’enregistrement, réessayez'+(e&&e.message?' ('+String(e.message).slice(0,90)+')':''))}}
 }
 async function deleteQuote(id){
   if(!db)return;try{await db.doc('devis/'+id).delete();toast('Chiffrage supprimé');if(quote.id===id){quote.id=null;markDirty()}}catch(e){toast('Suppression impossible')}
@@ -2353,14 +2353,17 @@ $('#v-soc').addEventListener('input',onSocInput);$('#v-soc').addEventListener('c
 /* ---------- Firebase : connexion + Firestore partagé ---------- */
 let fsdb=null,fbUser=null;
 function mapErr(e){return {code:e?.code==='permission-denied'?'invalid_argument':'unavailable',message:e?.message||''}}
+/* Firestore refuse les tableaux de tableaux (ex. tranchées = liste de polylignes) : on les emballe à l'écriture, on les déballe à la lecture */
+function fsEnc(o){if(Array.isArray(o))return o.map(x=>Array.isArray(x)?{__arr:fsEnc(x)}:fsEnc(x));if(o&&typeof o==='object'){const r={};for(const k in o)r[k]=fsEnc(o[k]);return r}return o}
+function fsDec(o){if(Array.isArray(o))return o.map(fsDec);if(o&&typeof o==='object'){const ks=Object.keys(o);if(ks.length===1&&ks[0]==='__arr'&&Array.isArray(o.__arr))return o.__arr.map(fsDec);const r={};for(const k of ks)r[k]=fsDec(o[k]);return r}return o}
 function denied(e){if(e?.code==='permission-denied'){showLogin('Compte connecté mais non autorisé : ajoutez son e-mail dans la collection « acces » de Firestore.');}}
 function makeDb(){return {
   doc(path){const r=fsdb.doc(path);return {
-    set:o=>r.set(JSON.parse(JSON.stringify({...o,updated_by:fbUser?.email||null}))).catch(e=>{throw mapErr(e)}),
+    set:o=>{const d=fsEnc(JSON.parse(JSON.stringify({...o,updated_by:fbUser?.email||null})));const sz=new Blob([JSON.stringify(d)]).size;if(sz>1040000)return Promise.reject({code:'too_big',message:''+Math.round(sz/1024)});return r.set(d).catch(e=>{console.error(e);throw mapErr(e)})},
     delete:()=>r.delete().catch(e=>{throw mapErr(e)}),
-    onSnapshot:(fn)=>r.onSnapshot(s=>fn({exists:s.exists,data:()=>s.data()}),denied)}},
+    onSnapshot:(fn)=>r.onSnapshot(s=>fn({exists:s.exists,data:()=>fsDec(s.data())}),denied)}},
   collection(p){let q=fsdb.collection(p);const api={orderBy(f,d){q=q.orderBy(f,d);return api},limit(n){q=q.limit(n);return api},
-    onSnapshot(fn){return q.onSnapshot(s=>fn({docs:s.docs.map(d=>({data:()=>d.data()}))}),denied)}};return api}}}
+    onSnapshot(fn){return q.onSnapshot(s=>fn({docs:s.docs.map(d=>({data:()=>fsDec(d.data())}))}),denied)}};return api}}}
 dlApi={async save({filename,data}){const blob=data instanceof Blob?data:new Blob([data]);const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),5000);return 'saved'}};
 function showLogin(msg){$('#login').hidden=false;$('#login-err').textContent=msg||'';setTimeout(()=>$('#l-mail')?.focus(),50)}
 let started=false;
