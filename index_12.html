@@ -396,11 +396,14 @@ function netPath(a,b){const N=trNet();const ka=N.itemNode.get(a),kb=N.itemNode.g
   const last=path[path.length-1];if(Math.hypot(last.x-b.x,last.y-b.y)>.01)path.push({x:b.x,y:b.y});
   return path.filter((q,i)=>i===0||Math.hypot(q.x-path[i-1].x,q.y-path[i-1].y)>.005)}
 function trSegs(){const N=trNet(),out=[];N.T.forEach(l=>{for(let k=1;k<l.length;k++)out.push([l[k-1],l[k]])});N.att.forEach((a,i)=>{if(a.d>.02)out.push([i,a.pt])});return out}
-function routeFor(a,b){const w=routeWps(a);if(w.length)return [a,...w,b];if(trActive()){const r=netPath(a,b);if(r&&r.length>1)return r}if(quote.plan&&quote.plan.trace==='equerre'&&a.x!==b.x&&a.y!==b.y)return [a,{x:b.x,y:a.y},b];return [a,b]}
+/* forage raccordé « en passant » par un autre forage : son tracé rejoint ce forage puis suit le tracé de celui-ci */
+function plVia(a,dep){if(!a||a.k!=='f'||!a.id)return null;const v=quote.plan&&quote.plan.via&&quote.plan.via[a.id];if(!v)return null;const t=planItems().find(i=>i.k==='f'&&i.id===v);if(!t||t===a)return null;
+  let x=t,n=0;while(x&&n<60){if(x===a)return null;const v2=quote.plan.via[x.id];x=v2?planItems().find(i=>i.k==='f'&&i.id===v2):null;n++}return t}
+function routeFor(a,b,dep){const w=routeWps(a);const t=(dep||0)<60&&plVia(a);if(t){const r=routeFor(t,b,(dep||0)+1);return [a,...w,...r]}if(w.length)return [a,...w,b];if(trActive()){const r=netPath(a,b);if(r&&r.length>1)return r}if(quote.plan&&quote.plan.trace==='equerre'&&a.x!==b.x&&a.y!==b.y)return [a,{x:b.x,y:a.y},b];return [a,b]}
 function polyLen(p){let t=0;for(let k=1;k<p.length;k++)t+=Math.hypot(p[k].x-p[k-1].x,p[k].y-p[k-1].y);return t}
 function polyMid(p){let best=0,bk=1;for(let k=1;k<p.length;k++){const d=Math.hypot(p[k].x-p[k-1].x,p[k].y-p[k-1].y);if(d>best){best=d;bk=k}}const a=p[bk-1]||p[0],b=p[bk]||p[0];return {x:(a.x+b.x)/2,y:(a.y+b.y)/2}}
 /* poignées « + » : sur le 1er tronçon d'une liaison de forage, près du forage (les liaisons alignées ne se superposent pas) ; ailleurs au tiers du tronçon */
-function routeHandles(L,u){const r=routeFor(L.a,L.b);const H=[];legs(r).forEach(([a,b],k)=>{const d=Math.hypot(b.x-a.x,b.y-a.y);if(d<u*4)return;const t=k===0&&L.a.k==='f'?Math.min(.5,u*3.5/d):(L.a.k==='f'?.5:.3);H.push({x:a.x+t*(b.x-a.x),y:a.y+t*(b.y-a.y),ins:k})});return {r,H}}
+function routeHandles(L,u){const r=routeFor(L.a,L.b);const H=[];const own=plVia(L.a)?routeWps(L.a).length+1:1e9;legs(r).forEach(([a,b],k)=>{if(k>=own)return;const d=Math.hypot(b.x-a.x,b.y-a.y);if(d<u*4)return;const t=k===0&&L.a.k==='f'?Math.min(.5,u*3.5/d):(L.a.k==='f'?.5:.3);H.push({x:a.x+t*(b.x-a.x),y:a.y+t*(b.y-a.y),ins:k})});return {r,H}}
 /* longueur de tranchée quand les tracés sont dessinés : segments superposés (même ligne) comptés une seule fois */
 function unionLen(segs){const G=new Map();for(const [a,b] of segs){const L=Math.hypot(b.x-a.x,b.y-a.y);if(L<1e-6)continue;let ang=Math.atan2(b.y-a.y,b.x-a.x);if(ang<0)ang+=Math.PI;if(ang>=Math.PI-1e-9)ang=0;
     const c=Math.cos(ang),sn=Math.sin(ang),off=-sn*a.x+c*a.y,key=Math.round(ang*1000)+'|'+Math.round(off*5);const t1=c*a.x+sn*a.y,t2=c*b.x+sn*b.y;(G.get(key)||G.set(key,[]).get(key)).push([Math.min(t1,t2),Math.max(t1,t2)])}
@@ -411,9 +414,10 @@ function mstLen(pts){if(pts.length<2)return 0;const inT=[true,...pts.slice(1).ma
   for(let k=1;k<pts.length;k++){let bi=-1,bd=Infinity;for(let i=0;i<pts.length;i++)if(!inT[i]&&best[i]<bd){bd=best[i];bi=i}inT[bi]=true;tot+=bd;for(let i=0;i<pts.length;i++)if(!inT[i]){const d=planDist(pts[bi],pts[i]);if(d<best[i])best[i]=d}}return tot}
 function planGeo(){
   const it=planItems();const F=it.filter(i=>i.k==='f'),C=it.filter(i=>i.k==='c').sort((a,b)=>(a.i||0)-(b.i||0)).slice(0,2),ch=it.find(i=>i.k==='ch');
-  const asn=(quote.plan&&quote.plan.assign)||{};const asg=F.map(f=>{let j=0,d=Infinity;C.forEach((c,k)=>{const dd=trActive()?(r=>r?polyLen(r):1e6+planDist(f,c))(netPath(f,c)):planDist(f,c);if(dd<d){d=dd;j=k}});if(f.id&&asn[f.id]!=null){const k2=C.findIndex(c=>(c.i||0)===asn[f.id]);if(k2>=0)j=k2}const r=C[j]?routeFor(f,C[j]):[f];return {f,j,d:C[j]?polyLen(r):0,r}}).filter(x=>!plNoLink(x.f));const Cch=ch?C.filter(c=>!plNoLink(c)):[];
+  const asn=(quote.plan&&quote.plan.assign)||{};const asg=F.map(f=>{let j=0,d=Infinity;C.forEach((c,k)=>{const dd=trActive()?(r=>r?polyLen(r):1e6+planDist(f,c))(netPath(f,c)):planDist(f,c);if(dd<d){d=dd;j=k}});if(f.id&&asn[f.id]!=null){const k2=C.findIndex(c=>(c.i||0)===asn[f.id]);if(k2>=0)j=k2}const r=C[j]?routeFor(f,C[j]):[f];return {f,j,d:C[j]?polyLen(r):0,r}}).filter(x=>!plNoLink(x.f));
+  for(let it2=0;it2<8;it2++){let ch2=false;asg.forEach(x=>{const t=plVia(x.f);if(!t)return;const y=asg.find(z=>z.f===t);if(y&&y.j!==x.j&&C[y.j]){x.j=y.j;x.r=routeFor(x.f,C[x.j]);x.d=polyLen(x.r);ch2=true}});if(!ch2)break}const Cch=ch?C.filter(c=>!plNoLink(c)):[];
   const Lq=k=>k&&quote.L2!=null&&quote.L2!==''?+quote.L2:(+quote.L||0);
-  const all=C.map((c,k)=>{const a=asg.filter(x=>x.j===k);const rc=ch&&!plNoLink(c)?routeFor(c,ch):null;const custom=a.some(x=>routeWps(x.f).length);
+  const all=C.map((c,k)=>{const a=asg.filter(x=>x.j===k);const rc=ch&&!plNoLink(c)?routeFor(c,ch):null;const custom=a.some(x=>routeWps(x.f).length||plVia(x.f));
     return {n:a.length,LF:r1(2*a.reduce((t,x)=>t+x.d,0)),DF:r1(a.reduce((m,x)=>Math.max(m,x.d),0)),L:ch?(rc?r1(polyLen(rc)):0):Lq(k),c,rc,mst:custom?unionLen(a.flatMap(x=>legs(x.r))):mstLen([c,...a.map(x=>x.f)])}});
   const groups=all.filter(g=>g.n>0);
   return {N:F.length,groups,T:r1(trActive()?trNet().len:groups.reduce((t,g)=>t+g.mst+g.L,0)),asg,C,Cch,ch,F,nc:F.length-asg.length}}
@@ -651,7 +655,7 @@ function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tool
   return `<div class="card ${plFull?'pl-full':''}" id="plan-card" style="margin-top:18px"><div class="card-h"><h2>Plan d’implantation</h2><span class="status">facultatif</span><label class="status" style="margin-left:auto;display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="pl-on" ${p.on?'checked':''}> Utiliser le plan pour les longueurs</label></div><div class="card-b">
   <div class="pl-bar"><div class="pl-tools" role="group" aria-label="Outil">${tools.map(([k,t])=>`<button class="btn sm ${plTool===k?'primary':''}" data-pltool="${k}"><i class="pl-ic pl-ic-${k}"></i>${t}</button>`).join('')}</div>
   <div class="pl-opts"><span class="pl-zoom"><button class="btn sm" id="pl-zout" title="Dézoomer (ou pincer / Ctrl + molette)">−</button><button class="btn sm" id="pl-zin" title="Zoomer (ou pincer / Ctrl + molette)">+</button></span><label class="status">Vue <select id="pl-w">${(PL_W.includes(+p.w||60)?PL_W:[...PL_W,+p.w].sort((a,b)=>a-b)).map(w=>`<option value="${w}" ${(+p.w||60)===w?'selected':''}>${nf(Math.round(w))} m</option>`).join('')}</select></label><button class="btn sm" id="pl-zfit" title="Ajuste la vue sur le fond de plan (ou sur les forages s’il n’y a pas de fond)">Plein cadre</button><button class="btn sm" id="pl-full">${plFull?'Quitter le plein écran':'Plein écran'}</button>
-  <label class="status" title="Taille des forages, collecteurs et chaufferie sur le plan">Symboles <input type="range" id="pl-symk" min="30" max="300" step="10" value="${Math.round((+p.symK||1)*100)}" style="vertical-align:middle;width:90px"></label><label class="status" title="Distances entre forages voisins, à l’écran et dans le PDF"><input type="checkbox" id="pl-cotes" ${p.cotes!==false?'checked':''}> cotes</label><label class="status" title="Afficher la bande de tranchée sur le plan et dans les exports"><input type="checkbox" id="pl-tr" ${p.noTr?'':'checked'}> tranchées</label><label class="status">Tracé <select id="pl-trace"><option value="droit" ${p.trace!=='equerre'?'selected':''}>en ligne droite</option><option value="equerre" ${p.trace==='equerre'?'selected':''}>en équerre</option></select></label>
+  <label class="status" title="Taille des forages, collecteurs et chaufferie sur le plan">Symboles <input type="range" id="pl-symk" min="30" max="300" step="10" value="${Math.round((+p.symK||1)*100)}" style="vertical-align:middle;width:90px"></label><label class="status" title="Distances entre forages voisins, à l’écran et dans le PDF"><input type="checkbox" id="pl-cotes" ${p.cotes!==false?'checked':''}> cotes</label><label class="status" title="Longueurs de PEHD et raccords nécessaires dans le cartouche du PDF"><input type="checkbox" id="pl-mat" ${p.matPdf!==false?'checked':''}> matériel dans le PDF</label><label class="status" title="Afficher la bande de tranchée sur le plan et dans les exports"><input type="checkbox" id="pl-tr" ${p.noTr?'':'checked'}> tranchées</label><label class="status">Tracé <select id="pl-trace"><option value="droit" ${p.trace!=='equerre'?'selected':''}>en ligne droite</option><option value="equerre" ${p.trace==='equerre'?'selected':''}>en équerre</option></select></label>
   ${p.zone&&p.zone.closed?`<button class="btn sm primary" id="pl-gen" title="Implante les forages du dimensionnement (nombre et espacement) dans la zone de forage">Implanter dans la zone (${+quote.N||0} × ${nf(+quote.E||0)} m)</button>`:'<button class="btn sm" id="pl-gen" title="Place les forages en ligne avec les valeurs du dimensionnement">Placer depuis le dimensionnement</button>'}${p.routes&&Object.keys(p.routes).length?'<button class="btn sm" id="pl-straight" title="Supprime tous les points de passage">Redresser les liaisons</button>':''}<button class="btn sm" id="pl-trauto2" title="Trace les tranchées qui relient les forages aux collecteurs avec le moins de tranchée et de tuyau (réglage dans l’outil Tranchée)">Tranchées auto</button><button class="btn sm ghost danger" id="pl-clear">Tout effacer</button></div></div>
   <div id="pl-bgbar-w">${planBgBar()}</div>
   <p class="pl-hint" id="pl-hint" ${plHint()?'':'hidden'}>${plHint()}</p>
@@ -711,7 +715,7 @@ function planSVG(){const p=quote.plan||{w:60};const V=planView(),w=V.w,h=V.h,X0=
     s+=`<circle cx="${i.x}" cy="${i.y}" r="${u*1.35}" fill="#fff" stroke="var(--plf)" stroke-width="2.6" vector-effect="non-scaling-stroke"/><circle cx="${i.x}" cy="${i.y}" r="${u*.55}" fill="var(--plf)"/>`+
        `<text x="${i.x+u*1.7}" y="${i.y-u*1.5}" font-size="${fs*.82}" font-weight="700" fill="var(--plf)" font-family="Barlow,sans-serif" ${halo}>F${nF}</text>`}
   for(const i of it){if(i.k==='c'){const z=u*2.3;s+=`<rect x="${i.x-z}" y="${i.y-z}" width="${2*z}" height="${2*z}" rx="${z/3}" fill="var(--racc)" stroke="var(--panel)" stroke-width="1.5" vector-effect="non-scaling-stroke"/><text x="${i.x}" y="${i.y+fs*.36}" text-anchor="middle" font-size="${fs*.9}" font-weight="700" fill="var(--accent-ink)" font-family="Barlow,sans-serif">C${(i.i||0)+1}</text>`}
-    if(i.k==='ch'){const q=u*1.25,x=i.x,y=i.y;s+=`<polygon points="${x-3*q},${y+1.8*q} ${x-3*q},${y-.5*q} ${x},${y-2.6*q} ${x+3*q},${y-.5*q} ${x+3*q},${y+1.8*q}" fill="var(--loc)" stroke="var(--panel)" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><rect x="${x-.55*q}" y="${y+.3*q}" width="${1.1*q}" height="${1.5*q}" fill="var(--panel)" opacity=".85"/><text x="${x}" y="${y+1.8*q+fs*1.1}" text-anchor="middle" font-size="${fs*.85}" font-weight="700" fill="var(--loc)" font-family="Barlow,sans-serif" ${halo}>Chaufferie</text>`}}
+    if(i.k==='ch'){const q=u*1.25,x=i.x,y=i.y;s+=`<g transform="translate(${x} ${y})"><path d="${chBox(q)}" fill="var(--loc)" stroke="var(--panel)" stroke-width="1.5" vector-effect="non-scaling-stroke"/><path d="${chFlame(q)}" fill="#fff"/></g><text x="${x}" y="${y+2*q+fs*1.1}" text-anchor="middle" font-size="${fs*.85}" font-weight="700" fill="var(--loc)" font-family="Barlow,sans-serif" ${halo}>Chaufferie</text>`}}
   if(edit)planLinks().forEach(L=>{const r=routeFor(L.a,L.b);const wn=routeWps(L.a).length;
     routeHandles(L,u).H.forEach(hh=>{const mx=hh.x,my=hh.y;s+=`<g class="pl-h"><circle cx="${mx}" cy="${my}" r="${u*1.05}" fill="var(--panel)" stroke="var(--racc)" stroke-width="1.5" vector-effect="non-scaling-stroke"/><path d="M${mx-u*.55} ${my}H${mx+u*.55}M${mx} ${my-u*.55}V${my+u*.55}" stroke="var(--racc)" stroke-width="1.5" vector-effect="non-scaling-stroke"/></g>`});
     if(wn)r.slice(1,-1).forEach(q=>{const z=u*.95;s+=`<rect x="${q.x-z}" y="${q.y-z}" width="${2*z}" height="${2*z}" fill="var(--racc)" stroke="var(--panel)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`})});
@@ -749,9 +753,25 @@ const PL_SC=[50,100,200,250,500,1000,2000,2500,5000];
 function planBBox(pad){const p=quote.plan||{};const pts=[...planItems(),...((p.zone&&p.zone.closed&&p.zone.pts)||[]),...(p.trenches||[]).flat(),...Object.values(p.routes||{}).flat()];let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;pts.forEach(i=>{x0=Math.min(x0,i.x);y0=Math.min(y0,i.y);x1=Math.max(x1,i.x);y1=Math.max(y1,i.y)});
   if(!isFinite(x0)){x0=y0=0;x1=y1=10}x0-=pad;y0-=pad;x1+=pad;y1+=pad;const cw=Math.max(10,x1-x0),ch=Math.max(8,y1-y0);const mx=(x0+x1)/2,my=(y0+y1)/2;
   return {x0:mx-cw/2,y0:my-ch/2,w:cw,h:ch}}
+/* matériel de raccordement repris dans le cartouche du plan : PEHD par usage, puis les lignes « matériel » du devis (section raccordement) */
+function planMat(){const v=vars(),out=[];const u=x=>x==='ml'||x==='m'?' m':x==='u'||!x?'':' '+x;
+  const pe=[];if(v.LF)pe.push([`PE forages -> collecteur${v.NC>1?'s':''} Ø${v.D1}`,nf(r1(v.LF))+' m']);
+  if(v.LC)pe.push([`PE ${v.NC>1?'C1':'collecteur'} -> chaufferie Ø${v.D2}`,nf(r1(v.LC))+' m']);
+  if(v.LCB)pe.push([`PE C2 -> chaufferie Ø${v.D2B}`,nf(r1(v.LCB))+' m']);
+  if(v.T)pe.push(['Tranchée',nf(r1(v.T))+' m']);
+  const skip=/^(Couronne de PE|Barre de PE|Fluide caloporteur)$/i;const rac=[];
+  for(const l of lines()){if(l.sec!=='racc'||(l.kind&&l.kind!=='mat')||skip.test(l.grp||''))continue;const q=qtyOf(l,v);if(!(q>0))continue;
+    const g=l.grp||'',lab=/électrosoudable/i.test(g)?l.name:/^Collecteur$/i.test(g)?'Collecteur '+l.name:g.replace(/ avertisseur violet/i,' avertisseur')+' '+l.name;rac.push([lab,nf(r1(q))+u(l.unit)])}
+  const pg=planOn()?planGeo():null;const warn=pg&&pg.nc?`Attention : ${pg.nc} forage${pl(pg.nc)} non raccordé${pl(pg.nc)}`:'';
+  const S=[{h:'PEHD (aller + retour) et tranchée',rows:pe.map(r=>({r})).concat(warn?[{w:warn}]:[])}];if(rac.length)S.push({h:'Raccords et accessoires',rows:rac.map(r=>({r}))});
+  return {pe,rac,warn,S,n:pe.length+rac.length+(warn?1:0),h2:Math.max(...S.map(x=>x.rows.length+1))}}
+/* symbole chaufferie : bâtiment (carré arrondi) + flamme, coordonnées à l'échelle q, y vers le bas */
+function chBox(q){const w=2.6*q,h=2*q,r=.45*q;return `M${-w+r} ${-h} L${w-r} ${-h} Q${w} ${-h} ${w} ${-h+r} L${w} ${h-r} Q${w} ${h} ${w-r} ${h} L${-w+r} ${h} Q${-w} ${h} ${-w} ${h-r} L${-w} ${-h+r} Q${-w} ${-h} ${-w+r} ${-h} Z`}
+function chFlame(q){const k=1.25*q,P=[[0,-1.3],[.9,-.4,1,.3,.75,.75],[.55,1.15,.25,1.3,0,1.3],[-.25,1.3,-.55,1.15,-.75,.75],[-1,.3,-.6,-.2,-.3,-.6],[-.25,-.1,-.05,.1,.1,.15],[.15,-.3,.05,-.8,0,-1.3]];
+  return P.map((a,i)=>i?'C'+a.map(v=>(v*k).toFixed(3)).join(' '):'M'+a.map(v=>(v*k).toFixed(3)).join(' ')).join(' ')+' Z'}
 function planPaper(){const p=quote.plan||{};const f=p.fmt||'A4',A3=f.startsWith('A3'),port=f.endsWith('P');
-  if(port){const PW=A3?297:210,PH=A3?420:297,ch=A3?100:90;return {A3,port,PW,PH,ch,ay:10+ch+6,aw:PW-20,ah:PH-20-ch-6}}
-  return {A3,port,PW:A3?420:297,PH:A3?297:210,ay:10,aw:(A3?420:297)-20-80-6,ah:(A3?297:210)-20}}
+  if(port){const PW=A3?297:210,PH=A3?420:297;let ch=A3?100:90;const mt=p.matPdf!==false?planMat():null;const mh=mt&&mt.n?8+(Math.ceil(mt.S.reduce((a,x)=>a+x.rows.length+1,0)/2)+1)*3.3:0;ch+=mh;return {A3,port,PW,PH,ch,mh,ay:10+ch+6,aw:PW-20,ah:PH-20-ch-6}}
+  const cw=p.matPdf!==false?92:80;return {A3,port,cw,PW:A3?420:297,PH:A3?297:210,ay:10,aw:(A3?420:297)-20-cw-6,ah:(A3?297:210)-20}}
 function planFitScale(){const P=planPaper();const bb=planBBox(3);return PL_SC.find(n=>bb.w*1000/n<=P.aw&&bb.h*1000/n<=P.ah)||PL_SC[PL_SC.length-1]}
 function planExactScale(){const P=planPaper();const bb=planBBox(3);return Math.max(10,Math.ceil(Math.max(bb.w*1000/P.aw,bb.h*1000/P.ah)/10)*10)}
 function planExpHTML(){const p=quote.plan||{};const fit=planFitScale();
@@ -819,7 +839,7 @@ async function planPdf(){
     if(i.k==='f'){page.drawCircle({x,y,size:1.7*K,color:WH,borderColor:FOR,borderWidth:1.1});page.drawCircle({x,y,size:.6*K,color:FOR});T('F'+num.get(i),x+2.1*K,y+1.6*K,{s:6,f:B,col:FOR})}});
   planItems().forEach(i=>{const x=X(i.x),y=Y(i.y);
     if(i.k==='c'){const z=2.2*K;page.drawRectangle({x:x-z,y:y-z,width:2*z,height:2*z,color:ACC,borderColor:WH,borderWidth:.6});T('C'+((i.i||0)+1),x,y-2.3,{s:6.5,f:B,c:1,col:WH})}
-    if(i.k==='ch'){const q=1.4*K;page.drawSvgPath(`M${-3*q} ${1.8*q} L${-3*q} ${-.5*q} L0 ${-2.6*q} L${3*q} ${-.5*q} L${3*q} ${1.8*q} Z`,{x,y,color:LOC,borderColor:WH,borderWidth:.6});T('Chaufferie',x,y-1.8*q-7,{s:6.5,f:B,c:1,col:LOC})}});
+    if(i.k==='ch'){const q=1.4*K;page.drawSvgPath(chBox(q),{x,y,color:LOC,borderColor:WH,borderWidth:.6});page.drawSvgPath(chFlame(q),{x,y,color:WH});T('Chaufferie',x,y-2*q-7,{s:6.5,f:B,c:1,col:LOC})}});
   /* nord, dans la zone de dessin */
   const nd=(+p.nord||0)*Math.PI/180,nx=(ax+aw-12)*K,ny=(ay+ah-14)*K,R=(qx,qy)=>[qx*Math.cos(nd)-qy*Math.sin(nd),qx*Math.sin(nd)+qy*Math.cos(nd)];
   page.drawCircle({x:nx,y:ny,size:7*K,color:WH,borderColor:LN,borderWidth:.5});
@@ -828,8 +848,8 @@ async function planPdf(){
   /* cartouche */
   const pad=4*K;let kx,kw,ky,tx0,tw0,footX,footW;const port=P.port;
   if(port){kx=mg*K;kw=(P.PW-2*mg)*K;page.drawRectangle({x:kx,y:mg*K,width:kw,height:P.ch*K,borderColor:INK,borderWidth:.6})}
-  else{kx=(P.PW-mg-80)*K;kw=80*K;page.drawRectangle({x:kx,y:mg*K,width:kw,height:(P.PH-2*mg)*K,borderColor:INK,borderWidth:.6})}
-  const CW3=port?[.37,.31,.32]:[1];const col=i=>{let x=kx;for(let k=0;k<i;k++)x+=kw*CW3[k];tx0=x+pad;tw0=kw*CW3[i]-2*pad;ky=(port?(mg+P.ch):(P.PH-mg))*K;if(port&&i>0)line({x,y:mg*K+3},{x,y:(mg+P.ch)*K-3},.5,LN)};
+  else{kx=(P.PW-mg-P.cw)*K;kw=P.cw*K;page.drawRectangle({x:kx,y:mg*K,width:kw,height:(P.PH-2*mg)*K,borderColor:INK,borderWidth:.6})}
+  const CW3=port?[.37,.31,.32]:[1];const col=i=>{let x=kx;for(let k=0;k<i;k++)x+=kw*CW3[k];tx0=x+pad;tw0=kw*CW3[i]-2*pad;ky=(port?(mg+P.ch-(P.mh||0)):(P.PH-mg))*K;if(port&&i>0)line({x,y:mg*K+3},{x,y:(mg+P.ch-(P.mh||0))*K-3},.5,LN)};
   col(0);footX=tx0;footW=tw0;
   try{const bin=atob(LOGO_SRC.split(',')[1]);const u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);const img=await doc.embedPng(u8);const lh=(port?10:14)*K,lw=lh*img.width/img.height;page.drawImage(img,{x:tx0,y:ky-pad-lh,width:lw,height:lh});ky-=pad+lh+4*K}
   catch(e){T('HYDREAU FORAGE',tx0,ky-pad-10,{s:10,f:B,col:ACC});ky-=pad+16}
@@ -838,7 +858,7 @@ async function planPdf(){
   const v=vars();const row=(k,val)=>{if(!val)return;T(k,tx0,ky-7,{s:6,col:GR});const ls=[];let cur='';for(const w of pt(val).split(/\s+/)){const t=cur?cur+' '+w:w;if(F.widthOfTextAtSize(t,8)>tw0&&cur){ls.push(cur);cur=w}else cur=t}ls.push(cur);ls.slice(0,2).forEach((l,j)=>T(l,tx0,ky-16-j*9.5,{s:8,f:B}));ky-=12+ls.slice(0,2).length*9.5};
   row('Chantier',quote.nom);row('Lieu',quote.lieu);row('Client',quote.client);
   row('Forages',`${v.N} × ${nf(v.P)} m, soit ${nf(v.M)} m forés`);row('Collecteurs',pg.groups.length>1?`2 (${pg.groups.map(g=>g.n).join(' + ')} forages)`:'1');
-  if(pg.ch&&pg.Cch.length)row(pg.C.length>1?'Collecteurs → chaufferie':'Collecteur → chaufferie',pg.Cch.map(c=>(pg.C.length>1?'C'+((c.i||0)+1)+' : ':'')+nf(r1(polyLen(routeFor(c,pg.ch))))+' m').join(' · '));
+  if(pg.ch&&pg.Cch.length&&p.matPdf===false)row(pg.C.length>1?'Collecteurs → chaufferie':'Collecteur → chaufferie',pg.Cch.map(c=>(pg.C.length>1?'C'+((c.i||0)+1)+' : ':'')+nf(r1(polyLen(routeFor(c,pg.ch))))+' m').join(' · '));
   row('Date',quote.date?new Date(quote.date).toLocaleDateString('fr-FR'):new Date().toLocaleDateString('fr-FR'));row('Établi par',quote.chiffreur);
   if(port){col(1);footX=tx0;footW=tw0;ky-=pad}else{line({x:tx0,y:ky},{x:tx0+tw0,y:ky},.5,LN);ky-=6}
   T('ÉCHELLE',tx0,ky-7,{s:6,col:GR});T(`1/${N}`,tx0,ky-24,{s:20,f:B});T(`Format ${P.A3?'A3':'A4'} ${port?'portrait':'paysage'}`,tx0+tw0,ky-24,{s:7,col:GR,r:1});ky-=34;
@@ -849,13 +869,28 @@ async function planPdf(){
   for(const l of (port?[`Imprimer à 100 % (taille réelle),`,`sans « ajuster à la page ».`]:[`Imprimer à 100 % (taille réelle), sans « ajuster à la page ».`]).concat([`Contrôle : la barre de ${nf(sb)} m mesure ${nf(sb*mm)} mm.`]))
     {T(l,tx0,ky-7,{s:6.3,col:GR});ky-=8.5}
   if(port){col(2);ky-=pad}else{ky-=4;line({x:tx0,y:ky},{x:tx0+tw0,y:ky},.5,LN);ky-=6}T('LÉGENDE',tx0,ky-7,{s:6,col:GR});ky-=12;
-  const lg=(draw,txt)=>{draw(tx0+4*K,ky-3.5);T(txt,tx0+10*K,ky-6,{s:7});ky-=11};
+  const lg=(draw,txt)=>{draw(tx0+4*K,ky-3.5);T(txt,tx0+10*K,ky-6,{s:7});ky-=p.matPdf!==false?10:11};
   lg((x,y)=>{page.drawCircle({x,y,size:1.7*K,color:WH,borderColor:FOR,borderWidth:1.1});page.drawCircle({x,y,size:.6*K,color:FOR})},`Forage géothermique (${nf(v.P)} m)`);
   lg((x,y)=>{page.drawRectangle({x:x-2*K,y:y-2*K,width:4*K,height:4*K,color:ACC})},'Collecteur');
-  lg((x,y)=>{page.drawRectangle({x:x-3*K,y:y-1.6*K,width:6*K,height:3.2*K,color:LOC})},'Chaufferie');
+  lg((x,y)=>{const q=.75*K;page.drawSvgPath(chBox(q),{x,y,color:LOC});page.drawSvgPath(chFlame(q),{x,y,color:WH})},'Chaufferie');
   lg((x,y)=>line({x:x-3.5*K,y},{x:x+3.5*K,y},.7,ACC),`Liaison PE forage → collecteur (Ø${v.D1})`);
   lg((x,y)=>line({x:x-3.5*K,y},{x:x+3.5*K,y},1.6,ACC),'Liaison PE collecteur → chaufferie');if(p.cotes!==false)lg((x,y)=>{page.drawRectangle({x:x-3.5*K,y:y-1.4*K,width:7*K,height:2.8*K,color:WH,borderColor:GR,borderWidth:.4})},'Distance entre forages (m)');
   if(!p.noTr)lg((x,y)=>line({x:x-3.5*K,y},{x:x+3.5*K,y},4,SAND),'Tranchée (tracé indicatif)');
+  /* matériel de raccordement : en paysage sous la légende, en portrait en haut du bandeau sur 2 colonnes */
+  const MT=p.matPdf!==false?planMat():null;
+  if(MT&&MT.n){let x0,w0,top,bot;
+    if(port){x0=kx+pad;w0=kw-2*pad;top=(mg+P.ch)*K-pad*.6;bot=(mg+P.ch-P.mh)*K+2;line({x:kx+3,y:bot},{x:kx+kw-3,y:bot},.5,LN)}
+    else{ky-=3;line({x:tx0,y:ky},{x:tx0+tw0,y:ky},.5,LN);x0=tx0;w0=tw0;top=ky-4;bot=(mg+4)*K+3*8.5+4}
+    T('MATÉRIEL DE RACCORDEMENT (quantités du chiffrage)',x0,top-7,{s:6,col:GR});top-=12;
+    /* une colonne si la place le permet (paysage), sinon deux colonnes équilibrées */
+    const flat=MT.S.flatMap(x=>[{h:x.h},...x.rows]);let C1=flat,C2=[],lh=(top-bot)/flat.length;
+    if(port||lh<7.2){let k2=Math.ceil(flat.length/2);if(flat[k2-1].h)k2--;C1=flat.slice(0,k2);C2=flat.slice(k2);lh=(top-bot)/Math.max(C1.length,C2.length)}
+    const cols=C2.length?2:1;lh=Math.min(lh,9.5);const fs=Math.max(4.2,Math.min(7,lh*.8)),gap=8,cw=(w0-gap*(cols-1))/cols;
+    const fitT=(t,f,sz,w)=>{t=pt(t);while(t.length>3&&f.widthOfTextAtSize(t,sz)>w)t=t.slice(0,-2)+'…';return t};
+    [C1,C2].forEach((CL,c)=>{const xx=x0+c*(cw+gap);CL.forEach((o,k)=>{const yy=top-k*lh-fs;
+      if(o.h){T(fitT(o.h,B,fs*.9,cw),xx,yy,{s:fs*.9,col:GR,f:B});return}
+      if(o.w){T(fitT(o.w,B,fs,cw),xx,yy,{s:fs,f:B,col:FOR});return}
+        const vw=B.widthOfTextAtSize(pt(o.r[1]),fs);T(o.r[1],xx+cw,yy,{s:fs,f:B,r:1});T(fitT(o.r[0],F,fs,cw-vw-4),xx,yy,{s:fs})})})}
   const foot=['Implantation indicative à valider sur site :','réseaux enterrés, limites de propriété,','distances réglementaires, accès foreuse.'];
   foot.forEach((l,j)=>T(l,footX,(mg+4)*K+(foot.length-1-j)*8.5,{s:6.3,col:GR}));
   T(`Hydreau Forage — ${quote.nom||''}`,ax*K,6.5*K,{s:6,col:GR});
@@ -884,7 +919,7 @@ async function planPng(){
   planItems().forEach(i=>{const x=X(i.x),y=Y(i.y);if(i.k!=='f')return;g.beginPath();g.arc(x,y,.7*m,0,7);g.fillStyle='#fff';g.fill();g.lineWidth=Math.max(.2*m,2);g.strokeStyle=FOR;g.stroke();g.beginPath();g.arc(x,y,.25*m,0,7);g.fillStyle=FOR;g.fill();txt('F'+num.get(i),x+.9*m,y-.9*m,.8*m,FOR)});
   planItems().forEach(i=>{const x=X(i.x),y=Y(i.y);
     if(i.k==='c'){const z=.9*m;g.fillStyle=ACC;g.strokeStyle='#fff';g.lineWidth=Math.max(.1*m,1.5);g.beginPath();g.rect(x-z,y-z,2*z,2*z);g.fill();g.stroke();g.fillStyle='#fff';g.font=`700 ${.85*m}px Barlow, Arial, sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText('C'+((i.i||0)+1),x,y)}
-    if(i.k==='ch'){const q=.55*m;g.beginPath();g.moveTo(x-3*q,y+1.8*q);g.lineTo(x-3*q,y-.5*q);g.lineTo(x,y-2.6*q);g.lineTo(x+3*q,y-.5*q);g.lineTo(x+3*q,y+1.8*q);g.closePath();g.fillStyle=LOC;g.strokeStyle='#fff';g.lineWidth=Math.max(.1*m,1.5);g.fill();g.stroke();txt('Chaufferie',x,y+1.8*q+.8*m,.8*m,LOC,'center')}});
+    if(i.k==='ch'){const q=.55*m;g.save();g.translate(x,y);const pb=new Path2D(chBox(q));g.fillStyle=LOC;g.strokeStyle='#fff';g.lineWidth=Math.max(.1*m,1.5);g.fill(pb);g.stroke(pb);g.fillStyle='#fff';g.fill(new Path2D(chFlame(q)));g.restore();txt('Chaufferie',x,y+2*q+.8*m,.8*m,LOC,'center')}});
   /* nord et barre d'échelle */
   const nd=(+p.nord||0)*Math.PI/180,nx=W-2.5*m,ny=H-2.6*m;g.save();g.translate(nx,ny);g.rotate(nd);g.beginPath();g.arc(0,0,1.8*m,0,7);g.fillStyle='rgba(255,255,255,.9)';g.fill();
   g.beginPath();g.moveTo(0,-1.4*m);g.lineTo(.7*m,.9*m);g.lineTo(0,.4*m);g.lineTo(-.7*m,.9*m);g.closePath();g.fillStyle=INK;g.fill();g.restore();txt('N',nx+Math.sin(nd)*2.4*m,ny-Math.cos(nd)*2.4*m,.9*m,INK,'center');
@@ -951,8 +986,13 @@ function trAuto(){const p=planObj();const F=planItems().filter(i=>i.k==='f'),C=p
   C.forEach((c,j)=>{const nodes=[c,...grp[j]],n=nodes.length;const inT=new Array(n).fill(false),pl=new Array(n).fill(0),best=new Array(n).fill(Infinity),par=new Array(n).fill(-1);inT[0]=true;
     const D=(u,v)=>Math.hypot(nodes[u].x-nodes[v].x,nodes[u].y-nodes[v].y);
     for(let v=1;v<n;v++){best[v]=D(0,v);par[v]=0}
-    for(let it=1;it<n;it++){let v=-1,bv=Infinity;for(let k=1;k<n;k++)if(!inT[k]&&best[k]<bv-1e-9){bv=best[k];v=k}if(v<0)break;inT[v]=true;pl[v]=pl[par[v]]+D(par[v],v);T.push([nodes[par[v]],nodes[v]]);
+    const ord=[];for(let it=1;it<n;it++){let v=-1,bv=Infinity;for(let k=1;k<n;k++)if(!inT[k]&&best[k]<bv-1e-9){bv=best[k];v=k}if(v<0)break;inT[v]=true;pl[v]=pl[par[v]]+D(par[v],v);ord.push(v);
       for(let k=1;k<n;k++)if(!inT[k]){const c2=a*pl[v]+D(v,k);if(c2<best[k]-1e-9){best[k]=c2;par[k]=v}}}
+    /* pas d'angle droit : un forage qui se raccorde en tournant sur la ligne de son forage parent la rejoint en biais (≈ 45°), plus loin vers le collecteur */
+    ord.forEach(v=>{const q=par[v],P=nodes[q],V=nodes[v];if(p.trBiais===false||q===0){T.push([P,V]);return}const G=nodes[par[q]];
+      const ax=P.x-V.x,ay=P.y-V.y,bx=G.x-P.x,by=G.y-P.y,la=Math.hypot(ax,ay),lb=Math.hypot(bx,by);if(la<1e-6||lb<1e-6){T.push([P,V]);return}
+      const turn=Math.acos(Math.max(-1,Math.min(1,(ax*bx+ay*by)/(la*lb))))*180/Math.PI;if(turn<35){T.push([P,V]);return}
+      const r=Math.min(la,lb),J=r>=lb-.01?G:{x:P.x+bx/lb*r,y:P.y+by/lb*r};T.push([J,V])});
     if(ch)T.push([c,ch])});
   /* segments bout à bout réunis en polylignes (plus simples à modifier) */
   const key=q=>Math.round(q.x*100)+','+Math.round(q.y*100);const deg=new Map();T.forEach(([u,v])=>{[u,v].forEach(q=>deg.set(key(q),(deg.get(key(q))||0)+1))});
@@ -960,9 +1000,14 @@ function trAuto(){const p=planObj();const F=planItems().filter(i=>i.k==='f'),C=p
   T.forEach((sg,i)=>{if(used[i])return;used[i]=true;let L=[sg[0],sg[1]];
     for(let grow=true;grow;){grow=false;const end=L[L.length-1];if(deg.get(key(end))!==2)break;const k=T.findIndex((t,j)=>!used[j]&&(key(t[0])===key(end)||key(t[1])===key(end)));if(k<0)break;used[k]=true;L.push(key(T[k][0])===key(end)?T[k][1]:T[k][0]);grow=true}
     lines.push(L.map(q=>({x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100})))});
-  p.trenches=lines;p.routes={};p.noLink={};planChanged();const v=vars();
+  p.trenches=lines;p.routes={};p.noLink={};p.via={};planChanged();const v=vars();
   toast(`Tranchées tracées (${TR_MODES.find(m=>m[2]===a)[1]}) : ${nf(r1(v.T))} m de tranchée, ${nf(r1(v.LF))} m de PE forages`)}
-function linkFinish(hit){const p=planObj();if(p.noLink)delete p.noLink[routeKey(plLink.from)];p.routes=p.routes||{};p.routes[routeKey(plLink.from)]=plLink.pts.map(q=>({x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100}));
+function linkFinish(hit){const p=planObj();
+  if(hit.k==='f'){const a=plLink.from;let x=hit,n=0;while(x&&n<60){if(x===a){toast('Impossible : ce forage est déjà raccordé en passant par celui-ci');return}const v2=p.via&&p.via[plId(x)];x=v2?planItems().find(i=>i.k==='f'&&i.id===v2):null;n++}
+    p.via=p.via||{};p.via[plId(a)]=plId(hit);if(p.noLink)delete p.noLink[routeKey(a)];if(p.assign)delete p.assign[a.id];p.routes=p.routes||{};const pts=plLink.pts.map(q=>({x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100}));if(pts.length)p.routes[routeKey(a)]=pts;else delete p.routes[routeKey(a)];
+    if(trActive())p.trenches.push([{x:a.x,y:a.y},...pts,{x:hit.x,y:hit.y}]);
+    const NUM=plNum();plLink=null;plLinkHover=null;planChanged();toast(`Forage F${NUM.get(a)||''} raccordé en passant par le forage F${NUM.get(hit)||''}`);return}
+  if(plLink.from.k==='f'&&p.via)delete p.via[plId(plLink.from)];if(p.noLink)delete p.noLink[routeKey(plLink.from)];p.routes=p.routes||{};p.routes[routeKey(plLink.from)]=plLink.pts.map(q=>({x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100}));
   if(plLink.from.k==='f'){p.assign=p.assign||{};p.assign[plId(plLink.from)]=hit.i||0}
   const L=plLink;plLink=null;plLinkHover=null;planChanged();toast(`Liaison ${L.from.k==='f'?'du forage → C'+((hit.i||0)+1):'du collecteur → chaufferie'} tracée`)}
 /* simplification de Douglas-Peucker (garde le dessin, enlève les points inutiles) */
@@ -983,14 +1028,14 @@ function planBgUpdate(){const L=$('#pl-bgl');if(!L)return;const p=quote.plan||{w
   if(!im){im=document.createElementNS('http://www.w3.org/2000/svg','image');im.id='pl-bgimg';im.setAttribute('preserveAspectRatio','none');L.appendChild(im)}
   if(im.getAttribute('href')!==b.src)im.setAttribute('href',b.src);
   im.setAttribute('x',b.x);im.setAttribute('y',b.y);im.setAttribute('width',b.iw*b.mpp);im.setAttribute('height',b.ih*b.mpp);im.setAttribute('opacity',b.op??.6)}
-function plHint(){if(plTool==='tr'){if(plLink)return `Tracé en cours depuis ${plLink.from.k==='f'?'le forage':'le collecteur'} : dessiner en faisant glisser ou cliquer les points de passage, puis <b>${plLink.from.k==='f'?'un collecteur':'la chaufferie'}</b> pour terminer (${plLink.pts.length} point${pl(plLink.pts.length)}). Échap ou clic sur le point de départ pour annuler.`;
-    return 'Tracer une liaison librement : partir d’un <b>forage</b> (ou d’un collecteur) et <b>dessiner en faisant glisser</b> jusqu’au <b>collecteur</b> (ou la chaufferie), ou cliquer le forage, les points de passage puis le collecteur d’arrivée — le forage est alors rattaché à ce collecteur. Modifier : tirer un <b>+</b> ou déplacer les carrés ; double-clic (ou Gomme) sur un carré pour le supprimer. Supprimer tout un tracé : outil <b>Gomme</b> sur la liaison. Les longueurs de PE, la tranchée et la perte de charge suivent le tracé.'}
+function plHint(){if(plTool==='tr'){if(plLink)return `Tracé en cours depuis ${plLink.from.k==='f'?'le forage':'le collecteur'} : dessiner en faisant glisser ou cliquer les points de passage, puis <b>${plLink.from.k==='f'?'un collecteur — ou un autre forage pour le récupérer en passant':'la chaufferie'}</b> pour terminer (${plLink.pts.length} point${pl(plLink.pts.length)}). Échap ou clic sur le point de départ pour annuler.`;
+    return 'Tracer une liaison librement : partir d’un <b>forage</b> (ou d’un collecteur) et <b>dessiner en faisant glisser</b> jusqu’au <b>collecteur</b> (ou la chaufferie) — ou jusqu’à un <b>autre forage</b> : la liaison suit alors le tracé de ce forage jusqu’au collecteur, ou cliquer le forage, les points de passage puis le collecteur d’arrivée — le forage est alors rattaché à ce collecteur. Modifier : tirer un <b>+</b> ou déplacer les carrés ; double-clic (ou Gomme) sur un carré pour le supprimer. Supprimer tout un tracé : outil <b>Gomme</b> sur la liaison. Les longueurs de PE, la tranchée et la perte de charge suivent le tracé.'}
   if(plTool==='zone'){const Z=quote.plan&&quote.plan.zone,N=+quote.N||0,E=+quote.E||0;
     const warn=bgOn()&&!quote.plan.bg.cal?' <b class="bad">L’échelle du fond n’est pas calée : la zone et les espacements ne correspondront pas à la photo.</b>':'';
     if(!Z||!Z.closed)return `Zone de forage : cliquer les coins de la zone autorisée (à l’échelle du plan), puis cliquer le 1er point (ou double-clic) pour la fermer. <button class="btn sm ghost danger" id="pl-zdel" ${Z&&Z.pts.length?'':'disabled'}>Effacer</button>${warn}`;
     return `Zone de ${nf(Math.round(polyArea(Z.pts)))} m². Les sommets se déplacent. Retrait des bords <span class="unit-in pl-calw" style="width:80px"><input id="pl-zmarg" inputmode="decimal" value="${Z.marg??1}"><span>m</span></span> <button class="btn sm primary" id="pl-zimpl">Implanter ${N} forage${pl(N)} à ${nf(E)} m</button> <label class="status">Disposition <select id="pl-zmode"><option value="grille" ${(Z.mode||'grille')==='grille'?'selected':''}>quadrillage régulier, espacement maxi</option><option value="groupe" ${Z.mode==='groupe'?'selected':''}>groupée près du collecteur (espacement mini)</option></select></label> <label class="status">Maille <select id="pl-zpat"><option value="carre" ${(Z.pat||'carre')==='carre'?'selected':''}>carrée</option><option value="quinconce" ${Z.pat==='quinconce'?'selected':''}>quinconce</option><option value="auto" ${Z.pat==='auto'?'selected':''}>la meilleure</option></select></label> <label class="status" title="Décoché : le collecteur et la chaufferie placés à la main restent où ils sont"><input type="checkbox" id="pl-zautoc" ${Z.autoC?'checked':''}> replacer le collecteur au mieux</label> <button class="btn sm ghost danger" id="pl-zdel">Effacer la zone</button><span class="status" style="display:block;margin-top:4px">Nombre et espacement : ceux du dimensionnement. Quadrillage régulier : le logiciel écarte les forages au maximum (jamais moins que l’espacement demandé) pour remplir la zone. Groupée : espacement demandé, au plus près du collecteur.</span>${warn}`}
   if(plTool==='tch'){if(plTch)return `Tranchée en cours (${nf(r1(polyLen(plTch.pts)))} m) : dessiner en faisant glisser, ou cliquer les points ; double-clic, Échap ou re-clic sur le dernier point pour terminer.`;
-    return 'Tranchée : dessiner librement (faire glisser) ou point par point la tranchée principale, en passant par les forages ; les bouts s’accrochent aux forages, collecteurs, chaufferie et aux autres tranchées. Les liaisons suivent alors les tranchées par le chemin le plus court, et chaque forage est raccordé au point le plus proche. Pour <b>contourner un arbre</b> : tirer le <b>+</b> au milieu d’un tronçon (crée un sommet), ou déplacer les carrés ; Gomme sur un tronçon pour l’effacer, puis redessiner le passage. Maj + clic pour partir d’une tranchée existante sur un +.'+` <span style="display:block;margin-top:4px"><button class="btn sm primary" id="pl-trauto">Tracer automatiquement</button> <label class="status">Priorité <select id="pl-trmode">${TR_MODES.map(m=>`<option value="${m[0]}" ${((quote.plan&&quote.plan.trMode)||'tranchee')===m[0]?'selected':''}>${m[1]}</option>`).join('')}</select></label></span>`+((quote.plan&&quote.plan.trenches&&quote.plan.trenches.length)?` <button class="btn sm ghost danger" id="pl-tchdel">Effacer toutes les tranchées</button>`:'')}
+    return 'Tranchée : dessiner librement (faire glisser) ou point par point la tranchée principale, en passant par les forages ; les bouts s’accrochent aux forages, collecteurs, chaufferie et aux autres tranchées. Les liaisons suivent alors les tranchées par le chemin le plus court, et chaque forage est raccordé au point le plus proche. Pour <b>contourner un arbre</b> : tirer le <b>+</b> au milieu d’un tronçon (crée un sommet), ou déplacer les carrés ; Gomme sur un tronçon pour l’effacer, puis redessiner le passage. Maj + clic pour partir d’une tranchée existante sur un +.'+` <span style="display:block;margin-top:4px"><button class="btn sm primary" id="pl-trauto">Tracer automatiquement</button> <label class="status" title="Les branches rejoignent la tranchée principale en biais (≈ 45°) plutôt qu’à angle droit : moins de coudes et moins de PE, un peu plus de tranchée"><input type="checkbox" id="pl-trbiais" ${quote.plan&&quote.plan.trBiais===false?'':'checked'}> éviter les angles droits</label> <label class="status">Priorité <select id="pl-trmode">${TR_MODES.map(m=>`<option value="${m[0]}" ${((quote.plan&&quote.plan.trMode)||'tranchee')===m[0]?'selected':''}>${m[1]}</option>`).join('')}</select></label></span>`+((quote.plan&&quote.plan.trenches&&quote.plan.trenches.length)?` <button class="btn sm ghost danger" id="pl-tchdel">Effacer toutes les tranchées</button>`:'')}
   if(plTool==='del'){const pg=planOn()?planGeo():null,n=pg?pg.nc:0,nc=pg&&pg.ch?pg.C.length-pg.Cch.length:0;
     return 'Gomme : cliquer un forage, un collecteur ou la chaufferie pour l’effacer ; cliquer <b>n’importe quelle liaison</b> pour la supprimer (le forage reste en place, non raccordé, entouré en pointillé — le relier ensuite avec l’outil <b>Liaisons</b>). Tronçon de tranchée : cliquer là où aucune liaison ne passe, ou <b>Maj + clic</b>.'+
       ((n||nc)?` <span style="display:block;margin-top:4px"><b class="bad">${n?n+' forage'+pl(n)+' non raccordé'+pl(n):''}${n&&nc?' · ':''}${nc?nc+' collecteur'+pl(nc)+' sans liaison chaufferie':''}</b> — non compté${pl(n+nc)} dans les longueurs de PE. <button class="btn sm" id="pl-relink">Tout raccorder en direct</button></span>`:'')}
@@ -1203,7 +1248,7 @@ function kmlPlacePoints(){const p=planObj(),b=p.bg;if(!b||!b.geo||!b.kpts||!b.kp
     if(isCh(nm)){if(!items.some(i=>i.k==='ch'))items.push({k:'ch',...pt})}
     else if(isC(nm)){const m=/(\d+)/.exec(nm);const i=m?Math.min(1,Math.max(0,+m[1]-1)):ci;if(ci<2&&!items.some(x=>x.k==='c'&&x.i===i)){items.push({k:'c',i,...pt});ci++}}
     else if(isF(nm)||!named)items.push({k:'f',...pt})});
-  p.items=items;p.routes={};p.assign={};p.noLink={};const nF=items.filter(i=>i.k==='f').length;planChanged();
+  p.items=items;p.routes={};p.assign={};p.noLink={};p.via={};const nF=items.filter(i=>i.k==='f').length;planChanged();
   toast(`${nF} forage${pl(nF)}${items.some(i=>i.k==='c')?', collecteur(s)':''}${items.some(i=>i.k==='ch')?', chaufferie':''} placés depuis le KML`)}
 /* export KML : positions réelles, à ouvrir dans Google Earth */
 async function planKml(){if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}const b=quote.plan&&quote.plan.bg;if(!b||!b.geo){toast('Importer d’abord un fond KML/KMZ');return}
@@ -1236,10 +1281,10 @@ function planPt(e){const svg=$('#pl-svg');const pt=svg.createSVGPoint();pt.x=e.c
 function planLinks(){const pg=planGeo();const L=[];pg.asg.forEach(a=>{const c=pg.C[a.j];if(c)L.push({a:a.f,b:c})});if(pg.ch)pg.Cch.forEach(c=>L.push({a:c,b:pg.ch}));return L}
 function routeHit(pt){const w=planView().w;const r=w/45,u=planSymU(w);let best=null,bd=r;
   planLinks().forEach(L=>{const key=routeKey(L.a),rt=routeFor(L.a,L.b),wn=routeWps(L.a).length;
-    if(wn)rt.slice(1,-1).forEach((q,k)=>{const d=Math.hypot(q.x-pt.x,q.y-pt.y);if(d<=bd){bd=d;best={key,idx:k,L}}});
+    if(wn)rt.slice(1,1+wn).forEach((q,k)=>{const d=Math.hypot(q.x-pt.x,q.y-pt.y);if(d<=bd){bd=d;best={key,idx:k,L}}});
     routeHandles(L,u).H.forEach(hh=>{const d=Math.hypot(hh.x-pt.x,hh.y-pt.y);if(d<bd){bd=d;best={key,ins:hh.ins,L,rt}}})});
   return best}
-function routeClean(){const p=planObj();if(p.noLink){const ks=new Set(planItems().filter(i=>i.k!=='ch').map(routeKey));Object.keys(p.noLink).forEach(k=>{if(!ks.has(k))delete p.noLink[k]})}if(p.assign){const ids=new Set(planItems().filter(i=>i.k==='f').map(i=>i.id));Object.keys(p.assign).forEach(k=>{if(!ids.has(k))delete p.assign[k]})}if(!p.routes)return;const keys=new Set(planLinks().map(L=>routeKey(L.a)));Object.keys(p.routes).forEach(k=>{if(!keys.has(k)||!(p.routes[k]||[]).length)delete p.routes[k]})}
+function routeClean(){const p=planObj();if(p.via){const ids=new Set(planItems().filter(i=>i.k==='f').map(i=>i.id));Object.keys(p.via).forEach(k=>{if(!ids.has(k)||!ids.has(p.via[k]))delete p.via[k]})}if(p.noLink){const ks=new Set(planItems().filter(i=>i.k!=='ch').map(routeKey));Object.keys(p.noLink).forEach(k=>{if(!ks.has(k))delete p.noLink[k]})}if(p.assign){const ids=new Set(planItems().filter(i=>i.k==='f').map(i=>i.id));Object.keys(p.assign).forEach(k=>{if(!ids.has(k))delete p.assign[k]})}if(!p.routes)return;const keys=new Set(planLinks().map(L=>routeKey(L.a)));Object.keys(p.routes).forEach(k=>{if(!keys.has(k)||!(p.routes[k]||[]).length)delete p.routes[k]})}
 function planHit(pt){const w=planView().w;const r=w/40;let best=null,bd=r;planItems().forEach(i=>{const d=Math.hypot(i.x-pt.x,i.y-pt.y);if(d<=bd){bd=d;best=i}});return best}
 function planChanged(){routeClean();const p=planObj();if(!p.on&&!p.userOff&&planItems().some(i=>i.k==='f')&&planItems().some(i=>i.k==='c'))p.on=true;planSync();markDirty();renderDevisKeepScroll()}
 function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.preventDefault();const p=planObj();
@@ -1261,17 +1306,17 @@ function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.pr
     const mh=!e.shiftKey&&trMidHit(q);if(mh){quote.plan.trenches[mh.li].splice(mh.k,0,{x:mh.x,y:mh.y});plDrag={tv:{li:mh.li,vi:mh.k},moved:true};svg.setPointerCapture?.(e.pointerId);planDraw();return}
     plTch={pts:[trSnap(q)]};plDrag={tch:true,moved:false};svg.setPointerCapture?.(e.pointerId);hintUpdate();planDraw();return}
   if(plTool==='tr'&&plLink){const hit=planHit(pt),want=plLink.from.k==='f'?'c':'ch';
-    if(hit&&hit.k===want){linkFinish(hit);return}
+    if(hit&&(hit.k===want||(want==='c'&&hit.k==='f'&&hit!==plLink.from))){linkFinish(hit);return}
     if(hit&&hit===plLink.from){plLink=null;plLinkHover=null;hintUpdate();planDraw();return}
     const q=planRaw(e);plLink.pts.push({x:q.x,y:q.y});plDrag={link:true,moved:false};svg.setPointerCapture?.(e.pointerId);hintUpdate();planDraw();return}
   if(plTool==='tr'||plTool==='del'){const rh=routeHit(pt);if(rh&&rh.idx!=null){if(plTool==='del'){p.routes[rh.key].splice(rh.idx,1);planChanged();return}plDrag={wp:rh,moved:false};svg.setPointerCapture?.(e.pointerId);return}
     if(plTool==='tr'&&!(rh&&rh.ins!=null)){const hit=planHit(pt);if(hit&&(hit.k==='f'||hit.k==='c')){plLink={from:hit,pts:[]};plLinkHover=null;plDrag={link:true,moved:false};svg.setPointerCapture?.(e.pointerId);hintUpdate();planDraw();return}}
-    if(plTool==='tr'){if(rh&&rh.ins!=null){p.routes=p.routes||{};if(!routeWps(rh.L.a).length)p.routes[rh.key]=rh.rt.slice(1,-1).map(q=>({x:q.x,y:q.y}));p.routes[rh.key].splice(rh.ins,0,{x:pt.x,y:pt.y});
+    if(plTool==='tr'){if(rh&&rh.ins!=null){p.routes=p.routes||{};if(!routeWps(rh.L.a).length)p.routes[rh.key]=plVia(rh.L.a)?[]:rh.rt.slice(1,-1).map(q=>({x:q.x,y:q.y}));p.routes[rh.key].splice(rh.ins,0,{x:pt.x,y:pt.y});
       plDrag={wp:{key:rh.key,idx:rh.ins},moved:true};svg.setPointerCapture?.(e.pointerId);planDraw()}return}}
   const hit=planHit(pt);
   if(plTool==='del'){if(hit){p.items=p.items.filter(i=>i!==hit);planChanged();return}
     const delLink=()=>{const tol=planView().w/60;let best=null,bd=tol;planLinks().forEach(L=>{legs(routeFor(L.a,L.b)).forEach(([a,b2])=>{const d=segDist(pt.x,pt.y,a,b2);if(d<bd){bd=d;best=L}})});
-      if(!best)return false;const key=routeKey(best.a);p.noLink=p.noLink||{};p.noLink[key]=true;if(p.routes)delete p.routes[key];if(best.a.k==='f'&&p.assign)delete p.assign[best.a.id];
+      if(!best)return false;const key=routeKey(best.a);p.noLink=p.noLink||{};p.noLink[key]=true;if(p.routes)delete p.routes[key];if(best.a.k==='f'&&p.assign)delete p.assign[best.a.id];if(best.a.k==='f'&&p.via)delete p.via[best.a.id];
       const nm=best.a.k==='f'?'du forage F'+(plNum().get(best.a)||''):'du collecteur C'+((best.a.i||0)+1)+' → chaufferie';planChanged();
       toast(`Liaison ${nm} supprimée — la retracer avec l’outil Liaisons (partir ${best.a.k==='f'?'du forage':'du collecteur'})`);return true};
     if(!e.shiftKey&&delLink())return;
@@ -1291,7 +1336,7 @@ function onPlanUp(e){if(!plDrag)return;if(plDrag.tv){const m=plDrag.moved;plDrag
   if(plDrag.tch){const mv=plDrag.moved;plDrag=null;if(!plTch)return;if(mv){/* à main levée : simplifiée, bouts aimantés, terminée au lâcher */
       const P=dpSimplify(plTch.pts,planView().w/250);P[P.length-1]=trSnap(P[P.length-1]);plTch.pts=P;trFinish();return}hintUpdate();planDraw();return}if(plDrag.link){const mv=plDrag.moved;plDrag=null;if(!plLink)return;
     if(mv){/* tracé à main levée : simplifié, puis terminé si on lâche sur l'arrivée */plLink.pts=dpSimplify([plLink.from,...plLink.pts],planView().w/250).slice(1);
-      const q=e&&e.clientX!=null?planRaw(e):null,hit=q&&planHit(q),want=plLink.from.k==='f'?'c':'ch';if(hit&&hit.k===want){while(plLink.pts.length&&Math.hypot(plLink.pts[plLink.pts.length-1].x-hit.x,plLink.pts[plLink.pts.length-1].y-hit.y)<planView().w/40)plLink.pts.pop();linkFinish(hit);return}}
+      const q=e&&e.clientX!=null?planRaw(e):null,hit=q&&planHit(q),want=plLink.from.k==='f'?'c':'ch';if(hit&&(hit.k===want||(want==='c'&&hit.k==='f'&&hit!==plLink.from))){while(plLink.pts.length&&Math.hypot(plLink.pts[plLink.pts.length-1].x-hit.x,plLink.pts[plLink.pts.length-1].y-hit.y)<planView().w/40)plLink.pts.pop();linkFinish(hit);return}}
     hintUpdate();planDraw();return}if(plDrag.pan){plDrag=null;return}if(plDrag.zv!=null){const m=plDrag.moved;plDrag=null;if(m){markDirty();hintUpdate();planDraw()}return}const m=plDrag.moved,isBg=plDrag.bg;plDrag=null;if(m){if(isBg)markDirty();else planChanged()}}
 /* ---------- zone de forage : implantation automatique ---------- */
 let plZoneHover=null;
@@ -1345,7 +1390,7 @@ function zoneImplant(){const p=planObj(),Z=p.zone;if(!Z||!Z.closed||Z.pts.length
         const md=geoMedian(g),cand=[];for(let a2=0;a2<g.length;a2++)for(let b2=a2+1;b2<g.length;b2++){const d=Math.hypot(g[a2].x-g[b2].x,g[a2].y-g[b2].y);if(d<=Math.max(E,Eg)*1.1)cand.push({x:(g[a2].x+g[b2].x)/2,y:(g[a2].y+g[b2].y)/2})}
         const cost=q=>g.reduce((t,f)=>t+Math.hypot(f.x-q.x,f.y-q.y),0)+.3*Math.hypot(q.x-anchor.x,q.y-anchor.y);const m=cand.length?cand.reduce((bst,q)=>cost(q)<cost(bst)?q:bst,cand[0]):md;
         return {k:'c',i,x:Math.round(m.x*10)/10,y:Math.round(m.y*10)/10}})}
-    p.items=[...(ch?[ch]:[]),...F,...C];p.routes={};p.assign={};p.noLink={};p.on=true;p.userOff=false;plTool='f';
+    p.items=[...(ch?[ch]:[]),...F,...C];p.routes={};p.assign={};p.noLink={};p.via={};p.on=true;p.userOff=false;plTool='f';
     planChanged();{const V=planView();if(F.some(i=>i.x<V.x||i.x>V.x+V.w||i.y<V.y||i.y>V.y+V.h)){planFit(false);planDraw()}}
     const pat=best.pat==='carre'?'en carré':'en quinconce';
     const esp=Math.round(Eg*10)/10;toast(inZ<N?`${N} forages implantés ${pat} à ${nf(E)} m : ${inZ} dans la zone, ${N-inZ} juste autour (à déplacer si besoin)`:`${N} forages implantés ${pat}, espacement ${nf(esp)} m${esp>E+.05?` (mini demandé ${nf(E)} m)`:''}, orientation ${best.ad}°${keepC?' (collecteur conservé)':''}`)},30)}
@@ -1363,7 +1408,7 @@ function planGen(){const p=planObj();const N=+quote.N||0;if(!N){toast('Indiquer 
   else{const xs=items.map(i=>i.x),ys=items.map(i=>i.y),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
     const b=p.bg,V=planView();const c=bgOn()?{x:b.x+b.iw*b.mpp/2,y:b.y+b.ih*b.mpp/2}:{x:V.x+V.w/2,y:V.y+V.h/2};ox=c.x-(x0+x1)/2;oy=c.y-(y0+y1)/2}
   items.forEach(i=>{i.x=Math.round((i.x+ox)*10)/10;i.y=Math.round((i.y+oy)*10)/10});
-  p.items=items;p.routes={};p.assign={};p.noLink={};p.on=true;p.userOff=false;{const V=planView();if(items.some(i=>i.x<V.x||i.x>V.x+V.w||i.y<V.y||i.y>V.y+V.h))planFit(false)}if(bgOn()&&!p.bg.cal)setTimeout(()=>toast('Attention : l’échelle du fond n’est pas calée, les forages (en mètres réels) ne correspondent pas encore à la photo'),2600);planSync();markDirty();renderDevisKeepScroll();toast('Plan placé : déplacer les points pour coller au terrain')}
+  p.items=items;p.routes={};p.assign={};p.noLink={};p.via={};p.on=true;p.userOff=false;{const V=planView();if(items.some(i=>i.x<V.x||i.x>V.x+V.w||i.y<V.y||i.y>V.y+V.h))planFit(false)}if(bgOn()&&!p.bg.cal)setTimeout(()=>toast('Attention : l’échelle du fond n’est pas calée, les forages (en mètres réels) ne correspondent pas encore à la photo'),2600);planSync();markDirty();renderDevisKeepScroll();toast('Plan placé : déplacer les points pour coller au terrain')}
 document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#pl-svg'))onPlanDown(e)});
 document.addEventListener('dblclick',e=>{if(plTool==='tch'&&plTch&&e.target.closest&&e.target.closest('#pl-svg')){const P=plTch.pts;while(P.length>1&&Math.hypot(P[P.length-1].x-P[P.length-2].x,P[P.length-1].y-P[P.length-2].y)<planView().w/80)P.pop();trFinish();return}if(plTool==='zone'&&e.target.closest&&e.target.closest('#pl-svg')){const Z=quote.plan&&quote.plan.zone;if(Z&&!Z.closed){/* le double-clic a ajouté 2 points identiques */const P=Z.pts;while(P.length>1&&Math.hypot(P[P.length-1].x-P[P.length-2].x,P[P.length-1].y-P[P.length-2].y)<.01)P.pop();if(P.length>=3){Z.closed=true;plZoneHover=null;markDirty();renderDevisKeepScroll()}}return}});
 document.addEventListener('dblclick',e=>{if(!(e.target.closest&&e.target.closest('#pl-svg'))||plTool!=='tr')return;const rh=routeHit(planPt(e));if(rh&&rh.idx!=null){quote.plan.routes[rh.key].splice(rh.idx,1);planChanged()}});
@@ -1526,7 +1571,7 @@ function onDevisInput(e){
   const tg=e.target;
   if(tg.id==='pl-bgop'){const b=quote.plan&&quote.plan.bg;if(b){b.op=+tg.value/100;markDirty();planBgUpdate()}return}
   if(tg.id==='pl-symk'){planObj().symK=+tg.value/100;markDirty();planDraw();return}
-  if(['pl-file','pl-bgech','pl-bgrot','pl-caldist','pl-bgpdf','pl-bgshow','pl-bgpage','pl-bgwid','pl-grid','pl-zmarg','pl-tr','pl-zautoc','pl-zmode','pl-zpat','pl-trmode','pl-cotes'].includes(tg.id))return;
+  if(['pl-file','pl-bgech','pl-bgrot','pl-caldist','pl-bgpdf','pl-bgshow','pl-bgpage','pl-bgwid','pl-grid','pl-zmarg','pl-tr','pl-zautoc','pl-zmode','pl-zpat','pl-trmode','pl-cotes','pl-mat','pl-trbiais'].includes(tg.id))return;
   if(tg.id==='pl-w'||tg.id==='pl-trace'||tg.id==='pl-on'||tg.id==='pl-fmt'||tg.id==='pl-ech'||tg.id==='pl-ppm')return;
   if(tg.id==='pl-nord'){planObj().nord=pnum(tg.value)||0;markDirty();planDraw();return}
   if(tg.dataset.k){const k=tg.dataset.k;quote[k]=tg.dataset.nn?pnum(tg.value):tg.dataset.n?(pnum(tg.value)??0):tg.value;markDirty();
@@ -1557,8 +1602,10 @@ function onDevisChange(e){
   if(tg.id==='pl-grid'){planObj().pdfGrid=tg.checked;markDirty();return}
   if(tg.id==='pl-tr'){planObj().noTr=!tg.checked;markDirty();renderDevisKeepScroll();return}
   if(tg.id==='pl-cotes'){planObj().cotes=tg.checked;markDirty();planDraw();return}
+  if(tg.id==='pl-mat'){planObj().matPdf=tg.checked;markDirty();return}
   if(tg.id==='pl-zautoc'){zoneObj().autoC=tg.checked;markDirty();return}
   if(tg.id==='pl-trmode'){planObj().trMode=tg.value;markDirty();return}
+  if(tg.id==='pl-trbiais'){planObj().trBiais=tg.checked;markDirty();return}
   if(tg.id==='pl-zmode'){zoneObj().mode=tg.value;markDirty();return}
   if(tg.id==='pl-zpat'){zoneObj().pat=tg.value;markDirty();return}
   if(tg.id==='pl-on'){const p=planObj();p.on=tg.checked;p.userOff=!tg.checked;if(p.on&&!planOn())toast('Placer au moins un forage et un collecteur');planSync();markDirty();renderDevisKeepScroll();return}
@@ -1599,7 +1646,7 @@ function onDevisClick(e){
   if(b.id==='pl-png'){planPng();return}
   if(b.id==='pl-dxf'){planDxf();return}
   if(b.id==='pl-gen'){const Z=quote.plan&&quote.plan.zone;if(Z&&Z.closed&&Z.pts.length>2){const ac=$('#pl-zautoc');if(ac)Z.autoC=ac.checked;zoneImplant();return}if(planItems().length&&!confirm('Remplacer le plan actuel par une implantation en ligne ?'))return;planGen();return}
-  if(b.id==='pl-clear'){if(!planItems().length||confirm('Effacer tout le plan ?')){const p=planObj();p.items=[];p.routes={};p.assign={};p.noLink={};p.on=false;markDirty();renderDevisKeepScroll()}return}
+  if(b.id==='pl-clear'){if(!planItems().length||confirm('Effacer tout le plan ?')){const p=planObj();p.items=[];p.routes={};p.assign={};p.noLink={};p.via={};p.on=false;markDirty();renderDevisKeepScroll()}return}
   if(b.dataset.reset){delete quote.q[b.dataset.reset];markDirty();renderDevisKeepScroll();return}
   if(b.dataset.addx){quote.extra.push({id:'x_'+Math.random().toString(36).slice(2,8),sec:b.dataset.addx,grp:'Lignes libres',name:'',unit:'u',price:0,qty:1});markDirty();renderDevisKeepScroll();
     const rows=document.querySelectorAll(`[data-sec="${b.dataset.addx}"] tr.line`);const last=[...rows].pop();last?.querySelector('input')?.focus();return}
