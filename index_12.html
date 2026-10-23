@@ -330,7 +330,7 @@ const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){retu
 
 /* ---------- formula engine ---------- */
 const FN={ceil:Math.ceil,floor:Math.floor,round:Math.round,max:Math.max,min:Math.min};
-const VARS=['N','P','M','L','J','E','D1','D2','LF','LC','T','JR','JS','VR','GLY','ZO','NA','NB','LCB','D2B','NC'];
+const VARS=['N','P','M','L','J','E','D1','D2','LF','LC','T','JR','JS','ACH','VR','GLY','ZO','NA','NB','LCB','D2B','NC'];
 const ruleCache=new Map();
 function compile(rule){
   if(ruleCache.has(rule))return ruleCache.get(rule);
@@ -449,6 +449,8 @@ function baseVars(){const P=+quote.P||0,mpj=+quote.mpj||100,E=+quote.E||0,D1=+qu
 function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String(i.rule||'').replace(/\s/g,'')==='(M+L)/25*20')i.rule='GLY';if(i&&i.id==='glycol'&&i.name==='Glycol')i.name='Glycol pur'});if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='decl')){const k=items.findIndex(i=>i.id==='trt');items.splice(k,0,{id:'decl',sec:'loc',grp:'Administratif',name:'Déclarations (BRGM, DICT, rapport de fin de travaux)',unit:'forfait',price:0,qty:1,rule:'',kind:'frais'})}
   if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='zo')){const k=items.findIndex(i=>i.id==='trt');items.splice(k+1,0,{id:'zo',sec:'loc',grp:'Sous-traitance',name:'Déclaration zone orange (avis d’expert agréé)',unit:'forfait',price:0,rule:'ZO',kind:'st',poste:'zoneorange'})}
   (items||[]).forEach(i=>{if(i&&i.id==='zo'&&!i.poste)i.poste='zoneorange'});
+  /* achats divers = imprévus : un pourcentage des achats (ACH × taux) au lieu d'un forfait par jour de forage */
+  (items||[]).forEach(i=>{if(i&&/achats?\s+divers/i.test(i.name||'')&&String(i.rule||'').replace(/\s/g,'')==='J'){i.rule='ACH';i.unit='€ d’achats';i.price=.03}});
   /* paniers repas : un par jour travaillé par salarié (JS) */
   if(Array.isArray(items)){const pn=items.filter(i=>i&&/panier/i.test((i.grp||'')+' '+(i.name||'')));
     pn.forEach(i=>{if(!String(i.rule||'').trim()&&!(+i.qty>0))i.rule='JS'});
@@ -469,7 +471,10 @@ function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String
     if(/collecteur/i.test(i.grp||'')&&(m=/^N==(\d+)\?1:0$/.exec(r)))i.rule=`(NA==${m[1]}?1:0)+(NB==${m[1]}?1:0)`;
     else if(/D2==\d+\?LC:0/.test(r)&&!/LCB/.test(r))i.rule=r.replace(/D2==(\d+)\?LC:0/g,'(D2==$1?LC:0)+(D2B==$1?LCB:0)')});
   return items}
-function vars(){const v=baseVars();v.D1auto=!v.D1;if(!v.D1)v.D1=v.P>150?50:40;v.D2auto=!v.D2;if(!v.D2)v.D2=autoD2(v,0).D;if(v.NC>1){v.D2Bauto=!v.D2B;if(!v.D2B)v.D2B=autoD2(v,1).D}const vr=volumeReseau(v);v.VR=Math.ceil(vr.tot);v.GLY=Math.ceil(vr.gly);return v}
+function vars(){const v=baseVars();v.D1auto=!v.D1;if(!v.D1)v.D1=v.P>150?50:40;v.D2auto=!v.D2;if(!v.D2)v.D2=autoD2(v,0).D;if(v.NC>1){v.D2Bauto=!v.D2B;if(!v.D2B)v.D2B=autoD2(v,1).D}const vr=volumeReseau(v);v.VR=Math.ceil(vr.tot);v.GLY=Math.ceil(vr.gly);v.ACH=0;
+  /* ACH : coût des achats du chantier (matière + location), hors lignes qui en dépendent — sert aux imprévus « Achats divers » */
+  try{for(const l of lines()){if(/\bACH\b/.test(String(l.rule||''))&&!Object.prototype.hasOwnProperty.call(quote.q,l.id))continue;const k=kindOf(l);if(k!=='mat'&&k!=='loc')continue;v.ACH+=qtyOf(l,v)*(+l.price||0)}}catch(e){}
+  v.ACH=Math.round(v.ACH);return v}
 /* Ø collecteur → chaufferie choisi selon le débit : vitesse ≤ 1 m/s, perte ≤ 150 Pa/m,
    et si la pression disponible de la PAC est connue, réseau ≤ 90 % de celle-ci */
 /* Diamètres PE proposés : liste de base + tout « ØNNN » trouvé dans les catégories PE des Tarifs */
@@ -490,7 +495,7 @@ function kindOf(l){if(l.kind)return l.kind;if(KIND_ID[l.id])return KIND_ID[l.id]
   if(/^l_/.test(l.id)||/location/i.test(l.grp||''))return 'loc';if(/main-d|hébergement|trajet/i.test(l.grp||''))return 'mo';return 'mat'}
 function lines(){
   const out=[];const ids=new Set();
-  for(const it of catalog){ids.add(it.id);const s=quote.snap[it.id];out.push({...it,price:s?s.price:it.price,catPrice:it.price,src:'cat'})}
+  for(const it of catalog){ids.add(it.id);let s=quote.snap[it.id];if(s&&s.unit!=null&&it.unit!=null&&s.unit!==it.unit)s=null;out.push({...it,price:s?s.price:it.price,catPrice:it.price,src:'cat'})}
   for(const [id,s] of Object.entries(quote.snap)){if(!ids.has(id)&&!id.startsWith('x_'))out.push({id,...s,rule:'',src:'old'})}
   for(const x of quote.extra)out.push({...x,src:'extra'});
   return out;
@@ -2303,7 +2308,7 @@ function renderTarifs(){
     <button class="btn primary" id="t-save" ${catDraft&&db&&canWrite?'':'disabled'}>Enregistrer les tarifs</button></div>
   <div class="card" style="margin-bottom:18px"><div class="card-b help">
     Les prix sont en € HT. Chaque catégorie a son bouton <b>+ Article</b> ; renommez une catégorie en cliquant sur son titre, ou créez-en une avec <b>+ Nouvelle catégorie</b>. <b>Qté défaut</b> est reprise dans chaque nouveau chiffrage ; la <b>Règle</b>, si elle est remplie, la calcule à la place. Dans le chiffrage, toute quantité reste modifiable ligne par ligne.
-    Variables : <code>N</code> nombre de forages · <code>P</code> profondeur par forage · <code>M</code> mètres forés (N×P) · <code>J</code> jours de forage · <code>E</code> espacement entre forages · <code>LF</code> PE forages → collecteur, aller-retour (E×N×(N+1)) · <code>D1</code> son diamètre · <code>L</code> distance collecteur → chaufferie · <code>LC</code> PE collecteur → chaufferie, aller-retour (2×L) · <code>D2</code> son diamètre · avec 2 collecteurs : <code>NA</code> / <code>NB</code> forages sur le collecteur 1 / 2, <code>LCB</code> PE collecteur 2 → chaufferie (aller-retour), <code>D2B</code> son diamètre, <code>NC</code> nombre de collecteurs · <code>T</code> longueur de tranchée (E×N + L, ou mesurée sur le plan) · <code>JR</code> temps de raccordement en jours (saisi dans le chiffrage) · <code>JS</code> jours travaillés par les salariés (binôme de forage 2×J + manœuvre JR) · <code>VR</code> volume total du réseau en litres (sondes + liaisons + chaufferie, selon les Ø) · <code>GLY</code> litres de glycol pur pour ce volume, à la dilution choisie dans « Perte de charge ».
+    Variables : <code>N</code> nombre de forages · <code>P</code> profondeur par forage · <code>M</code> mètres forés (N×P) · <code>J</code> jours de forage · <code>E</code> espacement entre forages · <code>LF</code> PE forages → collecteur, aller-retour (E×N×(N+1)) · <code>D1</code> son diamètre · <code>L</code> distance collecteur → chaufferie · <code>LC</code> PE collecteur → chaufferie, aller-retour (2×L) · <code>D2</code> son diamètre · avec 2 collecteurs : <code>NA</code> / <code>NB</code> forages sur le collecteur 1 / 2, <code>LCB</code> PE collecteur 2 → chaufferie (aller-retour), <code>D2B</code> son diamètre, <code>NC</code> nombre de collecteurs · <code>T</code> longueur de tranchée (E×N + L, ou mesurée sur le plan) · <code>JR</code> temps de raccordement en jours (saisi dans le chiffrage) · <code>JS</code> jours travaillés par les salariés (binôme de forage 2×J + manœuvre JR) · <code>ACH</code> coût des achats du chantier en € (matière + location) : « Achats divers » = ACH × taux (ex. prix 0,03 pour 3 %) · <code>VR</code> volume total du réseau en litres (sondes + liaisons + chaufferie, selon les Ø) · <code>GLY</code> litres de glycol pur pour ce volume, à la dilution choisie dans « Perte de charge ».
     Exemples : <code>2*N</code>, <code>ceil(M/100)</code>, <code>P&gt;130&amp;&amp;P&lt;=140?N:0</code>, <code>(D1==40?LF:0)+(D2==40?LC:0)+(D2B==40?LCB:0)</code>, <code>(NA==6?1:0)+(NB==6?1:0)</code> pour un collecteur 6 sorties. La colonne « Test » montre le résultat pour le chiffrage en cours (${v.N} × ${nf(v.P)} m).
     ${!db?'<br><b>Enregistrement indisponible sur cette vue : tarifs par défaut affichés.</b>':''}
   </div></div>
@@ -2413,7 +2418,7 @@ function chHeuresRows(c,taux){return c.heures.map((x,i)=>`<tr><td><input type="d
 function chDepRows(c){return c.dep.map((d,i)=>`<tr><td><input type="date" data-d="${i}:date" value="${esc(d.date||'')}"></td>
   <td><select data-d="${i}:kind">${CH_KINDS.map(([v,t])=>`<option value="${v}" ${d.kind===v?'selected':''}>${t}</option>`).join('')}</select></td>
   <td><select data-d="${i}:poste">${CH_POSTES.map(([v,t])=>`<option value="${v}" ${d.poste===v?'selected':''}>${t}</option>`).join('')}</select></td>
-  <td><input data-d="${i}:lib" value="${esc(d.lib||'')}" placeholder="Désignation"></td><td><input data-d="${i}:four" value="${esc(d.four||'')}" placeholder="Fournisseur"></td>
+  <td><input data-d="${i}:lib" value="${esc(d.lib||'')}" placeholder="Désignation ou article des tarifs" list="ch-cat"></td><td><input data-d="${i}:four" value="${esc(d.four||'')}" placeholder="Fournisseur"></td>
   <td><input class="pr" inputmode="decimal" data-d="${i}:qty" value="${esc(d.qty??'')}"></td><td><input data-d="${i}:unit" value="${esc(d.unit||'')}" style="width:60px"></td>
   <td><input class="pr" inputmode="decimal" data-d="${i}:pu" value="${esc(d.pu??'')}"></td><td class="r num" id="ch-dt-${i}">${eur((+d.qty||0)*(+d.pu||0))}</td><td class="r"><button class="btn sm ghost danger" data-ddel="${i}" title="Supprimer la ligne">×</button></td></tr>`).join('')}
 function chSynHTML(c){const k=chCalc(c),P=c.prevu;const row=(lab,pv,rv,o={})=>{const e=pv!=null&&rv!=null?rv-pv:null;return `<tr class="${o.cls||''}"><td>${lab}</td>${P?`<td class="r num">${pv!=null?eur0(pv):'–'}</td>`:''}<td class="r num">${rv!=null?eur0(rv):'–'}</td>${P?`<td class="r num ${e!=null&&(o.inv?e<0:e>0)&&Math.abs(e)>.5?'bad':''}">${e!=null?(e>0?'+':'')+eur0(e):'–'}</td>`:''}</tr>`};
@@ -2444,11 +2449,11 @@ function renderChantier(){const el=$('#v-deb'),c=chCur,k=chCalc(c);const sals=[.
   <div class="f" style="margin-top:10px"><label for="ch-notes">Notes</label><textarea id="ch-notes" data-c="notes" rows="2">${esc(c.notes||'')}</textarea></div></div></div>
   <div class="card" style="margin-top:14px"><div class="card-h"><h2>Heures des salariés</h2><span class="status" id="ch-hsum" style="margin-left:auto">${nf(r1(k.h))} h · ${eur0(k.by.mo)}</span></div>
     <div class="tbl-wrap"><table class="tar deb-t"><thead><tr><th style="width:140px">Date</th><th>Salarié</th><th style="width:150px">Poste</th><th class="r" style="width:90px">Heures</th><th class="r" style="width:110px">Coût</th><th style="width:40px"></th></tr></thead><tbody>${chHeuresRows(c,k.taux)}</tbody></table></div>
-    <datalist id="ch-sals">${sals.map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
+    <datalist id="ch-sals">${sals.map(s=>`<option value="${esc(s)}">`).join('')}</datalist><datalist id="ch-cat">${chCatItems().map(x=>`<option value="${esc(x.lab)}">${esc(x.unit||'')} · ${eur(+x.price||0)}</option>`).join('')}</datalist>
     <div class="card-b" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" id="ch-hadd">+ Ligne</button><button class="btn sm ghost" id="ch-hdup" ${c.heures.length?'':'disabled'} title="Recopie les lignes de la dernière date au jour suivant">Dupliquer la dernière journée</button></div></div>
   <div class="card" style="margin-top:14px"><div class="card-h"><h2>Dépenses</h2><span class="status" id="ch-dsum" style="margin-left:auto">${eur0(k.tot-k.by.mo)}</span></div>
     <div class="tbl-wrap"><table class="tar deb-t"><thead><tr><th style="width:140px">Date</th><th style="width:170px">Nature</th><th style="width:140px">Poste</th><th>Désignation</th><th style="width:130px">Fournisseur</th><th class="r" style="width:80px">Qté</th><th style="width:70px">Unité</th><th class="r" style="width:90px">PU HT</th><th class="r" style="width:110px">Total HT</th><th style="width:40px"></th></tr></thead><tbody>${chDepRows(c)}</tbody></table></div>
-    <div class="card-b"><button class="btn sm" id="ch-dadd">+ Dépense</button> <span class="help">Matériel, location, carburant, sous-traitance, déplacements, repas…</span></div></div>
+    <div class="card-b" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn sm" id="ch-dadd">+ Dépense</button>${c.devisId?'<button class="btn sm ghost" id="ch-dfromq" title="Ajoute les articles du chiffrage lié (hors main-d’œuvre) avec ses quantités et ses prix, à corriger ensuite selon le réel">Reprendre les lignes du chiffrage</button>':''}<span class="help">Tapez le nom d’un article des Tarifs : unité, prix, nature et poste sont repris. Ou saisie libre (carburant, repas…).</span></div></div>
   <div class="card" style="margin-top:14px"><div class="card-h"><h2>Synthèse${c.prevu?' — prévu / réel':''}</h2></div><div class="card-b tbl-wrap" id="ch-syn">${chSynHTML(c)}</div></div>`}
 function chRefresh(){const c=chCur,k=chCalc(c);c.heures.forEach((x,i)=>{const e=$('#ch-hc-'+i);if(e)e.textContent=eur(+x.h*k.taux||0)});c.dep.forEach((d,i)=>{const e=$('#ch-dt-'+i);if(e)e.textContent=eur((+d.qty||0)*(+d.pu||0))});
   const a=$('#ch-hsum');if(a)a.textContent=`${nf(r1(k.h))} h · ${eur0(k.by.mo)}`;const b=$('#ch-dsum');if(b)b.textContent=eur0(k.tot-k.by.mo);const s=$('#ch-syn');if(s)s.innerHTML=chSynHTML(c)}
@@ -2457,7 +2462,11 @@ function onDebInput(e){const tg=e.target;
   if(tg.id==='ch-filter'){chFilter=tg.value;const p=tg.selectionStart;renderDeb();const i=$('#ch-filter');i.focus();i.setSelectionRange(p,p);return}
   if(!chCur)return;
   if(tg.dataset.c){const k=tg.dataset.c;if(k==='devisId')return;chCur[k]=(k==='facture'||k==='tauxH')?pnum(tg.value):tg.value;chMark();if(k==='nom'){const t=$('#ch-tb .title');if(t)t.textContent=tg.value||'Nouveau chantier'}chRefresh();return}
-  const hd=tg.dataset.h||tg.dataset.d;if(hd){const [i,f]=hd.split(':');const arr=tg.dataset.h?chCur.heures:chCur.dep;const o=arr[+i];if(!o)return;o[f]=CH_NUM.has(f)?pnum(tg.value):tg.value;chMark();chRefresh()}}
+  const hd=tg.dataset.h||tg.dataset.d;if(hd){const [i,f]=hd.split(':');const arr=tg.dataset.h?chCur.heures:chCur.dep;const o=arr[+i];if(!o)return;o[f]=CH_NUM.has(f)?pnum(tg.value):tg.value;chMark();
+    if(tg.dataset.d&&f==='lib'){const it=chCatItems().find(x=>x.lab===tg.value);if(it){Object.assign(o,chFromCat(it));renderChantier();const q=$(`#v-deb [data-d="${i}:qty"]`);if(q){q.focus();q.select()}return}}chRefresh()}}
+/* grille tarifaire (onglet Tarifs) pour saisir les dépenses */
+function chCatItems(){const seen=new Set();return catalog.filter(it=>it&&it.name).map(it=>({...it,lab:`${it.name} — ${it.grp||''}`.replace(/ — $/,'')})).filter(x=>!seen.has(x.lab)&&seen.add(x.lab))}
+function chFromCat(it){let k=kindOf(it)||'mat';if(k==='mo')k='frais';return {lib:it.lab||it.name,unit:it.unit||'',pu:+it.price||0,kind:k,poste:it.sec==='racc'?'racc':it.sec==='forage'?'forage':'autre'}}
 function onDebChange(e){const tg=e.target;
   if(tg.id==='ch-year'){chYear=tg.value;renderDeb();return}
   if(tg.id==='ch-fromq'){const q=savedList.find(x=>x.id===tg.value);if(q){chCur=chFromQuote(q);chDirty=true;chConfirmDel=false;store.set('chDraft',chCur);renderDeb()}return}
@@ -2491,6 +2500,10 @@ async function onDebClick(e){const b=e.target.closest('button');
   if(id==='ch-hadd'){const last=chCur.heures[chCur.heures.length-1];chCur.heures.push({date:last?.date||new Date().toISOString().slice(0,10),sal:'',poste:last?.poste||'forage',h:last?.h??8});chMark();renderChantier();const ins=$$('#v-deb [data-h$=":sal"]');ins[ins.length-1]?.focus();return}
   if(id==='ch-hdup'){const H=chCur.heures;if(!H.length)return;const d=H.map(x=>x.date).filter(Boolean).sort().pop();const nd=d?new Date(new Date(d).getTime()+864e5).toISOString().slice(0,10):'';
     H.filter(x=>x.date===d).forEach(x=>H.push({...x,date:nd}));chMark();renderChantier();return}
+  if(id==='ch-dfromq'){const q=savedList.find(x=>x.id===chCur.devisId);if(!q){toast('Chiffrage introuvable');return}if(chCur.dep.length&&!confirm('Ajouter les lignes du chiffrage à la suite des dépenses déjà saisies ?'))return;
+    const save=quote;let add=[];try{quote=normQuote(q);const v=vars();for(const l of lines()){const n=qtyOf(l,v);if(!(n>0))continue;const k=kindOf(l)||'mat';if(k==='mo')continue;
+      add.push({date:chCur.debut||'',kind:k,poste:l.sec==='racc'?'racc':l.sec==='forage'?'forage':'autre',lib:`${l.name}${l.grp?' — '+l.grp:''}`,four:'',qty:r2(n),unit:l.unit||'',pu:+l.price||0})}}finally{quote=save}
+    chCur.dep.push(...add);chMark();renderChantier();toast(`${add.length} ligne${pl(add.length)} reprise${pl(add.length)} du chiffrage (main-d’œuvre exclue : à saisir en heures)`);return}
   if(id==='ch-dadd'){chCur.dep.push({date:new Date().toISOString().slice(0,10),kind:'mat',poste:'forage',lib:'',four:'',qty:1,unit:'u',pu:null});chMark();renderChantier();const ins=$$('#v-deb [data-d$=":lib"]');ins[ins.length-1]?.focus();return}
   if(b.dataset.hdel!=null){chCur.heures.splice(+b.dataset.hdel,1);chMark();renderChantier();return}
   if(b.dataset.ddel!=null){chCur.dep.splice(+b.dataset.ddel,1);chMark();renderChantier();return}}
