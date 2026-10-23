@@ -254,6 +254,11 @@ table.list tr.row:hover td{background:var(--panel2)}
 .pl-nord{display:inline-block;width:70px;margin-left:4px;vertical-align:middle}.pl-nord input{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:3px 22px 3px 6px;color:var(--ink);font-family:var(--mono)}
 .banner{padding:10px 14px;border-radius:8px;background:var(--forage-soft);color:var(--ink);font-size:14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
+.deb-cfg{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.deb-cfg .help{margin:0}.deb-in{width:90px;background:var(--ground);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-family:var(--mono);text-align:right}
+.deb-list td.bad,.deb-syn td.bad{color:var(--warn)}.deb-list tr.deb-tot td{background:var(--panel2);font-weight:600}
+.deb-t{min-width:760px}.deb-t td{padding:3px 6px}.deb-t input,.deb-t select{width:100%;min-width:0;background:transparent;border:1px solid transparent;border-radius:4px;padding:5px 6px;font:inherit}
+.deb-t input:hover,.deb-t select:hover{border-color:var(--line)}.deb-t input:focus,.deb-t select:focus{border-color:var(--focus);background:var(--ground);outline:none}.deb-t input.pr{text-align:right;font-family:var(--mono)}
+.deb-syn{min-width:520px}.deb-syn td{padding:6px 10px}.deb-syn tr.deb-tot td{font-weight:700;background:var(--panel2)}.deb-syn tr.deb-sub td{color:var(--ink2)}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--ground);padding:9px 16px;border-radius:8px;font-weight:600;font-size:14px;z-index:50;box-shadow:var(--shadow)}
 @media (prefers-reduced-motion:no-preference){.toast{animation:up .2s ease-out}@keyframes up{from{transform:translate(-50%,8px);opacity:0}}}
 
@@ -280,6 +285,7 @@ table.list tr.row:hover td{background:var(--panel2)}
   <nav class="tabs" role="tablist">
     <button class="tab" role="tab" id="tab-devis" data-v="devis">Chiffrage en cours</button>
     <button class="tab" role="tab" id="tab-liste" data-v="liste">Mes chiffrages<span class="cnt" id="cnt"></span></button>
+    <button class="tab" role="tab" id="tab-deb" data-v="deb">Déboursés<span class="cnt" id="cnt-deb"></span></button>
     <button class="tab" role="tab" id="tab-tarifs" data-v="tarifs">Tarifs</button>
     <button class="tab" role="tab" id="tab-soc" data-v="soc">Entreprise</button>
   </nav>
@@ -298,6 +304,7 @@ table.list tr.row:hover td{background:var(--panel2)}
 <main class="wrap">
   <section class="view" id="v-devis"></section>
   <section class="view" id="v-liste" hidden></section>
+  <section class="view" id="v-deb" hidden></section>
   <section class="view" id="v-tarifs" hidden></section>
   <section class="view" id="v-dvp" hidden></section>
   <section class="view" id="v-soc" hidden></section>
@@ -323,7 +330,7 @@ const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){retu
 
 /* ---------- formula engine ---------- */
 const FN={ceil:Math.ceil,floor:Math.floor,round:Math.round,max:Math.max,min:Math.min};
-const VARS=['N','P','M','L','J','E','D1','D2','LF','LC','T','JR','VR','GLY','ZO','NA','NB','LCB','D2B','NC'];
+const VARS=['N','P','M','L','J','E','D1','D2','LF','LC','T','JR','JS','VR','GLY','ZO','NA','NB','LCB','D2B','NC'];
 const ruleCache=new Map();
 function compile(rule){
   if(ruleCache.has(rule))return ruleCache.get(rule);
@@ -437,11 +444,15 @@ function baseVars(){const P=+quote.P||0,mpj=+quote.mpj||100,E=+quote.E||0,D1=+qu
   /* distance du forage le plus éloigné saisie à la main (vide = calculée) : sert à la perte de charge */
   G.forEach((g,i)=>{const d=pnum(i?quote.df2:quote.df1);g.DFcalc=g.DF;g.DFman=d!=null&&d>0;if(g.DFman)g.DF=d});
   const Z={n:0,LF:0,DF:0,L:0};const g0=G[0]||Z,g1=G[1]||Z;const M=N*P;
-  return {N,P,L:g0.L,L2:g1.L,M,J:mpj>0?Math.ceil(M/mpj):0,E,D1,D2,D2B:G.length>1?D2B:0,NA:g0.n,NB:g1.n,NC:Math.max(1,G.length),LF:g0.LF+g1.LF,LC:2*g0.L,LCB:2*g1.L,T,JR:+quote.jr||0,ZO:quote.zone==='orange'?1:0,DF:Math.max(g0.DF,g1.DF),G:G.length?G:[{...Z}],src}}
+  return {N,P,L:g0.L,L2:g1.L,M,J:mpj>0?Math.ceil(M/mpj):0,E,D1,D2,D2B:G.length>1?D2B:0,NA:g0.n,NB:g1.n,NC:Math.max(1,G.length),LF:g0.LF+g1.LF,LC:2*g0.L,LCB:2*g1.L,T,JR:+quote.jr||0,JS:2*(mpj>0?Math.ceil(M/mpj):0)+(+quote.jr||0),ZO:quote.zone==='orange'?1:0,DF:Math.max(g0.DF,g1.DF),G:G.length?G:[{...Z}],src}}
 /* Glycol : ancienne règle forfaitaire (M+L)/25*20 remplacée par le volume réel du réseau */
 function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String(i.rule||'').replace(/\s/g,'')==='(M+L)/25*20')i.rule='GLY';if(i&&i.id==='glycol'&&i.name==='Glycol')i.name='Glycol pur'});if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='decl')){const k=items.findIndex(i=>i.id==='trt');items.splice(k,0,{id:'decl',sec:'loc',grp:'Administratif',name:'Déclarations (BRGM, DICT, rapport de fin de travaux)',unit:'forfait',price:0,qty:1,rule:'',kind:'frais'})}
   if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='zo')){const k=items.findIndex(i=>i.id==='trt');items.splice(k+1,0,{id:'zo',sec:'loc',grp:'Sous-traitance',name:'Déclaration zone orange (avis d’expert agréé)',unit:'forfait',price:0,rule:'ZO',kind:'st',poste:'zoneorange'})}
   (items||[]).forEach(i=>{if(i&&i.id==='zo'&&!i.poste)i.poste='zoneorange'});
+  /* paniers repas : un par jour travaillé par salarié (JS) */
+  if(Array.isArray(items)){const pn=items.filter(i=>i&&/panier/i.test((i.grp||'')+' '+(i.name||'')));
+    pn.forEach(i=>{if(!String(i.rule||'').trim()&&!(+i.qty>0))i.rule='JS'});
+    if(!pn.length&&items.some(i=>i&&i.sec==='loc')){const k=items.findIndex(i=>i&&/hébergement/i.test(i.name||''));const r=items[k]||{};items.splice(k>=0?k+1:items.length,0,{id:'pan',sec:'loc',grp:r.grp||'Hébergement',name:'Panier repas',unit:'u',price:0,rule:'JS',kind:r.kind||'dep'})}}
   /* grillage avertisseur : posé sur toute la longueur des tranchées */
   (items||[]).forEach(i=>{if(i&&/grillage/i.test((i.grp||'')+' '+(i.name||''))&&!String(i.rule||'').trim()&&!(+i.qty>0))i.rule='ceil(T)'});
   (items||[]).forEach(i=>{if(i&&/manchon\s*[øØ]\s*40\b/i.test(i.name||'')&&String(i.rule||'').replace(/\s/g,'')==='D1==40?4*N:0')i.rule='(P>150?4*N:0)+(D1==40?4*N:0)'});
@@ -2288,7 +2299,7 @@ function renderTarifs(){
     <button class="btn primary" id="t-save" ${catDraft&&db&&canWrite?'':'disabled'}>Enregistrer les tarifs</button></div>
   <div class="card" style="margin-bottom:18px"><div class="card-b help">
     Les prix sont en € HT. Chaque catégorie a son bouton <b>+ Article</b> ; renommez une catégorie en cliquant sur son titre, ou créez-en une avec <b>+ Nouvelle catégorie</b>. <b>Qté défaut</b> est reprise dans chaque nouveau chiffrage ; la <b>Règle</b>, si elle est remplie, la calcule à la place. Dans le chiffrage, toute quantité reste modifiable ligne par ligne.
-    Variables : <code>N</code> nombre de forages · <code>P</code> profondeur par forage · <code>M</code> mètres forés (N×P) · <code>J</code> jours de forage · <code>E</code> espacement entre forages · <code>LF</code> PE forages → collecteur, aller-retour (E×N×(N+1)) · <code>D1</code> son diamètre · <code>L</code> distance collecteur → chaufferie · <code>LC</code> PE collecteur → chaufferie, aller-retour (2×L) · <code>D2</code> son diamètre · avec 2 collecteurs : <code>NA</code> / <code>NB</code> forages sur le collecteur 1 / 2, <code>LCB</code> PE collecteur 2 → chaufferie (aller-retour), <code>D2B</code> son diamètre, <code>NC</code> nombre de collecteurs · <code>T</code> longueur de tranchée (E×N + L, ou mesurée sur le plan) · <code>JR</code> temps de raccordement en jours (saisi dans le chiffrage) · <code>VR</code> volume total du réseau en litres (sondes + liaisons + chaufferie, selon les Ø) · <code>GLY</code> litres de glycol pur pour ce volume, à la dilution choisie dans « Perte de charge ».
+    Variables : <code>N</code> nombre de forages · <code>P</code> profondeur par forage · <code>M</code> mètres forés (N×P) · <code>J</code> jours de forage · <code>E</code> espacement entre forages · <code>LF</code> PE forages → collecteur, aller-retour (E×N×(N+1)) · <code>D1</code> son diamètre · <code>L</code> distance collecteur → chaufferie · <code>LC</code> PE collecteur → chaufferie, aller-retour (2×L) · <code>D2</code> son diamètre · avec 2 collecteurs : <code>NA</code> / <code>NB</code> forages sur le collecteur 1 / 2, <code>LCB</code> PE collecteur 2 → chaufferie (aller-retour), <code>D2B</code> son diamètre, <code>NC</code> nombre de collecteurs · <code>T</code> longueur de tranchée (E×N + L, ou mesurée sur le plan) · <code>JR</code> temps de raccordement en jours (saisi dans le chiffrage) · <code>JS</code> jours travaillés par les salariés (binôme de forage 2×J + manœuvre JR) · <code>VR</code> volume total du réseau en litres (sondes + liaisons + chaufferie, selon les Ø) · <code>GLY</code> litres de glycol pur pour ce volume, à la dilution choisie dans « Perte de charge ».
     Exemples : <code>2*N</code>, <code>ceil(M/100)</code>, <code>P&gt;130&amp;&amp;P&lt;=140?N:0</code>, <code>(D1==40?LF:0)+(D2==40?LC:0)+(D2B==40?LCB:0)</code>, <code>(NA==6?1:0)+(NB==6?1:0)</code> pour un collecteur 6 sorties. La colonne « Test » montre le résultat pour le chiffrage en cours (${v.N} × ${nf(v.P)} m).
     ${!db?'<br><b>Enregistrement indisponible sur cette vue : tarifs par défaut affichés.</b>':''}
   </div></div>
@@ -2337,20 +2348,211 @@ async function onTarifsClick(e){
 
 /* ---------- nav ---------- */
 function go(v){view=v;store.set('view',v);
-  for(const n of ['devis','liste','tarifs','soc']){$('#v-'+n).hidden=n!==v;$('#tab-'+n).setAttribute('aria-selected',n===v)}
-  if(v==='devis')renderDevis();if(v==='liste')renderListe();if(v==='tarifs')renderTarifs();if(v==='dvp'){dvpConfirm=false;renderDvp()}if(v==='soc')renderSoc();window.scrollTo(0,0)}
+  for(const n of ['devis','liste','deb','tarifs','soc']){$('#v-'+n).hidden=n!==v;$('#tab-'+n).setAttribute('aria-selected',n===v)}
+  if(v==='devis')renderDevis();if(v==='liste')renderListe();if(v==='deb')renderDeb();if(v==='tarifs')renderTarifs();if(v==='dvp'){dvpConfirm=false;renderDvp()}if(v==='soc')renderSoc();window.scrollTo(0,0)}
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>go(t.dataset.v)));
 const vd=$('#v-devis');vd.addEventListener('input',onDevisInput);vd.addEventListener('change',onDevisChange);vd.addEventListener('click',onDevisClick);
-$('#v-liste').addEventListener('click',onListeClick);$('#v-liste').addEventListener('input',e=>{if(e.target.id==='l-filter'){listFilter=e.target.value;const p=e.target.selectionStart;renderListe();const i=$('#l-filter');i.focus();i.setSelectionRange(p,p)}});
+$('#v-liste').addEventListener('click',onListeClick);
+{const vb=$('#v-deb');vb.addEventListener('input',onDebInput);vb.addEventListener('change',onDebChange);vb.addEventListener('click',onDebClick)}$('#v-liste').addEventListener('input',e=>{if(e.target.id==='l-filter'){listFilter=e.target.value;const p=e.target.selectionStart;renderListe();const i=$('#l-filter');i.focus();i.setSelectionRange(p,p)}});
 $('#v-tarifs').addEventListener('input',onTarifsInput);$('#v-tarifs').addEventListener('change',e=>{if(e.target.id==='t-import'&&e.target.files[0]){importTarifs(e.target.files[0]);e.target.value=''}});$('#v-tarifs').addEventListener('click',onTarifsClick);
 $('#v-dvp').addEventListener('input',onDvpInput);$('#v-dvp').addEventListener('change',onDvpInput);$('#v-dvp').addEventListener('click',onDvpClick);
 $('#v-soc').addEventListener('input',onSocInput);$('#v-soc').addEventListener('click',onSocClick);
+
+const $$=(s,r=document)=>[...r.querySelectorAll(s)];
+/* ---------- Déboursés chantiers (chantiers chiffrés ici ou non) ---------- */
+let chList=[],chCur=null,chDirty=false,chFilter='',chYear='',chErr='',debCfg={tauxH:0},chConfirmDel=false;
+const CH_POSTES=[['forage','Forage'],['racc','Raccordement'],['autre','Autre / commun']];
+const CH_KINDS=KINDS.filter(k=>k[0]!=='mo');
+function chBlank(){const t=new Date().toISOString().slice(0,10);return {id:null,nom:'',client:'',lieu:'',debut:t,fin:'',statut:'encours',devisId:'',facture:null,tauxH:null,heures:[],dep:[],notes:'',prevu:null,updated:0}}
+function chNorm(c){const o=Object.assign(chBlank(),clone(c||{}));o.heures=Array.isArray(o.heures)?o.heures:[];o.dep=Array.isArray(o.dep)?o.dep:[];return o}
+function chTaux(c){const t=pnum(c.tauxH);return t!=null?t:(+debCfg.tauxH||0)}
+function chCalc(c){const taux=chTaux(c);const H={forage:0,racc:0,autre:0};let h=0;(c.heures||[]).forEach(x=>{const v=+x.h||0;h+=v;H[x.poste in H?x.poste:'autre']+=v});
+  const by={mo:h*taux};(c.dep||[]).forEach(d=>{const k=d.kind||'frais';by[k]=(by[k]||0)+(+d.qty||0)*(+d.pu||0)});
+  const tot=Object.values(by).reduce((a,b)=>a+b,0),fact=pnum(c.facture);const marge=fact!=null?fact-tot:null;
+  return {taux,h,H,by,tot,fact,marge,pct:fact?marge/fact*100:null}}
+/* prévu repris d'un chiffrage enregistré : coûts par nature, heures de main-d'œuvre, prix de vente */
+function chPrevu(q){const save=quote;try{quote=normQuote(q);const v=vars();const by={};let h=0;
+    for(const l of lines()){const n=qtyOf(l,v);if(!n)continue;const k=kindOf(l)||'frais';by[k]=(by[k]||0)+n*(+l.price||0);
+      if(k==='mo'){const u=String(l.unit||'').toLowerCase();if(/^h/.test(u))h+=n;else if(/^j/.test(u))h+=n*8}}
+    const t=totals();return {by,h,cout:t.tc,vente:q.prixRetenu!=null?+q.prixRetenu:t.tp,nom:q.nom||'',le:Date.now()}}
+  catch(e){console.error(e);return null}finally{quote=save}}
+function chFromQuote(q){const c=chBlank();c.nom=q.nom||'';c.client=q.client||'';c.lieu=q.lieu||'';c.devisId=q.id;c.prevu=chPrevu(q);if(c.prevu)c.facture=r2(c.prevu.vente);return c}
+function chMark(){chDirty=true;store.set('chDraft',chCur);const s=$('#ch-st');if(s){s.textContent='Modifications non enregistrées';s.className='status dirty'}}
+const chYearOf=c=>String(c.debut||'').slice(0,4)||(c.updated?String(new Date(c.updated).getFullYear()):'');
+const pctF=v=>v==null?'–':nf(r1(v))+' %';
+function renderDeb(){const el=$('#v-deb');if(!el)return;if(chCur){renderChantier();return}
+  const f=chFilter.toLowerCase();const years=[...new Set(chList.map(chYearOf).filter(Boolean))].sort().reverse();
+  const items=chList.filter(c=>(!f||[c.nom,c.client,c.lieu].join(' ').toLowerCase().includes(f))&&(!chYear||chYearOf(c)===chYear));
+  const S={h:0,tot:0,fact:0,mf:0};items.forEach(c=>{const k=chCalc(c);S.h+=k.h;S.tot+=k.tot;if(k.fact!=null){S.fact+=k.fact;S.mf+=k.marge}});
+  el.innerHTML=`<div class="toolbar"><div class="title">Déboursés chantiers</div>
+    <button class="btn primary" id="ch-new">Nouveau chantier</button>
+    <label class="status">ou depuis un chiffrage <select id="ch-fromq"><option value="">choisir…</option>${savedList.map(q=>`<option value="${esc(q.id)}">${esc(q.nom||'Sans nom')}${q.client?' — '+esc(q.client):''}</option>`).join('')}</select></label>
+    <button class="btn ghost" id="ch-csvall" ${items.length?'':'disabled'}>Exporter (Excel)</button></div>
+  ${chErr?`<div class="banner bad">${esc(chErr)}</div>`:''}
+  ${store.get('chDraft')?`<div class="banner">Un chantier non enregistré est en cours de saisie. <button class="btn sm" id="ch-resume">Le reprendre</button> <button class="btn sm ghost" id="ch-dropdraft">L’abandonner</button></div>`:''}
+  <div class="card" style="margin-bottom:14px"><div class="card-b deb-cfg"><label class="status">Coût horaire moyen chargé des salariés</label>
+    <input id="ch-taux" class="deb-in" inputmode="decimal" value="${esc(debCfg.tauxH??'')}" placeholder="ex. 38"> <span class="status">€/h</span>
+    <button class="btn sm" id="ch-tauxok" ${db&&canWrite?'':'disabled'}>Enregistrer</button>
+    <span class="help">Sert à valoriser les heures saisies (modifiable chantier par chantier).</span></div></div>
+  <div class="list-tools"><input id="ch-filter" type="search" placeholder="Rechercher un chantier, un client, un lieu…" value="${esc(chFilter)}">
+    <select id="ch-year"><option value="">Toutes les années</option>${years.map(y=>`<option ${y===chYear?'selected':''}>${y}</option>`).join('')}</select></div>
+  <div class="card tbl-wrap">${!db?'<div class="empty">Les déboursés ne sont pas disponibles sur cette vue.</div>':items.length?`<table class="list deb-list"><thead><tr><th>Chantier</th><th>Client</th><th>Début</th><th>Statut</th><th class="r">Heures</th><th class="r">Déboursé</th><th class="r">Facturé HT</th><th class="r">Marge</th><th class="r">%</th><th></th></tr></thead><tbody>
+    ${items.map(c=>{const k=chCalc(c);return `<tr class="row" data-chopen="${esc(c.id)}"><td><b>${esc(c.nom||'Sans nom')}</b>${c.devisId?' <span class="status" title="Lié à un chiffrage">· chiffré</span>':''}</td><td>${esc(c.client)}</td><td class="status">${c.debut?new Date(c.debut).toLocaleDateString('fr-FR'):''}</td><td>${c.statut==='termine'?'Terminé':'<span class="status">En cours</span>'}</td>
+      <td class="r num">${nf(r1(k.h))}</td><td class="r num">${eur0(k.tot)}</td><td class="r num">${k.fact!=null?eur0(k.fact):'–'}</td><td class="r num ${k.marge!=null&&k.marge<0?'bad':''}">${k.marge!=null?eur0(k.marge):'–'}</td><td class="r num ${k.pct!=null&&k.pct<0?'bad':''}">${pctF(k.pct)}</td>
+      <td class="r" data-chdelcell="${esc(c.id)}"><button class="btn sm ghost danger" data-chdel="${esc(c.id)}">Supprimer</button></td></tr>`}).join('')}
+    <tr class="deb-tot"><td colspan="4"><b>Total (${items.length} chantier${pl(items.length)})</b></td><td class="r num">${nf(r1(S.h))}</td><td class="r num">${eur0(S.tot)}</td><td class="r num">${eur0(S.fact)}</td><td class="r num">${eur0(S.mf)}</td><td class="r num">${S.fact?pctF(S.mf/S.fact*100):'–'}</td><td></td></tr></tbody></table>`:'<div class="empty">Aucun chantier pour le moment. Créez-en un, ou partez d’un chiffrage existant.</div>'}</div>`}
+
+function chField(k,l,v,o={}){return `<div class="f ${o.cls||''}"><label for="ch-${k}">${l}</label>${o.sel?`<select id="ch-${k}" data-c="${k}">${o.sel}</select>`:`<input id="ch-${k}" data-c="${k}" ${o.type?`type="${o.type}"`:''} ${o.num?'inputmode="decimal"':''} value="${esc(v??'')}" ${o.ph?`placeholder="${esc(o.ph)}"`:''}>`}</div>`}
+function chHeuresRows(c,taux){return c.heures.map((x,i)=>`<tr><td><input type="date" data-h="${i}:date" value="${esc(x.date||'')}"></td><td><input data-h="${i}:sal" value="${esc(x.sal||'')}" placeholder="Nom" list="ch-sals"></td>
+  <td><select data-h="${i}:poste">${CH_POSTES.map(([v,t])=>`<option value="${v}" ${x.poste===v?'selected':''}>${t}</option>`).join('')}</select></td>
+  <td><input class="pr" inputmode="decimal" data-h="${i}:h" value="${esc(x.h??'')}"></td><td class="r num" id="ch-hc-${i}">${eur(+x.h*taux||0)}</td><td class="r"><button class="btn sm ghost danger" data-hdel="${i}" title="Supprimer la ligne">×</button></td></tr>`).join('')}
+function chDepRows(c){return c.dep.map((d,i)=>`<tr><td><input type="date" data-d="${i}:date" value="${esc(d.date||'')}"></td>
+  <td><select data-d="${i}:kind">${CH_KINDS.map(([v,t])=>`<option value="${v}" ${d.kind===v?'selected':''}>${t}</option>`).join('')}</select></td>
+  <td><select data-d="${i}:poste">${CH_POSTES.map(([v,t])=>`<option value="${v}" ${d.poste===v?'selected':''}>${t}</option>`).join('')}</select></td>
+  <td><input data-d="${i}:lib" value="${esc(d.lib||'')}" placeholder="Désignation"></td><td><input data-d="${i}:four" value="${esc(d.four||'')}" placeholder="Fournisseur"></td>
+  <td><input class="pr" inputmode="decimal" data-d="${i}:qty" value="${esc(d.qty??'')}"></td><td><input data-d="${i}:unit" value="${esc(d.unit||'')}" style="width:60px"></td>
+  <td><input class="pr" inputmode="decimal" data-d="${i}:pu" value="${esc(d.pu??'')}"></td><td class="r num" id="ch-dt-${i}">${eur((+d.qty||0)*(+d.pu||0))}</td><td class="r"><button class="btn sm ghost danger" data-ddel="${i}" title="Supprimer la ligne">×</button></td></tr>`).join('')}
+function chSynHTML(c){const k=chCalc(c),P=c.prevu;const row=(lab,pv,rv,o={})=>{const e=pv!=null&&rv!=null?rv-pv:null;return `<tr class="${o.cls||''}"><td>${lab}</td>${P?`<td class="r num">${pv!=null?eur0(pv):'–'}</td>`:''}<td class="r num">${rv!=null?eur0(rv):'–'}</td>${P?`<td class="r num ${e!=null&&(o.inv?e<0:e>0)&&Math.abs(e)>.5?'bad':''}">${e!=null?(e>0?'+':'')+eur0(e):'–'}</td>`:''}</tr>`};
+  const kinds=[['mo','Main-d’œuvre'],...CH_KINDS];
+  return `<table class="deb-syn"><thead><tr><th>Poste</th>${P?'<th class="r">Prévu (chiffrage)</th>':''}<th class="r">Réel</th>${P?'<th class="r">Écart</th>':''}</tr></thead><tbody>
+    <tr class="deb-sub"><td>Heures travaillées</td>${P?`<td class="r num">${nf(r1(P.h||0))} h</td>`:''}<td class="r num">${nf(r1(k.h))} h <span class="status">(forage ${nf(r1(k.H.forage))} · racc. ${nf(r1(k.H.racc))} · autre ${nf(r1(k.H.autre))})</span></td>${P?`<td class="r num">${(k.h-(P.h||0)>0?'+':'')+nf(r1(k.h-(P.h||0)))} h</td>`:''}</tr>
+    ${kinds.map(([id,t])=>(P&&P.by[id])||k.by[id]?row(t+(id==='mo'?` <span class="status">(${nf(k.taux)} €/h)</span>`:''),P?(P.by[id]||0):null,k.by[id]||0):'').join('')}
+    ${row('<b>Total déboursé</b>',P?P.cout:null,k.tot,{cls:'deb-tot'})}
+    ${row('Facturé HT',P?P.vente:null,k.fact,{inv:1})}
+    ${row('<b>Marge</b>',P?P.vente-P.cout:null,k.marge,{cls:'deb-tot',inv:1})}
+    <tr><td>Marge %</td>${P?`<td class="r num">${P.vente?pctF((P.vente-P.cout)/P.vente*100):'–'}</td>`:''}<td class="r num ${k.pct!=null&&k.pct<0?'bad':''}">${pctF(k.pct)}</td>${P?'<td></td>':''}</tr></tbody></table>
+    ${P?`<p class="help" style="margin:8px 0 0">Prévu repris du chiffrage « ${esc(P.nom)} » le ${new Date(P.le).toLocaleDateString('fr-FR')} (coûts du chiffrage, avant coefficients ; facturé prévu = prix de vente). Main-d’œuvre prévue : lignes du chiffrage en heures, ou en jours × 8 h.</p>`:''}`}
+function chToolbar(){return `<button class="btn ghost" id="ch-back">← Chantiers</button><div class="title">${esc(chCur.nom||'Nouveau chantier')}</div>
+  <span class="status ${chDirty?'dirty':''}" id="ch-st">${chDirty?'Modifications non enregistrées':chCur.id?'Enregistré':''}</span>
+  <button class="btn ghost" id="ch-pdf">PDF</button><button class="btn ghost" id="ch-csv">Excel</button>
+  ${chCur.id?(chConfirmDel?`<span class="confirm">Supprimer ce chantier ? <button class="btn sm danger" id="ch-delok">Oui</button><button class="btn sm ghost" id="ch-delno">Non</button></span>`:'<button class="btn ghost danger" id="ch-del">Supprimer</button>'):''}
+  <button class="btn primary" id="ch-save" ${db&&canWrite?'':'disabled'}>Enregistrer</button>`}
+function renderChantier(){const el=$('#v-deb'),c=chCur,k=chCalc(c);const sals=[...new Set([...chList.flatMap(x=>(x.heures||[]).map(h=>h.sal)),...c.heures.map(h=>h.sal)].filter(Boolean))];
+  el.innerHTML=`<div class="toolbar" id="ch-tb">${chToolbar()}</div>
+  <div class="card"><div class="card-h"><h2>Chantier</h2></div><div class="card-b"><div class="fields">
+    ${chField('nom','Chantier',c.nom)}${chField('client','Client',c.client)}${chField('lieu','Lieu',c.lieu)}
+    ${chField('debut','Début',c.debut,{type:'date'})}${chField('fin','Fin',c.fin,{type:'date'})}
+    ${chField('statut','Statut',null,{sel:`<option value="encours" ${c.statut!=='termine'?'selected':''}>En cours</option><option value="termine" ${c.statut==='termine'?'selected':''}>Terminé</option>`})}
+    ${chField('devisId','Chiffrage lié (facultatif)',null,{sel:`<option value="">Aucun — chantier non chiffré ici</option>${savedList.map(q=>`<option value="${esc(q.id)}" ${q.id===c.devisId?'selected':''}>${esc(q.nom||'Sans nom')}</option>`).join('')}${c.devisId&&!savedList.some(q=>q.id===c.devisId)?`<option value="${esc(c.devisId)}" selected>${esc(c.prevu?.nom||'Chiffrage introuvable')}</option>`:''}`})}
+    ${chField('facture','Facturé HT (€)',c.facture,{num:1,ph:'montant facturé'})}
+    ${chField('tauxH','Coût horaire (€/h)',c.tauxH,{num:1,ph:`${nf(+debCfg.tauxH||0)} (moyen)`})}
+  </div>${c.devisId?`<p class="help" style="margin:10px 0 0">Le prévu est figé au moment du rattachement. <button class="btn sm ghost" id="ch-reprev">Reprendre le prévu du chiffrage</button></p>`:''}
+  <div class="f" style="margin-top:10px"><label for="ch-notes">Notes</label><textarea id="ch-notes" data-c="notes" rows="2">${esc(c.notes||'')}</textarea></div></div></div>
+  <div class="card" style="margin-top:14px"><div class="card-h"><h2>Heures des salariés</h2><span class="status" id="ch-hsum" style="margin-left:auto">${nf(r1(k.h))} h · ${eur0(k.by.mo)}</span></div>
+    <div class="tbl-wrap"><table class="tar deb-t"><thead><tr><th style="width:140px">Date</th><th>Salarié</th><th style="width:150px">Poste</th><th class="r" style="width:90px">Heures</th><th class="r" style="width:110px">Coût</th><th style="width:40px"></th></tr></thead><tbody>${chHeuresRows(c,k.taux)}</tbody></table></div>
+    <datalist id="ch-sals">${sals.map(s=>`<option value="${esc(s)}">`).join('')}</datalist>
+    <div class="card-b" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" id="ch-hadd">+ Ligne</button><button class="btn sm ghost" id="ch-hdup" ${c.heures.length?'':'disabled'} title="Recopie les lignes de la dernière date au jour suivant">Dupliquer la dernière journée</button></div></div>
+  <div class="card" style="margin-top:14px"><div class="card-h"><h2>Dépenses</h2><span class="status" id="ch-dsum" style="margin-left:auto">${eur0(k.tot-k.by.mo)}</span></div>
+    <div class="tbl-wrap"><table class="tar deb-t"><thead><tr><th style="width:140px">Date</th><th style="width:170px">Nature</th><th style="width:140px">Poste</th><th>Désignation</th><th style="width:130px">Fournisseur</th><th class="r" style="width:80px">Qté</th><th style="width:70px">Unité</th><th class="r" style="width:90px">PU HT</th><th class="r" style="width:110px">Total HT</th><th style="width:40px"></th></tr></thead><tbody>${chDepRows(c)}</tbody></table></div>
+    <div class="card-b"><button class="btn sm" id="ch-dadd">+ Dépense</button> <span class="help">Matériel, location, carburant, sous-traitance, déplacements, repas…</span></div></div>
+  <div class="card" style="margin-top:14px"><div class="card-h"><h2>Synthèse${c.prevu?' — prévu / réel':''}</h2></div><div class="card-b tbl-wrap" id="ch-syn">${chSynHTML(c)}</div></div>`}
+function chRefresh(){const c=chCur,k=chCalc(c);c.heures.forEach((x,i)=>{const e=$('#ch-hc-'+i);if(e)e.textContent=eur(+x.h*k.taux||0)});c.dep.forEach((d,i)=>{const e=$('#ch-dt-'+i);if(e)e.textContent=eur((+d.qty||0)*(+d.pu||0))});
+  const a=$('#ch-hsum');if(a)a.textContent=`${nf(r1(k.h))} h · ${eur0(k.by.mo)}`;const b=$('#ch-dsum');if(b)b.textContent=eur0(k.tot-k.by.mo);const s=$('#ch-syn');if(s)s.innerHTML=chSynHTML(c)}
+const CH_NUM=new Set(['h','qty','pu']);
+function onDebInput(e){const tg=e.target;
+  if(tg.id==='ch-filter'){chFilter=tg.value;const p=tg.selectionStart;renderDeb();const i=$('#ch-filter');i.focus();i.setSelectionRange(p,p);return}
+  if(!chCur)return;
+  if(tg.dataset.c){const k=tg.dataset.c;if(k==='devisId')return;chCur[k]=(k==='facture'||k==='tauxH')?pnum(tg.value):tg.value;chMark();if(k==='nom'){const t=$('#ch-tb .title');if(t)t.textContent=tg.value||'Nouveau chantier'}chRefresh();return}
+  const hd=tg.dataset.h||tg.dataset.d;if(hd){const [i,f]=hd.split(':');const arr=tg.dataset.h?chCur.heures:chCur.dep;const o=arr[+i];if(!o)return;o[f]=CH_NUM.has(f)?pnum(tg.value):tg.value;chMark();chRefresh()}}
+function onDebChange(e){const tg=e.target;
+  if(tg.id==='ch-year'){chYear=tg.value;renderDeb();return}
+  if(tg.id==='ch-fromq'){const q=savedList.find(x=>x.id===tg.value);if(q){chCur=chFromQuote(q);chDirty=true;chConfirmDel=false;store.set('chDraft',chCur);renderDeb()}return}
+  if(tg.id==='ch-devisId'&&chCur){const q=savedList.find(x=>x.id===tg.value);chCur.devisId=tg.value;chCur.prevu=q?chPrevu(q):null;if(q&&pnum(chCur.facture)==null&&chCur.prevu)chCur.facture=r2(chCur.prevu.vente);
+    if(q){['client','lieu'].forEach(k=>{if(!chCur[k])chCur[k]=q[k]||''});if(!chCur.nom)chCur.nom=q.nom||''}chMark();renderChantier();return}
+  if(tg.tagName==='SELECT'&&(tg.dataset.c||tg.dataset.h||tg.dataset.d))onDebInput(e)}
+async function chSave(){if(!db||!chCur)return;const c=chCur;if(!c.nom.trim()){toast('Donnez un nom au chantier');$('#ch-nom')?.focus();return}
+  if(!c.id)c.id='ch-'+slug(c.nom)+'-'+Math.random().toString(36).slice(2,7);c.updated=Date.now();
+  try{await db.doc('chantiers/'+c.id).set(clone(c));chDirty=false;store.set('chDraft',null);toast('Chantier enregistré');renderDeb()}
+  catch(e){console.error(e);toast(e&&e.code==='invalid_argument'?'Vous n’avez pas le droit d’enregistrer les chantiers (règles Firestore : collection « chantiers »)':e&&e.code==='too_big'?'Chantier trop lourd (plus de 1 Mo)':'Échec de l’enregistrement, réessayez'+(e&&e.message?' ('+String(e.message).slice(0,90)+')':''))}}
+async function onDebClick(e){const b=e.target.closest('button');
+  if(!b){const tr=e.target.closest('tr[data-chopen]');if(tr&&!e.target.closest('[data-chdelcell]')){const c=chList.find(x=>x.id===tr.dataset.chopen);if(c){chCur=chNorm(c);chDirty=false;chConfirmDel=false;renderDeb();window.scrollTo(0,0)}}return}
+  const id=b.id;
+  if(id==='ch-new'){chCur=chBlank();chDirty=false;chConfirmDel=false;renderDeb();$('#ch-nom')?.focus();return}
+  if(id==='ch-resume'){chCur=chNorm(store.get('chDraft'));chDirty=true;renderDeb();return}
+  if(id==='ch-dropdraft'){store.set('chDraft',null);renderDeb();return}
+  if(id==='ch-tauxok'){const t=pnum($('#ch-taux').value);try{const d={...debCfg,tauxH:t??0,updated:Date.now()};await db.doc('config/debours').set(d);debCfg=d;toast('Coût horaire enregistré');renderDeb()}catch(err){toast('Échec de l’enregistrement')}return}
+  if(id==='ch-csvall'){chCsvList();return}
+  if(b.dataset.chdel){b.parentElement.innerHTML=`<span class="confirm">Supprimer ? <button class="btn sm danger" data-chdelok="${esc(b.dataset.chdel)}">Oui</button><button class="btn sm ghost" data-chdelno="1">Non</button></span>`;return}
+  if(b.dataset.chdelok){try{await db.doc('chantiers/'+b.dataset.chdelok).delete();toast('Chantier supprimé')}catch(err){toast('Suppression impossible')}return}
+  if(b.dataset.chdelno){renderDeb();return}
+  if(!chCur)return;
+  if(id==='ch-back'){if(chDirty&&!confirm('Quitter sans enregistrer ? (la saisie reste récupérable depuis la liste)'))return;chCur=null;chDirty=false;renderDeb();return}
+  if(id==='ch-save'){chSave();return}
+  if(id==='ch-del'){chConfirmDel=true;$('#ch-tb').innerHTML=chToolbar();return}
+  if(id==='ch-delno'){chConfirmDel=false;$('#ch-tb').innerHTML=chToolbar();return}
+  if(id==='ch-delok'){try{await db.doc('chantiers/'+chCur.id).delete();toast('Chantier supprimé');chCur=null;chDirty=false;store.set('chDraft',null);renderDeb()}catch(err){toast('Suppression impossible')}return}
+  if(id==='ch-pdf'){chPdf(chCur);return}
+  if(id==='ch-csv'){chCsv(chCur);return}
+  if(id==='ch-reprev'){const q=savedList.find(x=>x.id===chCur.devisId);if(!q){toast('Chiffrage introuvable');return}chCur.prevu=chPrevu(q);chMark();renderChantier();toast('Prévu mis à jour');return}
+  if(id==='ch-hadd'){const last=chCur.heures[chCur.heures.length-1];chCur.heures.push({date:last?.date||new Date().toISOString().slice(0,10),sal:'',poste:last?.poste||'forage',h:last?.h??8});chMark();renderChantier();const ins=$$('#v-deb [data-h$=":sal"]');ins[ins.length-1]?.focus();return}
+  if(id==='ch-hdup'){const H=chCur.heures;if(!H.length)return;const d=H.map(x=>x.date).filter(Boolean).sort().pop();const nd=d?new Date(new Date(d).getTime()+864e5).toISOString().slice(0,10):'';
+    H.filter(x=>x.date===d).forEach(x=>H.push({...x,date:nd}));chMark();renderChantier();return}
+  if(id==='ch-dadd'){chCur.dep.push({date:new Date().toISOString().slice(0,10),kind:'mat',poste:'forage',lib:'',four:'',qty:1,unit:'u',pu:null});chMark();renderChantier();const ins=$$('#v-deb [data-d$=":lib"]');ins[ins.length-1]?.focus();return}
+  if(b.dataset.hdel!=null){chCur.heures.splice(+b.dataset.hdel,1);chMark();renderChantier();return}
+  if(b.dataset.ddel!=null){chCur.dep.splice(+b.dataset.ddel,1);chMark();renderChantier();return}}
+/* ---------- exports ---------- */
+const csvN=v=>v==null||v===''?'':String(Math.round(v*100)/100).replace('.',',');
+const csvS=v=>{v=String(v??'');return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+async function csvSave(name,rows){if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}
+  const txt='﻿'+rows.map(r=>r.map(x=>typeof x==='number'?csvN(x):csvS(x)).join(';')).join('\r\n');
+  try{await dlApi.save({filename:name,data:new Blob([txt],{type:'text/csv;charset=utf-8'})})}catch(e){if(e&&(e.code==='cancelled'||e.code==='declined'))return;toast('Export impossible')}}
+const kindLab=k=>(KINDS.find(x=>x[0]===k)||[k,k])[1],posteLab=p=>(CH_POSTES.find(x=>x[0]===p)||[p,'Autre'])[1];
+function chCsv(c){const k=chCalc(c);const R=[['Déboursé chantier',c.nom],['Client',c.client],['Lieu',c.lieu],['Début',c.debut],['Fin',c.fin],['Statut',c.statut==='termine'?'Terminé':'En cours'],[],
+  ['HEURES'],['Date','Salarié','Poste','Heures','Coût horaire','Coût']];
+  c.heures.forEach(x=>R.push([x.date,x.sal,posteLab(x.poste),+x.h||0,k.taux,(+x.h||0)*k.taux]));R.push(['Total','','',k.h,'',k.by.mo],[]);
+  R.push(['DÉPENSES'],['Date','Nature','Poste','Désignation','Fournisseur','Quantité','Unité','PU HT','Total HT']);
+  c.dep.forEach(d=>R.push([d.date,kindLab(d.kind),posteLab(d.poste),d.lib,d.four,+d.qty||0,d.unit,+d.pu||0,(+d.qty||0)*(+d.pu||0)]));R.push(['Total','','','','','','','',k.tot-k.by.mo],[]);
+  R.push(['SYNTHÈSE'],['Poste','Prévu','Réel']);const P=c.prevu;[['mo','Main-d’œuvre'],...CH_KINDS].forEach(([id,t])=>{if((P&&P.by[id])||k.by[id])R.push([t,P?(P.by[id]||0):'',k.by[id]||0])});
+  R.push(['Total déboursé',P?P.cout:'',k.tot],['Facturé HT',P?P.vente:'',k.fact??''],['Marge',P?P.vente-P.cout:'',k.marge??''],['Marge %',P&&P.vente?(P.vente-P.cout)/P.vente*100:'',k.pct??'']);
+  csvSave(`debourse-${slug(c.nom)}.csv`,R)}
+function chCsvList(){const R=[['Chantier','Client','Lieu','Début','Fin','Statut','Chiffré','Heures','Main-d’œuvre',...CH_KINDS.map(x=>x[1]),'Déboursé total','Facturé HT','Marge','Marge %']];
+  chList.filter(c=>(!chYear||chYearOf(c)===chYear)).forEach(c=>{const k=chCalc(c);R.push([c.nom,c.client,c.lieu,c.debut,c.fin,c.statut==='termine'?'Terminé':'En cours',c.devisId?'oui':'non',k.h,k.by.mo,...CH_KINDS.map(x=>k.by[x[0]]||0),k.tot,k.fact??'',k.marge??'',k.pct??''])});
+  csvSave(`deboursés-chantiers${chYear?'-'+chYear:''}.csv`,R)}
+async function chPdf(c){if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}
+  try{const L=await getPdfLib();const {PDFDocument,StandardFonts,rgb}=L;const doc=await PDFDocument.create();const F=await doc.embedFont(StandardFonts.Helvetica),B=await doc.embedFont(StandardFonts.HelveticaBold);
+    const K=72/25.4,PW=210*K,PH=297*K,mg=14*K;const INK=rgb(.09,.13,.12),GR=rgb(.4,.45,.44),LN=rgb(.83,.86,.85),ACC=rgb(14/255,94/255,120/255),RED=rgb(.66,.28,.11),BG=rgb(.95,.96,.96);
+    let page,y;const k=chCalc(c),P=c.prevu;
+    const T=(t,x,yy,o={})=>{t=pt(t);const f=o.f||F,s=o.s||8.5;let xx=x;if(o.r)xx=x-f.widthOfTextAtSize(t,s);page.drawText(t,{x:xx,y:yy,size:s,font:f,color:o.col||INK})};
+    const fit=(t,f,s,w)=>{t=pt(t);while(t.length>2&&f.widthOfTextAtSize(t,s)>w)t=t.slice(0,-2)+'…';return t};
+    const newPage=()=>{page=doc.addPage([PW,PH]);y=PH-mg;T(`Déboursé — ${c.nom||''}`,mg,mg/2,{s:7,col:GR});T(`Édité le ${new Date().toLocaleDateString('fr-FR')}`,PW-mg,mg/2,{s:7,col:GR,r:1})};
+    const need=h=>{if(y-h<mg+6)newPage()};
+    newPage();
+    try{const bin=atob(LOGO_SRC.split(',')[1]);const u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);const img=await doc.embedPng(u8);const lh=16*K,lw=lh*img.width/img.height;page.drawImage(img,{x:mg,y:y-lh,width:lw,height:lh})}catch(e){T('HYDREAU FORAGE',mg,y-14,{s:12,f:B,col:ACC})}
+    T('DÉBOURSÉ CHANTIER',PW-mg,y-12,{s:15,f:B,r:1});T(c.statut==='termine'?'Chantier terminé':'Chantier en cours',PW-mg,y-25,{s:8.5,col:GR,r:1});y-=24*K;
+    const info=[['Chantier',c.nom],['Client',c.client],['Lieu',c.lieu],['Période',[c.debut&&new Date(c.debut).toLocaleDateString('fr-FR'),c.fin&&new Date(c.fin).toLocaleDateString('fr-FR')].filter(Boolean).join(' → ')],['Chiffrage lié',P?P.nom:'aucun']].filter(x=>x[1]);
+    info.forEach(([a,b2],i)=>{const cx=mg+(i%3)*(PW-2*mg)/3,cy=y-Math.floor(i/3)*24;T(a.toUpperCase(),cx,cy,{s:6.5,col:GR});T(fit(b2,B,10,(PW-2*mg)/3-8),cx,cy-12,{s:10,f:B})});y-=Math.ceil(info.length/3)*24+8;
+    /* tableau générique */
+    const table=(title,cols,rows,o={})=>{need(40);T(title,mg,y-10,{s:10.5,f:B,col:ACC});y-=18;const W=PW-2*mg;let x=mg;const xs=cols.map(cl=>{const r={...cl,x};x+=cl.w*W;return r});
+      const head=()=>{page.drawRectangle({x:mg,y:y-13,width:W,height:13,color:BG});xs.forEach(cl=>T(cl.t.toUpperCase(),cl.r?cl.x+cl.w*W-3:cl.x+3,y-9,{s:6.5,col:GR,r:cl.r,f:B}));y-=15};head();
+      rows.forEach(r=>{if(y-12<mg+6){newPage();head()}const bold=r.__b;xs.forEach((cl,j)=>{const v=r[j];if(v==null||v==='')return;const f=bold?B:F;T(fit(String(v),f,8,cl.w*W-6),cl.r?cl.x+cl.w*W-3:cl.x+3,y-8.5,{s:8,f,r:cl.r,col:r.__c&&r.__c[j]?RED:INK})});
+        page.drawLine({start:{x:mg,y:y-12},end:{x:mg+W,y:y-12},thickness:.4,color:LN});y-=12.5});y-=10};
+    /* synthèse */
+    const kinds=[['mo','Main-d’œuvre'],...CH_KINDS].filter(([id])=>(P&&P.by[id])||k.by[id]);
+    const SR=[[`Heures travaillées`,P?nf(r1(P.h||0))+' h':'',nf(r1(k.h))+' h',P?nf(r1(k.h-(P.h||0)))+' h':''],
+      ...kinds.map(([id,t])=>[t+(id==='mo'?` (${nf(k.taux)} €/h)`:''),P?eur0(P.by[id]||0):'',eur0(k.by[id]||0),P?eur0((k.by[id]||0)-(P.by[id]||0)):'']),
+      Object.assign(['Total déboursé',P?eur0(P.cout):'',eur0(k.tot),P?eur0(k.tot-P.cout):''],{__b:1}),
+      ['Facturé HT',P?eur0(P.vente):'',k.fact!=null?eur0(k.fact):'–',P&&k.fact!=null?eur0(k.fact-P.vente):''],
+      Object.assign(['Marge',P?eur0(P.vente-P.cout):'',k.marge!=null?eur0(k.marge):'–',P&&k.marge!=null?eur0(k.marge-(P.vente-P.cout)):''],{__b:1,__c:[0,0,k.marge!=null&&k.marge<0,0]}),
+      ['Marge %',P&&P.vente?pctF((P.vente-P.cout)/P.vente*100):'',pctF(k.pct),'']];
+    table('Synthèse',P?[{t:'Poste',w:.4},{t:'Prévu',w:.2,r:1},{t:'Réel',w:.2,r:1},{t:'Écart',w:.2,r:1}]:[{t:'Poste',w:.6},{t:'',w:0},{t:'Réel',w:.4,r:1},{t:'',w:0}],SR);
+    /* heures par salarié */
+    const bySal={};c.heures.forEach(x=>{const s=x.sal||'(sans nom)';const o=bySal[s]=bySal[s]||{forage:0,racc:0,autre:0,j:new Set()};o[x.poste in o?x.poste:'autre']+=+x.h||0;if(x.date)o.j.add(x.date)});
+    const HS=Object.entries(bySal).map(([s,o])=>{const h=o.forage+o.racc+o.autre;return [s,String(o.j.size),nf(r1(o.forage)),nf(r1(o.racc)),nf(r1(o.autre)),nf(r1(h)),eur0(h*k.taux)]});
+    if(HS.length){HS.push(Object.assign(['Total','',nf(r1(k.H.forage)),nf(r1(k.H.racc)),nf(r1(k.H.autre)),nf(r1(k.h)),eur0(k.by.mo)],{__b:1}));
+      table('Heures par salarié',[{t:'Salarié',w:.3},{t:'Jours',w:.1,r:1},{t:'Forage',w:.12,r:1},{t:'Racc.',w:.12,r:1},{t:'Autre',w:.12,r:1},{t:'Total h',w:.12,r:1},{t:'Coût',w:.12,r:1}],HS)}
+    /* dépenses */
+    if(c.dep.length){const D=c.dep.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).map(d=>[d.date?new Date(d.date).toLocaleDateString('fr-FR'):'',kindLab(d.kind),d.lib+(d.four?' — '+d.four:''),nf(+d.qty||0)+(d.unit?' '+d.unit:''),eur(+d.pu||0),eur((+d.qty||0)*(+d.pu||0))]);
+      D.push(Object.assign(['','','Total dépenses','','',eur0(k.tot-k.by.mo)],{__b:1}));
+      table('Dépenses',[{t:'Date',w:.11},{t:'Nature',w:.17},{t:'Désignation',w:.36},{t:'Qté',w:.1,r:1},{t:'PU HT',w:.12,r:1},{t:'Total HT',w:.14,r:1}],D)}
+    if(c.notes){need(30);T('Notes',mg,y-10,{s:10.5,f:B,col:ACC});y-=20;const words=pt(c.notes).split(/\s+/);let cur='';for(const w of words){const t=cur?cur+' '+w:w;if(F.widthOfTextAtSize(t,8.5)>PW-2*mg){need(12);T(cur,mg,y,{s:8.5});y-=11;cur=w}else cur=t}if(cur){need(12);T(cur,mg,y,{s:8.5})}}
+    const bytes=await doc.save();await dlApi.save({filename:`debourse-${slug(c.nom)}.pdf`,data:new Blob([bytes],{type:'application/pdf'})})}
+  catch(e){if(e&&(e.code==='cancelled'||e.code==='declined'))return;console.error(e);toast('Échec de la création du PDF')}}
 
 /* ---------- boot ---------- */
 (function boot(){
   let d=store.get('draft');if(d&&d.id==='plumergat')d=null;quote=d?normQuote(d):blankQuote();dirty=!!(d&&d.updated===0&&d.nom);
   {const u=store.get('usedOnly');usedOnly=u==null?true:!!u;}const v=store.get('view');
-  go(['devis','liste','tarifs','soc'].includes(v)?v:'devis');
+  go(['devis','liste','deb','tarifs','soc'].includes(v)?v:'devis');
 })();
 /* ---------- Firebase : connexion + Firestore partagé ---------- */
 let fsdb=null,fbUser=null;
@@ -2363,9 +2565,9 @@ function makeDb(){return {
   doc(path){const r=fsdb.doc(path);return {
     set:o=>{const d=fsEnc(JSON.parse(JSON.stringify({...o,updated_by:fbUser?.email||null})));const sz=new Blob([JSON.stringify(d)]).size;if(sz>1040000)return Promise.reject({code:'too_big',message:''+Math.round(sz/1024)});return r.set(d).catch(e=>{console.error(e);throw mapErr(e)})},
     delete:()=>r.delete().catch(e=>{throw mapErr(e)}),
-    onSnapshot:(fn)=>r.onSnapshot(s=>fn({exists:s.exists,data:()=>fsDec(s.data())}),denied)}},
+    onSnapshot:(fn,err)=>r.onSnapshot(s=>fn({exists:s.exists,data:()=>fsDec(s.data())}),err||denied)}},
   collection(p){let q=fsdb.collection(p);const api={orderBy(f,d){q=q.orderBy(f,d);return api},limit(n){q=q.limit(n);return api},
-    onSnapshot(fn){return q.onSnapshot(s=>fn({docs:s.docs.map(d=>({data:()=>fsDec(d.data())}))}),denied)}};return api}}}
+    onSnapshot(fn,err){return q.onSnapshot(s=>fn({docs:s.docs.map(d=>({data:()=>fsDec(d.data())}))}),err||denied)}};return api}}}
 dlApi={async save({filename,data}){const blob=data instanceof Blob?data:new Blob([data]);const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),5000);return 'saved'}};
 function showLogin(msg){$('#login').hidden=false;$('#login-err').textContent=msg||'';setTimeout(()=>$('#l-mail')?.focus(),50)}
 let started=false;
@@ -2377,6 +2579,9 @@ function startSession(user){fbUser=user;$('#login').hidden=true;$('#who').textCo
       if(view==='devis'&&!document.activeElement?.closest('#v-devis input,#v-devis textarea'))renderDevisKeepScroll();
       if(view==='tarifs'&&!catDraft)renderTarifs();}
     else if(!s.exists){toast('Aucun tarif en base : onglet Tarifs → Importer le fichier de tarifs, puis Enregistrer.')}});
+  db.doc('config/debours').onSnapshot(s=>{debCfg=s.exists?s.data():{tauxH:0};if(view==='deb'&&!chCur&&!document.activeElement?.closest('#v-deb'))renderDeb()},()=>{});
+  db.collection('chantiers').orderBy('updated','desc').limit(1000).onSnapshot(s=>{chList=s.docs.map(d=>d.data());chErr='';$('#cnt-deb').textContent=chList.length?String(chList.length):'';
+    if(view==='deb'&&!chCur&&!document.activeElement?.closest('#v-deb'))renderDeb()},e=>{chErr='Lecture des chantiers refusée : autorisez la collection « chantiers » dans les règles Firestore (comme « devis »).';if(view==='deb'&&!chCur)renderDeb()});
   db.collection('devis').orderBy('updated','desc').limit(500).onSnapshot(s=>{
     savedList=s.docs.map(d=>d.data());$('#cnt').textContent=savedList.length?String(savedList.length):'';
     if(view==='liste'&&!document.activeElement?.closest('#v-liste'))renderListe();});}
