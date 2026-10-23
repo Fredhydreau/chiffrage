@@ -1367,9 +1367,10 @@ function edgeDist(x,y,P){let d=Infinity;for(let i=0;i<P.length;i++)d=Math.min(d,
 function zoneLattice(c,E,pat,ad,fx,fy,R){const dy=pat==='carre'?E:E*Math.sqrt(3)/2,a=ad*Math.PI/180,ca=Math.cos(a),sa=Math.sin(a),ox=fx*E/4,oy=fy*dy/4,n=Math.ceil(R/Math.min(E,dy))+1,out=[];
   for(let j=-n;j<=n;j++){const yy=j*dy+oy,sh=pat==='quinconce'&&(j&1)?E/2:0;for(let i=-n;i<=n;i++){const xx=i*E+sh+ox;out.push({x:c.x+xx*ca-yy*sa,y:c.y+xx*sa+yy*ca})}}return out}
 /* garde la disposition qui loge le plus de forages dans la zone, puis celle qui les met au plus près du point d'ancrage */
-function zoneLayout(P,E,marg,N,anchor,pats){const c=P.reduce((a,q)=>({x:a.x+q.x/P.length,y:a.y+q.y/P.length}),{x:0,y:0});const R=Math.max(...P.map(q=>Math.hypot(q.x-c.x,q.y-c.y)))+E;let best=null;
+const COLL_MIN=3;/* distance mini (m) entre un forage et le collecteur */
+function zoneLayout(P,E,marg,N,anchor,pats,excl){const c=P.reduce((a,q)=>({x:a.x+q.x/P.length,y:a.y+q.y/P.length}),{x:0,y:0});const R=Math.max(...P.map(q=>Math.hypot(q.x-c.x,q.y-c.y)))+E;let best=null;
   for(const pat of (pats||['carre','quinconce']))for(let ad=0;ad<(pat==='carre'?90:180);ad+=5)for(let fx=0;fx<4;fx++)for(let fy=0;fy<4;fy++){
-    const pts=zoneLattice(c,E,pat,ad,fx,fy,R).filter(q=>inPoly(q.x,q.y,P)&&edgeDist(q.x,q.y,P)>=marg-1e-9).map(q=>({...q,d:Math.hypot(q.x-anchor.x,q.y-anchor.y)}));
+    const pts=zoneLattice(c,E,pat,ad,fx,fy,R).filter(q=>inPoly(q.x,q.y,P)&&edgeDist(q.x,q.y,P)>=marg-1e-9&&!(excl||[]).some(c=>Math.hypot(q.x-c.x,q.y-c.y)<COLL_MIN-1e-6)).map(q=>({...q,d:Math.hypot(q.x-anchor.x,q.y-anchor.y)}));
     let score;if(pts.length>=N){pts.sort((p,q)=>p.d-q.d);score=1e9-pts.slice(0,N).reduce((t,q)=>t+q.d,0)}else score=pts.length;
     if(!best||score>best.score)best={score,pts,pat,ad,fx,fy,c,R}}
   return best}
@@ -1386,15 +1387,15 @@ function zoneImplant(){const p=planObj(),Z=p.zone;if(!Z||!Z.closed||Z.pts.length
   toast('Calcul de l’implantation…');
   setTimeout(()=>{const mode=Z.mode||'grille',pats=Z.pat==='quinconce'?['quinconce']:Z.pat==='auto'?['carre','quinconce']:['carre'];
     /* quadrillage régulier : on cherche le plus grand espacement (≥ E) qui loge les N forages, centrés sur la zone */
-    let Eg=E+.02,best=zoneLayout(Z.pts,Eg,marg,N,mode==='grille'?zc:anchor,pats);
+    const excl=keepC?oldC:[];let Eg=E+.02,best=zoneLayout(Z.pts,Eg,marg,N,mode==='grille'?zc:anchor,pats,excl);
     if(mode==='grille'&&best&&best.pts.length>=N&&N>1){let lo=Eg,hi=Math.max(...Z.pts.flatMap(a=>Z.pts.map(b2=>Math.hypot(a.x-b2.x,a.y-b2.y))));
-      for(let k=0;k<14&&hi-lo>.05;k++){const mid=(lo+hi)/2,r=zoneLayout(Z.pts,mid,marg,N,zc,pats);if(r&&r.pts.length>=N){lo=mid;best=r}else hi=mid}
-      Eg=Math.floor(lo*10)/10;if(Eg<E)Eg=E+.02;best=zoneLayout(Z.pts,Eg,marg,N,zc,pats)}
+      for(let k=0;k<14&&hi-lo>.05;k++){const mid=(lo+hi)/2,r=zoneLayout(Z.pts,mid,marg,N,zc,pats,excl);if(r&&r.pts.length>=N){lo=mid;best=r}else hi=mid}
+      Eg=Math.floor(lo*10)/10;if(Eg<E)Eg=E+.02;best=zoneLayout(Z.pts,Eg,marg,N,zc,pats,excl)}
     let pts=best?best.pts.slice():[];const inZ=pts.length;
     pts.sort((a,b)=>a.d-b.d);pts=pts.slice(0,N);
     /* zone trop petite : on continue le même réseau juste autour de la zone (forages à déplacer ensuite si besoin) */
     if(pts.length<N){const R2=best.R+Eg*(Math.ceil(Math.sqrt(N))+3);const taken=new Set(pts.map(q=>q.x.toFixed(2)+','+q.y.toFixed(2)));
-      const extra=zoneLattice(best.c,Eg,best.pat,best.ad,best.fx,best.fy,R2).filter(q=>!taken.has(q.x.toFixed(2)+','+q.y.toFixed(2))&&!(inPoly(q.x,q.y,Z.pts)&&edgeDist(q.x,q.y,Z.pts)>=marg-1e-9))
+      const extra=zoneLattice(best.c,Eg,best.pat,best.ad,best.fx,best.fy,R2).filter(q=>!taken.has(q.x.toFixed(2)+','+q.y.toFixed(2))&&!(inPoly(q.x,q.y,Z.pts)&&edgeDist(q.x,q.y,Z.pts)>=marg-1e-9)&&!excl.some(c=>Math.hypot(q.x-c.x,q.y-c.y)<COLL_MIN-1e-6))
         .map(q=>({...q,o:inPoly(q.x,q.y,Z.pts)?0:edgeDist(q.x,q.y,Z.pts),d:Math.hypot(q.x-anchor.x,q.y-anchor.y)})).sort((a,b)=>(a.o-b.o)||(a.d-b.d));
       pts=pts.concat(extra.slice(0,N-pts.length))}
     const F=pts.map(q=>({k:'f',x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100}));
@@ -1404,9 +1405,10 @@ function zoneImplant(){const p=planObj(),Z=p.zone;if(!Z||!Z.closed||Z.pts.length
         const th=.5*Math.atan2(2*sxy,sxx-syy),ux=Math.cos(th),uy=Math.sin(th);const srt=[...F].sort((a,b)=>(a.x*ux+a.y*uy)-(b.x*ux+b.y*uy));
         const NB=Math.max(1,Math.min(F.length-1,quote.N2!=null&&quote.N2!==''?Math.round(+quote.N2):Math.floor(F.length/2)));groups=[srt.slice(0,F.length-NB),srt.slice(F.length-NB)]}
       C=groups.map((g,i)=>{/* collecteur : entre deux forages voisins (à mi-distance), au point qui raccourcit le plus les liaisons */
-        const md=geoMedian(g),cand=[];for(let a2=0;a2<g.length;a2++)for(let b2=a2+1;b2<g.length;b2++){const d=Math.hypot(g[a2].x-g[b2].x,g[a2].y-g[b2].y);if(d<=Math.max(E,Eg)*1.1)cand.push({x:(g[a2].x+g[b2].x)/2,y:(g[a2].y+g[b2].y)/2})}
+        /* collecteur : à COLL_MIN (3 m) du forage le plus proche, jamais plus près d'aucun forage, au point qui raccourcit le plus les liaisons */
+        const md=geoMedian(g),cand=[];g.forEach(f=>{for(let a2=0;a2<36;a2++){const t=a2*Math.PI/18,q={x:f.x+(COLL_MIN+.01)*Math.cos(t),y:f.y+(COLL_MIN+.01)*Math.sin(t)};if(F.every(o=>Math.hypot(o.x-q.x,o.y-q.y)>=COLL_MIN-1e-6))cand.push(q)}});
         const cost=q=>g.reduce((t,f)=>t+Math.hypot(f.x-q.x,f.y-q.y),0)+.3*Math.hypot(q.x-anchor.x,q.y-anchor.y);const m=cand.length?cand.reduce((bst,q)=>cost(q)<cost(bst)?q:bst,cand[0]):md;
-        return {k:'c',i,x:Math.round(m.x*10)/10,y:Math.round(m.y*10)/10}})}
+        return {k:'c',i,x:Math.round(m.x*100)/100,y:Math.round(m.y*100)/100}})}
     p.items=[...(ch?[ch]:[]),...F,...C];p.routes={};p.assign={};p.noLink={};p.via={};p.on=true;p.userOff=false;plTool='f';
     planChanged();{const V=planView();if(F.some(i=>i.x<V.x||i.x>V.x+V.w||i.y<V.y||i.y>V.y+V.h)){planFit(false);planDraw()}}
     const pat=best.pat==='carre'?'en carré':'en quinconce';
@@ -1416,7 +1418,7 @@ function planGen(){const p=planObj();const N=+quote.N||0;if(!N){toast('Indiquer 
   const E=+quote.E||5,L=+quote.L||0,two=+quote.nc===2&&N>=2,mid=quote.coll==='milieu';
   const NB=two?Math.max(1,Math.min(N-1,quote.N2!=null&&quote.N2!==''?Math.round(+quote.N2):Math.floor(N/2))):0,NA=N-NB;
   const L2=quote.L2!=null&&quote.L2!==''?+quote.L2:L;const items=[];
-  const row=(n,cx,y,ci)=>{if(mid){const n1=Math.ceil(n/2);for(let k=1;k<=n1;k++)items.push({k:'f',x:cx-k*E,y});for(let k=1;k<=n-n1;k++)items.push({k:'f',x:cx+k*E,y})}else for(let k=1;k<=n;k++)items.push({k:'f',x:cx+k*E,y});items.push({k:'c',i:ci,x:cx,y})};
+  const d0=mid?Math.max(COLL_MIN,E/2):COLL_MIN;const row=(n,cx,y,ci)=>{if(mid){const n1=Math.ceil(n/2);for(let k=1;k<=n1;k++)items.push({k:'f',x:cx-(d0+(k-1)*E),y});for(let k=1;k<=n-n1;k++)items.push({k:'f',x:cx+d0+(k-1)*E,y})}else for(let k=1;k<=n;k++)items.push({k:'f',x:cx+d0+(k-1)*E,y});items.push({k:'c',i:ci,x:cx,y})};
   const chx=-Math.max(L,0);items.push({k:'ch',x:chx,y:0});row(NA,0,0,0);
   if(two){const dy=Math.max((Math.max(NA,NB)+1)*E*(mid?0.6:1),6),dx=Math.sqrt(Math.max(L2*L2-dy*dy,0));row(NB,chx+dx,dy,1)}
   /* ancrage : sur la chaufferie déjà placée (ou le collecteur 1), sinon au centre du fond / de la vue ; la vue et le fond ne bougent pas */
