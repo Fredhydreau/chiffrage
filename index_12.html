@@ -1754,7 +1754,7 @@ Article 12 – Litiges
 Les parties recherchent d'abord une solution amiable. À défaut, pour les clients professionnels, le Tribunal de commerce de Saint-Brieuc est seul compétent ; pour les clients consommateurs, la juridiction compétente est déterminée selon les règles de droit commun.`;
 const SOC_DEF={raison:'SARL MILO / HYDREAU FORAGE',forme:'SARL',capital:'5 000 €',siret:'89166141500044',rcs:'RCS Saint-Brieuc 891 661 415',tva:'FR28891661415',ape:'4313Z',
   adr1:'ZA de Keranfeuillen, 22540 Tréglamus (siège social)',tel1:'02 96 40 12 85',adr2:'ZA des 3 Prés, 9 rue de la Plaine, 35890 Laillé',tel2:'02 99 52 43 09',mail:'contact@hydreau-forage.fr',web:'',
-  qualif:'',assureur:'',police:'',zone:'France métropolitaine',mediateur:'',validite:30,ffAn:'',joAn:210,nbEns:4,mAn:'',mpjAn:100,npPct:'',
+  qualif:'',assureur:'',police:'',zone:'France métropolitaine',mediateur:'',validite:30,repOn:1,rp_declarations:400,rpFm:45,rpGl:4.5,rp_installation:850,rp_forage:9200,rp_sondes:9600,rp_collecteur:1560,rp_glycol:1971,rp_raccordement:1980,ffAn:'',joAn:210,nbEns:4,mAn:'',mpjAn:100,npPct:'',
   miseDispo:"la fourniture d'eau et d'électricité et le plan des réseaux (Hydreau Forage n'est pas responsable de la casse éventuelle des réseaux non repérés).",
   nonCompris:"l'évacuation des déblais, les tranchées, le collecteur et les percements s'ils ne sont pas chiffrés dans le devis ; le gravillonnage éventuel des chemins d'accès et la réfection des pelouses.",
   paiement:"Acompte de 30 % à la commande, factures de situation à l'avancement des travaux. Paiement à réception de facture, sans escompte pour paiement anticipé. Rapport de forage et plan transmis à réception du règlement.",
@@ -1764,6 +1764,10 @@ const SOC_FIELDS=[['raison','Raison sociale'],['forme','Forme juridique'],['capi
   ['assureur','Assureur décennale (nom, adresse)'],['police','N° de contrat décennale'],['zone','Couverture géographique'],['mediateur','Médiateur de la consommation (nom, site)'],['validite','Validité des devis (jours)']];
 const SOC_FF=[['ffAn','Frais fixes annuels (€)'],['joAn','Jours ouvrés par an'],['nbEns','Ensembles de forage'],['mAn','Mètres forés par an'],['mpjAn','Avancement moyen (m/jour)'],['npPct','Non-production (%)']];
 const FF_DEF_J=2000;
+/* répartition du prix dans le devis client : poids par poste (montants du devis type D-2026-10-31, 2 × 200 m) */
+const SOC_RP=[['declarations','Déclarations administratives (montant fixe)'],['installation','Mise en place chantier'],['forage','Forage'],['sondes','Sondes, fournitures et cimentation'],['collecteur','Collecteur'],['raccordement','Raccordement et mise en glycol']];
+const RP_SET=new Set(SOC_RP.map(x=>x[0]));
+function repWeights(s){s=s||socInfo();if(!+s.repOn)return null;const w={};let any=0;for(const [k] of SOC_RP){const x=+s['rp_'+k]||0;if(x>0){w[k]=x;any=1}}return any?w:null}
 /* frais fixes par jour de forage = frais annuels ÷ (jours ouvrés × ensembles × (1 − non-production)) */
 /* non-production : saisie à la main, sinon calculée = 1 − jours de forage réels (mètres par an ÷ avancement) ÷ (jours ouvrés × ensembles) */
 function npAuto(s){const j=+s.joAn||0,n=+s.nbEns||0,m=+s.mAn||0,v=+s.mpjAn||0;if(!(j>0&&n>0&&m>0&&v>0))return null;const jf=m/v;return {jf,np:Math.min(95,Math.max(0,100*(1-jf/(j*n))))}}
@@ -1811,6 +1815,18 @@ function devisPostes(t){t=t||totals();const v=t.v,pe=prixEff(t),k=kProd(t);const
   for(const l of lines()){const q=qtyOf(l,v);if(!(q>0))continue;const a=q*unitVente(l,k);if(!(a>0))continue;
     if(l.src==='extra'){xs.push({id:'x_'+String(l.id).replace(/^x_/,''),st:isST(l),ds:l.sec==='loc'?'autres':l.sec,name:l.name||'Prestation',unit:l.unit||'u',q,amt:a,desc:[]});continue}
     const id=posteOf(l);const o=acc[id]||(acc[id]={amt:0,qL:0});o.amt+=a;if(/^l/i.test(l.unit||''))o.qL+=q}
+  /* répartition proportionnelle au devis type (onglet Entreprise) : le total ne change pas, seuls les postes de la grille sont redistribués */
+  const W=repWeights();if(W){if(acc.forage||acc.sondes)for(const id of ['declarations','installation'])if(W[id]&&!acc[id])acc[id]={amt:0,qL:0};
+    const ids=Object.keys(acc).filter(id=>W[id]&&RP_SET.has(id));const sp0=socInfo();if(+sp0.rpGl>0&&acc.glycol&&acc.glycol.qL>0&&!ids.includes('glycol'))ids.push('_gl');let pool=ids.reduce((a,id)=>a+(id==='_gl'?acc.glycol.amt:acc[id].amt),0);if(ids.includes('_gl'))ids.splice(ids.indexOf('_gl'),1);const sw=ids.reduce((a,id)=>a+W[id],0);
+    const sp=socInfo(),fm=+sp.rpFm||0,M=+v.M||0,F=['forage','sondes'].filter(id=>ids.includes(id));
+    const gl=+sp.rpGl||0;if(gl>0&&acc.glycol&&acc.glycol.qL>0&&!ids.includes('glycol')){const g=Math.min(gl*acc.glycol.qL,pool);acc.glycol.amt=g;pool-=g}
+    const dec=ids.includes('declarations')?Math.min(W.declarations,pool):0;const rest=ids.filter(id=>id!=='declarations');
+    const absorb=rest.filter(id=>!F.includes(id)&&id!=='installation');/* postes de raccordement présents */
+    const wsum=a=>a.reduce((x,id)=>x+W[id],0);
+    if(pool>0.005&&sw>0){if(ids.includes('declarations'))acc.declarations.amt=dec;let left=pool-dec;
+      if(fm>0&&M>0&&F.length&&absorb.length&&left-fm*M>0){const fs=fm*M,wf=wsum(F);for(const id of F)acc[id].amt=fs*W[id]/wf;left-=fs;
+        const oth=rest.filter(id=>!F.includes(id)),wo=wsum(oth);for(const id of oth)acc[id].amt=left*W[id]/wo}
+      else{const wr=wsum(rest);if(wr>0)for(const id of rest)acc[id].amt=left*W[id]/wr;else if(ids.includes('declarations'))acc.declarations.amt=pool}}}
   const out=[];
   for(const p of POSTES){const o=acc[p.id];if(!o||o.amt<0.005)continue;let q=1,unit=p.unit;
     if(unit==='ml'){q=v.M;if(!(q>0)){q=1;unit='forfait'}}else if(unit==='L'){q=Math.round(o.qL);if(!(q>0)){q=1;unit='forfait'}}
@@ -1820,7 +1836,7 @@ function devisPostes(t){t=t||totals();const v=t.v,pe=prixEff(t),k=kProd(t);const
   for(const p of out){p.defName=p.name;p.defDesc=p.desc.join('\n');const o=dv[p.id]||{};if(o.name)p.name=o.name;if(o.desc)p.desc=String(o.desc).split('\n').filter(s=>s.trim());
     p.tva=o.tva!=null&&o.tva!==''?+o.tva:tvaDef();p.pu=r2(p.amt/p.q);p.tot=r2(p.pu*p.q);sum+=p.tot;exp+=p.amt}
   /* arrondis des prix au mètre reportés sur un forfait pour retomber exactement sur le prix retenu */
-  const diff=r2(r2(exp)-sum);const f=out.find(p=>p.q===1&&!p.st&&p.id!=='trt'&&p.id!=='zoneorange');if(Math.abs(diff)>=0.01&&f){f.pu=r2(f.pu+diff);f.tot=f.pu}
+  const diff=r2(r2(exp)-sum);const f=out.find(p=>p.q===1&&!p.st&&p.id!=='trt'&&p.id!=='zoneorange'&&p.id!=='declarations')||out.find(p=>p.q===1&&!p.st&&p.id!=='trt'&&p.id!=='zoneorange');if(Math.abs(diff)>=0.01&&f){f.pu=r2(f.pu+diff);f.tot=f.pu}
   return out}
 function nextNumero(){const d=quote.date?new Date(quote.date):new Date();const pre=`D-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-`;let n=0;
   for(const q of [...savedList,{dvs:quote.dvs}]){const s=String((q.dvs&&q.dvs.numero)||q.numero||'');if(s.startsWith(pre)){const m=parseInt(s.slice(pre.length),10);if(m>n)n=m}}return pre+String(n+1).padStart(2,'0')}
@@ -1838,8 +1854,16 @@ function renderSoc(){const el=$('#v-soc');const s=socDraft||socInfo();const miss
     <p class="help" style="margin:12px 0 0">Ces informations figurent dans l’en-tête, le pied de page et l’encadré « Informations légales » de chaque devis. L’assurance décennale (assureur, contrat, couverture géographique) est obligatoire sur les devis de travaux ; le médiateur de la consommation l’est pour les clients particuliers.</p></div></div>
   <div class="card" style="margin-top:18px"><div class="card-h"><h2>Frais fixes de l’entreprise</h2></div><div class="card-b"><div class="fields">${SOC_FF.map(([k,l])=>`<div class="f"><label for="s-${k}">${l}</label><input id="s-${k}" data-s="${k}" inputmode="decimal" value="${esc(s[k]??'')}"${k==='npPct'?` placeholder="${npAuto(s)?nf(Math.round(npAuto(s).np))+' (auto)':'30'}"`:''}></div>`).join('')}</div>
     <div id="s-ffres">${ffResHtml(s)}</div></div></div>
+  <div class="card" style="margin-top:18px"><div class="card-h"><h2>Répartition des prix dans le devis</h2></div><div class="card-b">
+    <label class="xst" style="font-size:14px;color:var(--ink)"><input type="checkbox" data-s="repOn" ${+s.repOn?'checked':''}> Répartir le prix du devis selon ces montants de référence</label>
+    <div class="fields" style="margin-top:10px"><div class="f"><label for="s-rpFm">Forage + sondes (€/m)</label><input id="s-rpFm" data-s="rpFm" inputmode="decimal" value="${esc(s.rpFm??'')}"></div><div class="f"><label for="s-rpGl">Glycol (€/L)</label><input id="s-rpGl" data-s="rpGl" inputmode="decimal" value="${esc(s.rpGl??'')}"></div>${SOC_RP.map(([k,l])=>`<div class="f"><label for="s-rp_${k}">${l} (€)</label><input id="s-rp_${k}" data-s="rp_${k}" inputmode="decimal" value="${esc(s['rp_'+k]??'')}"></div>`).join('')}</div>
+    <div id="s-rpres">${rpResHtml(s)}</div></div></div>
   <div class="card" style="margin-top:18px"><div class="card-h"><h2>Textes du devis</h2></div><div class="card-b" style="display:grid;gap:12px">${SOC_TEXTS.map(([k,l])=>`<div class="f"><label for="s-${k}">${l}</label><textarea id="s-${k}" data-s="${k}" rows="${k==='cgv'?26:3}">${esc(s[k]??'')}</textarea></div>`).join('')}
     <p class="help">Dans les CGV, une ligne qui commence par « Article » ou écrite en MAJUSCULES est mise en gras. Le formulaire de rétractation est ajouté automatiquement à la suite.</p></div></div>`}
+function rpResHtml(s){const w={};let t=0;for(const [k] of SOC_RP){const x=+s['rp_'+k]||0;w[k]=x;t+=x}
+  if(!+s.repOn)return `<p class="help" style="margin:12px 0 0">Désactivé : chaque poste du devis suit le coût du chiffrage × le coefficient de sa section.</p>`;
+  const fm=+s.rpFm||0,gl=+s.rpGl||0,wf=(w.forage||0)+(w.sondes||0),ot=['installation','collecteur','raccordement'].filter(k=>w[k]>0),wo=ot.reduce((a,k)=>a+w[k],0);
+  return `<p class="help" style="margin:12px 0 0">Le total du devis reste le prix retenu du chiffrage. Répartition : déclarations administratives ${nf(w.declarations||0)} € fixes ;${gl?` glycol ${nf(gl)} €/L ;`:''} ${fm?`forage + sondes ${nf(fm)} €/m (${wf?nf(Math.round(100*(w.forage||0)/wf)):0} % forage, ${wf?nf(Math.round(100*(w.sondes||0)/wf)):0} % sondes)`:'forage et sondes au prorata'} ; le reste du prix entre ${ot.map(k=>`${esc(SOC_RP.find(x=>x[0]===k)[1].toLowerCase())} ${wo?nf(Math.round(100*w[k]/wo)):0} %`).join(', ')}. Les montants servent de proportions (repris de votre devis D-2026-10-31). Si le chantier n’a pas de raccordement, ou si le prix ne permet pas les ${nf(fm)} €/m, tout le reste est réparti au prorata, forage et sondes compris. Un poste absent du chantier laisse sa part aux autres. Les postes hors de cette liste (terrassement, déblais, TRT, zone orange, lignes libres) gardent leur montant calculé.</p>`}
 function ffResHtml(s){const c=ffCalc(s);if(!c.ok)return `<p class="help" style="margin:12px 0 0">Renseignez les frais fixes annuels, les jours ouvrés et le nombre d’ensembles. En attendant, les chiffrages utilisent ${nf(FF_DEF_J)} € par jour de forage.</p>`;
   const mpj=+s.mpjAn||100;const npTxt=c.man?`${nf(c.np)} % saisis à la main${c.au?` (calcul d’après les mètres : ${nf(Math.round(c.au.np))} %)`:''}`:c.au?`${nf(Math.round(c.np))} % calculés : ${nf(+s.mAn)} m ÷ ${nf(mpj)} m/j = ${nf(Math.round(c.au.jf))} j de forage sur ${nf(c.j*c.n)} j possibles`:`${nf(c.np)} % par défaut`;
   const base=+s.mAn||Math.round(c.prod*mpj);const sc=[0.9,1,1.15,1.35].map(f=>{const m=Math.round(base*f/1000)*1000,jf=m/mpj,np=Math.min(95,Math.max(0,100*(1-jf/(c.j*c.n))));return {m,jf,np,day:jf>0?Math.round(c.a/jf):0,cur:f===1}});
@@ -1847,7 +1871,8 @@ function ffResHtml(s){const c=ffCalc(s);if(!c.ok)return `<p class="help" style="
   <div><span class="k">Jours de forage à vendre par an</span><b class="num">${nf(Math.round(c.prod))} j</b><small>≈ ${nf(Math.round(c.prod*mpj))} m à ${mpj} m/jour, soit ≈ ${nf(Math.round(c.prod/c.n))} j par ensemble</small></div></div>
   <div class="tbl-wrap" style="margin-top:12px"><table style="min-width:480px"><thead><tr><th>Mètres forés / an</th><th class="r">Jours de forage</th><th class="r">Non-production</th><th class="r">Frais fixes / jour</th></tr></thead><tbody>${sc.map(r=>`<tr${r.cur?' style="font-weight:600"':''}><td class="num">${nf(r.m)} m${r.cur?' (saisi)':''}</td><td class="r num">${nf(Math.round(r.jf))} j</td><td class="r num">${nf(Math.round(r.np))} %</td><td class="r num">${nf(r.day)} €</td></tr>`).join('')}</tbody></table></div>
   <p class="help" style="margin:12px 0 0">Chaque chiffrage paie ce montant par jour de forage (J). La non-production couvre les transferts de machines entre chantiers, l’entretien des machines et les jours sans chantier. Laissez la case vide pour qu’elle soit calculée d’après les mètres forés par an : les frais fixes sont alors couverts à l’euro près si l’activité est tenue. Le tableau montre l’effet du volume. Si l’entreprise fore moins de jours que prévu, une partie des frais fixes n’est pas couverte : comparez chaque année avec les jours de forage réels.</p>`}
-function onSocInput(e){const tg=e.target;if(!tg.dataset.s)return;const fresh=!socDraft;if(fresh)socDraft=socInfo();const k=tg.dataset.s;socDraft[k]=(k==='validite'||SOC_FF.some(x=>x[0]===k))?(pnum(tg.value)??''):tg.value;
+function onSocInput(e){const tg=e.target;if(!tg.dataset.s)return;const fresh=!socDraft;if(fresh)socDraft=socInfo();const k=tg.dataset.s;if(k==='repOn'){socDraft.repOn=tg.checked?1:0;const r=$('#s-rpres');if(r)r.innerHTML=rpResHtml(socDraft);if(fresh){const tb=$('#v-soc .toolbar');if(tb)tb.innerHTML=socToolbar()}return}socDraft[k]=(k==='validite'||k.startsWith('rp')||SOC_FF.some(x=>x[0]===k))?(pnum(tg.value)??''):tg.value;
+  if(k.startsWith('rp')){const r=$('#s-rpres');if(r)r.innerHTML=rpResHtml(socDraft)}
   if(SOC_FF.some(x=>x[0]===k)){const r=$('#s-ffres');if(r)r.innerHTML=ffResHtml(socDraft);const npi=$('#s-npPct');if(npi){const au=npAuto(socDraft);npi.placeholder=au?nf(Math.round(au.np))+' (auto)':'30'}}
   if(fresh){const tb=$('#v-soc .toolbar');if(tb)tb.innerHTML=socToolbar()}}
 async function onSocClick(e){const b=e.target.closest('button');if(!b)return;
