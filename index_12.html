@@ -294,7 +294,17 @@ table.list tr.row:hover td{background:var(--panel2)}
 /* ---------- Firebase (version GitHub) ---------- */
 const FB_V='10.12.2',FB_URL='https://www.gstatic.com/firebasejs/'+FB_V+'/';
 function fbLoadJs(u){return new Promise((ok,ko)=>{const e=document.createElement('script');e.src=u;e.onload=ok;e.onerror=()=>ko(new Error('Chargement impossible : '+u));document.head.appendChild(e)})}
-function fbCfg(){try{if(typeof firebaseConfig!=='undefined')return firebaseConfig}catch(e){}return window.firebaseConfig||window.FIREBASE_CONFIG||(window.CONFIG&&(window.CONFIG.firebaseConfig||window.CONFIG.firebase))||null}
+function fbIsCfg(o){return o&&typeof o==='object'&&typeof o.apiKey==='string'&&(o.projectId||o.authDomain)}
+function fbScan(o,d){if(fbIsCfg(o))return o;if(!o||typeof o!=='object'||d>2)return null;for(const k of Object.keys(o)){try{const r=fbScan(o[k],d+1);if(r)return r}catch(e){}}return null}
+async function fbCfg(){
+  try{if(typeof firebaseConfig!=='undefined'&&fbIsCfg(firebaseConfig))return firebaseConfig}catch(e){}
+  for(const k of ['firebaseConfig','FIREBASE_CONFIG','FIREBASE','CONFIG','config','APP_CONFIG','fbConfig','FB_CONFIG']){try{const r=fbScan(window[k],0);if(r)return r}catch(e){}}
+  for(const k of Object.keys(window)){if(/fire|config|fb/i.test(k)){try{const r=fbScan(window[k],0);if(r)return r}catch(e){}}}
+  /* lecture directe du fichier (const, export, autre nom…) */
+  for(const f of ['config.js','./config.js','firebase-config.js']){try{const t=await (await fetch(f,{cache:'no-store'})).text();
+    const i=t.search(/apiKey/);if(i<0)continue;let a=t.lastIndexOf('{',i),dep=0,b=-1;for(let j=a;j<t.length;j++){if(t[j]==='{')dep++;else if(t[j]==='}'){dep--;if(!dep){b=j;break}}}
+    if(a<0||b<0)continue;const o=Function('"use strict";return ('+t.slice(a,b+1)+')')();if(fbIsCfg(o))return o}catch(e){}}
+  return null}
 /* Firestore refuse les tableaux de tableaux : on les emballe en {__arr:[…]} */
 function fsEnc(v){if(Array.isArray(v))return v.map(x=>Array.isArray(x)?{__arr:fsEnc(x)}:fsEnc(x));if(v&&typeof v==='object'){const o={};for(const k in v)if(v[k]!==undefined)o[k]=fsEnc(v[k]);return o}if(typeof v==='number'&&!isFinite(v))return null;return v}
 function fsDec(v){if(Array.isArray(v))return v.map(fsDec);if(v&&typeof v==='object'){const ks=Object.keys(v);if(ks.length===1&&ks[0]==='__arr'&&Array.isArray(v.__arr))return fsDec(v.__arr);const o={};for(const k of ks)o[k]=fsDec(v[k]);return o}return v}
@@ -318,7 +328,7 @@ function fbLoginBox(msg){let w=document.getElementById('fb-login');if(!w){w=docu
   <button class="btn ghost sm" type="button" id="fb-reset">Mot de passe oublié</button></form>`;document.body.appendChild(w)}
   w.hidden=false;document.getElementById('fb-msg').textContent=msg||'';return w}
 async function fbStart(){
-  const cfg=fbCfg();if(!cfg){fbLoginBox('config.js manquant ou sans firebaseConfig : la connexion est impossible.');return null}
+  const cfg=await fbCfg();if(!cfg){fbLoginBox('Réglages Firebase introuvables : vérifiez que config.js est bien sur GitHub, à côté d’index.html (avec apiKey, projectId…).');return null}
   try{await fbLoadJs(FB_URL+'firebase-app-compat.js');await fbLoadJs(FB_URL+'firebase-auth-compat.js');await fbLoadJs(FB_URL+'firebase-firestore-compat.js')}
   catch(e){fbLoginBox('Firebase ne se charge pas (connexion Internet ?).');return null}
   if(!firebase.apps.length)firebase.initializeApp(cfg);
