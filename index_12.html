@@ -681,7 +681,8 @@ function dimList(){return ((quote&&quote.plan&&quote.plan.dims)||[]).map(d=>{con
 /* géométrie d'une cote (y vers le bas) : milieu, direction, normale, angle lisible en degrés */
 function dimGeom(A,B){const dx=B.x-A.x,dy=B.y-A.y,L=Math.hypot(dx,dy)||1,ux=dx/L,uy=dy/L;let a=Math.atan2(dy,dx)*180/Math.PI;if(a>90)a-=180;if(a<=-90)a+=180;return {mx:(A.x+B.x)/2,my:(A.y+B.y)/2,ux,uy,nx:-uy,ny:ux,a,L}}
 /* point d'étiquette de l'emprise : milieu du bord le plus haut */
-function empLab(P){let bk=0,by=Infinity;P.forEach((a,k)=>{const b=P[(k+1)%P.length],m=(a.y+b.y)/2;if(m<by){by=m;bk=k}});const a=P[bk],b=P[(bk+1)%P.length];return {x:(a.x+b.x)/2,y:(a.y+b.y)/2}}
+function empLab(P,off){let bk=0,by=Infinity;P.forEach((a,k)=>{const b=P[(k+1)%P.length],m=(a.y+b.y)/2;if(m<by){by=m;bk=k}});const a=P[bk],b=P[(bk+1)%P.length];const m={x:(a.x+b.x)/2,y:(a.y+b.y)/2};if(!off)return m;
+  /* décalé vers l'intérieur de l'emprise, pour laisser la cote du côté à l'extérieur */const c=P.reduce((q,v)=>({x:q.x+v.x/P.length,y:q.y+v.y/P.length}),{x:0,y:0}),G=dimGeom(a,b);let nx=G.nx,ny=G.ny;if(nx*(c.x-m.x)+ny*(c.y-m.y)<0){nx=-nx;ny=-ny}return {x:m.x+nx*off,y:m.y+ny*off}}
 /* verrouillage de l'implantation sur le fond */
 const plLocked=()=>!!(quote&&quote.plan&&quote.plan.lock);
 const PL_LOCK_OK=new Set(['pan','cote','bg']);
@@ -691,6 +692,9 @@ function plShiftAll(dx,dy){if(!dx&&!dy)return;const p=quote.plan,mv=q=>{if(q){q.
   planItems().forEach(mv);Object.values(p.routes||{}).forEach(r=>(r||[]).forEach(mv));(p.trenches||[]).forEach(l=>l.forEach(mv));
   if(p.zone)(p.zone.pts||[]).forEach(mv);if(p.emp)(p.emp.pts||[]).forEach(mv);(p.dims||[]).forEach(d=>{mv(d.a);mv(d.b)})}
 function plRoundAll(){const p=quote.plan,r=q=>{if(q){q.x=Math.round(q.x*100)/100;q.y=Math.round(q.y*100)/100}};planItems().forEach(r);Object.values(p.routes||{}).forEach(x=>(x||[]).forEach(r));(p.trenches||[]).forEach(l=>l.forEach(r));if(p.zone)(p.zone.pts||[]).forEach(r);if(p.emp)(p.emp.pts||[]).forEach(r);(p.dims||[]).forEach(d=>{r(d.a);r(d.b)})}
+/* côtés de l'emprise : longueur, milieu, direction et normale vers l'extérieur (y vers le bas) */
+const empCote=()=>empClosed()&&!quote.plan.emp.noCote;
+function empEdges(P){const c=P.reduce((a,q)=>({x:a.x+q.x/P.length,y:a.y+q.y/P.length}),{x:0,y:0});return P.map((A,k)=>{const B=P[(k+1)%P.length],G=dimGeom(A,B);let nx=G.nx,ny=G.ny;if(nx*(G.mx-c.x)+ny*(G.my-c.y)<0){nx=-nx;ny=-ny}return {A,B,G,L:G.L,nx,ny}}).filter(e=>e.L>.05)}
 const dimTxt=L=>nf(Math.round(L*100)/100)+' m';
 function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tools=[['zone','Zone de forage'],['f','Forage'],['c0','Collecteur 1'],['c1','Collecteur 2'],['ch','Chaufferie'],['tch','Tranchée'],['tr','Tracé des liaisons'],['cote','Cote'],['emp','Emprise chantier'],['del','Gomme'],['pan','Main']];
   return `<div class="card ${plFull?'pl-full':''}" id="plan-card" style="margin-top:18px"><div class="card-h"><h2>Plan d’implantation</h2><span class="status">facultatif</span><label class="status" style="margin-left:auto;display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="pl-on" ${p.on?'checked':''}> Utiliser le plan pour les longueurs</label></div><div class="card-b">
@@ -738,7 +742,8 @@ function planSVG(){const p=quote.plan||{w:60};const V=planView(),w=V.w,h=V.h,X0=
     if(zt)P.forEach((q,k)=>{const z=ui*.8;s+=`<rect x="${q.x-z}" y="${q.y-z}" width="${2*z}" height="${2*z}" fill="${k===0&&!Z.closed?'var(--plf)':'#fff'}" stroke="var(--plf)" stroke-width="2" vector-effect="non-scaling-stroke"/>`})}
   const EM=p.emp;if(EM&&EM.pts&&EM.pts.length){const P=EM.pts,et=plTool==='emp',pts=P.map(q=>`${q.x},${q.y}`).join(' ');
     if(EM.closed){s+=`<polygon points="${pts}" fill="${EMP_COL}" fill-opacity=".05" stroke="${EMP_COL}" stroke-width="2.2" stroke-dasharray="12 4 2 4" vector-effect="non-scaling-stroke"/>`;
-      const top=empLab(P);s+=`<text x="${top.x}" y="${top.y-ui*1.2}" text-anchor="middle" font-size="${fi*.8}" font-weight="700" fill="${EMP_COL}" font-family="Barlow,sans-serif" paint-order="stroke" stroke="var(--panel)" stroke-width="${fi/3.5}">Emprise chantier${et?` · ${nf(Math.round(polyArea(P)))} m² · périmètre ${nf(Math.round(polyLen([...P,P[0]])))} m`:''}</text>`}
+      const top=empLab(P,fi*1.3);s+=`<text x="${top.x}" y="${top.y+fi*.3}" text-anchor="middle" font-size="${fi*.8}" font-weight="700" fill="${EMP_COL}" font-family="Barlow,sans-serif" paint-order="stroke" stroke="var(--panel)" stroke-width="${fi/3.5}">Emprise chantier${et?` · ${nf(Math.round(polyArea(P)))} m² · périmètre ${nf(Math.round(polyLen([...P,P[0]])))} m`:''}</text>`;
+      if(!EM.noCote){const fc=fi*.72;empEdges(P).forEach(e=>{const o=fc*.95,x=e.G.mx+e.nx*o,y=e.G.my+e.ny*o;s+=`<text transform="translate(${x} ${y}) rotate(${e.G.a})" y="${fc*.36}" text-anchor="middle" font-size="${fc}" font-weight="700" fill="${EMP_COL}" font-family="IBM Plex Mono,monospace" paint-order="stroke" stroke="var(--panel)" stroke-width="${fc/3}" stroke-linejoin="round">${dimTxt(e.L)}</text>`})}}
     else s+=`<polyline points="${pts}${plEmpHover?` ${plEmpHover.x},${plEmpHover.y}`:''}" fill="none" stroke="${EMP_COL}" stroke-width="2.2" stroke-dasharray="12 4 2 4" vector-effect="non-scaling-stroke"/>`;
     if(et)P.forEach((q,k)=>{const z=ui*.8;s+=`<rect x="${q.x-z}" y="${q.y-z}" width="${2*z}" height="${2*z}" fill="${k===0&&!EM.closed?EMP_COL:'#fff'}" stroke="${EMP_COL}" stroke-width="2" vector-effect="non-scaling-stroke"/>`})}
   const eq=p.trace==='equerre';const path=(a,b)=>'M'+routeFor(a,b).map(q=>`${q.x} ${q.y}`).join('L');
@@ -880,7 +885,9 @@ async function planPdf(){
   if(false&&p.zone&&p.zone.closed&&p.zone.pts.length>2){const Q=p.zone.pts;Q.forEach((a,k)=>{const b2=Q[(k+1)%Q.length];page.drawLine({start:{x:X(a.x),y:Y(a.y)},end:{x:X(b2.x),y:Y(b2.y)},thickness:.9,color:FOR,dashArray:[4,3]})})}
   const EMC=rgb(122/255,78/255,30/255);
   if(empClosed()){const Q=p.emp.pts;Q.forEach((a,k)=>{const b2=Q[(k+1)%Q.length];page.drawLine({start:{x:X(a.x),y:Y(a.y)},end:{x:X(b2.x),y:Y(b2.y)},thickness:1,color:EMC,dashArray:[7,2,1.5,2]})});
-    const tp=empLab(Q);T('Emprise chantier',X(tp.x),Y(tp.y)+3,{s:6,f:B,c:1,col:EMC})}
+    const tp=empLab(Q,4/mm);T('Emprise chantier',X(tp.x),Y(tp.y)-2,{s:6,f:B,c:1,col:EMC});
+    if(empCote())empEdges(Q).forEach(e=>{const q={x:e.G.mx+e.nx*3.2/mm,y:e.G.my+e.ny*3.2/mm},A={x:X(e.A.x),y:Y(e.A.y)},Bq={x:X(e.B.x),y:Y(e.B.y)};let ux=Bq.x-A.x,uy=Bq.y-A.y;const l=Math.hypot(ux,uy)||1;ux/=l;uy/=l;if(ux<-1e-9||(Math.abs(ux)<1e-9&&uy<0)){ux=-ux;uy=-uy}
+      const t=pt(dimTxt(e.L)),sz=5.5,w=B.widthOfTextAtSize(t,sz),cx=X(q.x),cy=Y(q.y);page.drawText(t,{x:cx-ux*w/2+uy*sz*.35,y:cy-uy*w/2-ux*sz*.35,size:sz,font:B,color:EMC,rotate:degrees(Math.atan2(uy,ux)*180/Math.PI)})})}
   const lf=[],lc=[];pg.asg.forEach(q=>{const c=pg.C[q.j];if(c)lf.push(...segs(q.f,c))});if(pg.ch)pg.Cch.forEach(c=>lc.push(...segs(c,pg.ch)));
   const tw=Math.max(.6*mm*K,2.2);if(!p.noTr)(trActive()?trSegs():[...lf,...lc]).forEach(([a,b])=>line({x:X(a.x),y:Y(a.y)},{x:X(b.x),y:Y(b.y)},tw,SAND,true));
   lf.forEach(([a,b])=>line({x:X(a.x),y:Y(a.y)},{x:X(b.x),y:Y(b.y)},.7,ACC,true));
@@ -983,7 +990,8 @@ async function planPng(){
   planItems().forEach(i=>{const x=X(i.x),y=Y(i.y);
     if(i.k==='c'){const z=.9*m;g.fillStyle=ACC;g.strokeStyle='#fff';g.lineWidth=Math.max(.1*m,1.5);g.beginPath();g.rect(x-z,y-z,2*z,2*z);g.fill();g.stroke();g.fillStyle='#fff';g.font=`700 ${.85*m}px Barlow, Arial, sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText('C'+((i.i||0)+1),x,y)}
     if(i.k==='ch'){const q=.55*m;g.save();g.translate(x,y);const pb=new Path2D(chBox(q));g.fillStyle=LOC;g.strokeStyle='#fff';g.lineWidth=Math.max(.1*m,1.5);g.fill(pb);g.stroke(pb);g.fillStyle='#fff';g.fill(new Path2D(chFlame(q)));g.restore();txt('Chaufferie',x,y+2*q+.8*m,.8*m,LOC,'center')}});
-  if(empClosed()){const Q=p.emp.pts,tp=empLab(Q);txt('Emprise chantier',X(tp.x),Y(tp.y)-.8*m,.75*m,EMP_COL,'center')}
+  if(empClosed()){const Q=p.emp.pts,tp=empLab(Q,1.1*m/ppm);txt('Emprise chantier',X(tp.x),Y(tp.y),.75*m,EMP_COL,'center');
+    if(empCote())empEdges(Q).forEach(e=>{const sz=.65*m,o=sz*1.0;g.save();g.translate(X(e.G.mx)+e.nx*o,Y(e.G.my)+e.ny*o);g.rotate(e.G.a*Math.PI/180);g.font=`700 ${sz}px Barlow, Arial, sans-serif`;g.textAlign='center';g.textBaseline='middle';g.lineWidth=sz/4;g.strokeStyle='rgba(255,255,255,.95)';g.strokeText(dimTxt(e.L),0,0);g.fillStyle=EMP_COL;g.fillText(dimTxt(e.L),0,0);g.restore()})}
   dimList().forEach(o=>{const G=dimGeom(o.A,o.B),A={x:X(o.A.x),y:Y(o.A.y)},Bq={x:X(o.B.x),y:Y(o.B.y)},tk=.55*m;g.beginPath();g.moveTo(A.x,A.y);g.lineTo(Bq.x,Bq.y);
     [A,Bq].forEach(q=>{g.moveTo(q.x-(G.ux+G.nx)*tk*.5,q.y-(G.uy+G.ny)*tk*.5);g.lineTo(q.x+(G.ux+G.nx)*tk*.5,q.y+(G.uy+G.ny)*tk*.5)});g.lineWidth=Math.max(.08*m,1.5);g.strokeStyle=INK;g.stroke();
     const t=dimTxt(G.L),sz=.75*m;g.save();g.translate(X(G.mx),Y(G.my));g.rotate(G.a*Math.PI/180);g.font=`600 ${sz}px Barlow, Arial, sans-serif`;const tw=g.measureText(t).width+sz*.8;g.fillStyle='#fff';g.strokeStyle=INK;g.lineWidth=1;g.fillRect(-tw/2,-sz*.75,tw,sz*1.5);g.strokeRect(-tw/2,-sz*.75,tw,sz*1.5);g.fillStyle=INK;g.textAlign='center';g.textBaseline='middle';g.fillText(t,0,0);g.restore()});
@@ -1014,7 +1022,8 @@ async function planDxf(){
     if(i.k==='c'){const z=.6,c=[[-z,-z],[z,-z],[z,z],[-z,z]].map(([a,b])=>({x:i.x+a,y:i.y+b}));c.forEach((q,k)=>ln('COLLECTEURS',q,c[(k+1)%4]));tx('COLLECTEURS',i.x+.9,i.y-.9,.6,'C'+((i.i||0)+1))}
     if(i.k==='ch'){const c=[[-1.5,-1],[1.5,-1],[1.5,1],[-1.5,1]].map(([a,b])=>({x:i.x+a,y:i.y+b}));c.forEach((q,k)=>ln('CHAUFFERIE',q,c[(k+1)%4]));tx('CHAUFFERIE',i.x,i.y+1.8,.6,'Chaufferie',1)}});
   if(p.zone&&p.zone.closed&&p.zone.pts.length>2){const Q=p.zone.pts;Q.forEach((a,k)=>ln('ZONE_FORAGE',a,Q[(k+1)%Q.length]))}
-  if(empClosed()){const Q=p.emp.pts;Q.forEach((a,k)=>ln('EMPRISE_CHANTIER',a,Q[(k+1)%Q.length]))}
+  if(empClosed()){const Q=p.emp.pts;Q.forEach((a,k)=>ln('EMPRISE_CHANTIER',a,Q[(k+1)%Q.length]));
+    if(empCote())empEdges(Q).forEach(e=>{const tx0=e.G.mx+e.nx*.6,ty0=e.G.my+e.ny*.6;E.push(`0\nTEXT\n8\nEMPRISE_CHANTIER\n10\n${X(tx0)}\n20\n${Y(ty0)}\n30\n0\n40\n0.5\n1\n${ascii(dimTxt(e.L).replace(/\s/g,''))}\n50\n${(-e.G.a).toFixed(2)}\n72\n1\n11\n${X(tx0)}\n21\n${Y(ty0)}\n31\n0`)})}
   dimList().forEach(o=>{const G=dimGeom(o.A,o.B),tk=.35;ln('COTES',o.A,o.B);[o.A,o.B].forEach(q=>ln('COTES',{x:q.x-(G.ux+G.nx)*tk,y:q.y-(G.uy+G.ny)*tk},{x:q.x+(G.ux+G.nx)*tk,y:q.y+(G.uy+G.ny)*tk}));
     const tx0=G.mx-G.nx*.35,ty0=G.my-G.ny*.35;E.push(`0\nTEXT\n8\nCOTES\n10\n${X(tx0)}\n20\n${Y(ty0)}\n30\n0\n40\n0.5\n1\n${ascii(dimTxt(G.L).replace(/\s/g,''))}\n50\n${(-G.a).toFixed(2)}\n72\n1\n11\n${X(tx0)}\n21\n${Y(ty0)}\n31\n0`)});
   const bb=planBBox(3);tx('TEXTES',bb.x0,bb.y0+bb.h+1.5,.8,`Plan d'implantation ${quote.nom||''} - Hydreau Forage - unites : metres (1 unite = 1 m)`);
@@ -1118,7 +1127,7 @@ function plHint(){if(plLocked()&&!PL_LOCK_OK.has(plTool))return '<b>Plan verroui
     return `Cote : cliquer le <b>1er point</b> puis le <b>2e</b> — un forage, le collecteur, la chaufferie (le point s’y accroche et suit l’élément s’il est déplacé) ou n’importe quel point du fond : angle de bâtiment, limite de propriété, puits, fosse… La distance réelle s’affiche à l’échelle du plan et ressort dans les PDF, PNG, DXF et KML. Déplacer une extrémité : la faire glisser. Supprimer une cote : outil <b>Gomme</b> sur la cote.${n?` <button class="btn sm ghost danger" id="pl-dimdel">Effacer les ${n} cote${pl(n)}</button>`:''}${warn}`}
   if(plTool==='emp'){const E=quote.plan&&quote.plan.emp;
     if(!E||!E.closed)return `Emprise du chantier : cliquer les coins de la zone de travail (foreuse, accès, stockage, bennes…), puis le 1er point (ou double-clic) pour la fermer. <button class="btn sm ghost danger" id="pl-empdel" ${E&&E.pts.length?'':'disabled'}>Effacer</button>`;
-    return `Emprise du chantier : <b>${nf(Math.round(polyArea(E.pts)))} m²</b>, périmètre <b>${nf(Math.round(polyLen([...E.pts,E.pts[0]])))} m</b> (longueur de balisage). Les sommets se déplacent en les faisant glisser. <button class="btn sm ghost danger" id="pl-empdel">Effacer l’emprise</button>`}
+    return `Emprise du chantier : <b>${nf(Math.round(polyArea(E.pts)))} m²</b>, périmètre <b>${nf(Math.round(polyLen([...E.pts,E.pts[0]])))} m</b> (longueur de balisage). Les sommets se déplacent en les faisant glisser. <label class="status"><input type="checkbox" id="pl-empcote" ${E.noCote?'':'checked'}> coter les côtés</label> <button class="btn sm ghost danger" id="pl-empdel">Effacer l’emprise</button>`}
   if(plTool==='pan')return 'Main : faire glisser pour déplacer la vue (aussi : glisser à deux doigts sur le pavé tactile). Pincer, Ctrl + molette ou les boutons − / + pour zoomer.';
   if(plTool==='bg')return 'Déplacer le fond : faire glisser le plan pour aligner le fond sur les forages (ou l’inverse). Les forages ne bougent pas.';
   if(plTool==='cal'){const b=quote.plan&&quote.plan.bg;if(!b)return 'Importer d’abord un fond de plan.';
@@ -1704,6 +1713,7 @@ function onDevisInput(e){
 function onDevisChange(e){
   const tg=e.target;
   if(tg.id==='usedOnly'){usedOnly=tg.checked;store.set('usedOnly',usedOnly);renderDevis();return}
+  if(tg.id==='pl-empcote'){empObj().noCote=!tg.checked;markDirty();planDraw();return}
   if(tg.id==='pl-file'){const f=tg.files&&tg.files[0];tg.value='';if(plLocked()){plLockMsg();return}if(f)planImport(f);return}
   if(tg.id==='pl-bgpage'){if(plLastFile)planImport(plLastFile,+tg.value);return}
   if(tg.id==='pl-bgshow'){const b=quote.plan&&quote.plan.bg;if(b){b.show=tg.checked;markDirty();planBgUpdate()}return}
@@ -2325,7 +2335,8 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
     pg.C.forEach(c=>{const A=P(c);page.drawRectangle({x:A.x-6,y:A.y-6,width:12,height:12,color:ACC});text('C'+((c.i||0)+1),A.x-6,A.y-2.6,{size:6.5,f:B,color:rgb(1,1,1),align:'center',w:12})});
     if(pg.ch){const A=P(pg.ch);page.drawRectangle({x:A.x-24,y:A.y-7,width:48,height:14,color:LOC});text('Chaufferie',A.x-24,A.y-3,{size:7,f:B,color:rgb(1,1,1),align:'center',w:48})}
     {const inV=q=>q.x>=vx&&q.x<=vx+pw&&q.y>=vy&&q.y<=vy+ph;const EMC=rgb(122/255,78/255,30/255);
-      if(empClosed()){const Q=p.emp.pts;Q.forEach((a,k)=>{const b2=Q[(k+1)%Q.length];if(inV(a)||inV(b2))page.drawLine({start:P(a),end:P(b2),thickness:1,color:EMC,dashArray:[6,2,1.5,2]})})}
+      if(empClosed()){const Q=p.emp.pts;Q.forEach((a,k)=>{const b2=Q[(k+1)%Q.length];if(inV(a)||inV(b2))page.drawLine({start:P(a),end:P(b2),thickness:1,color:EMC,dashArray:[6,2,1.5,2]})});
+        if(empCote())empEdges(Q).forEach(e=>{const m={x:e.G.mx,y:e.G.my};if(!inV(m))return;const q=P({x:m.x+e.nx*9/sx,y:m.y+e.ny*9/sx});text(dimTxt(e.L),q.x-20,q.y-2.5,{size:6,f:B,color:EMC,align:'center',w:40})})}
       dimList().forEach(o=>{if(!inV(o.A)||!inV(o.B))return;const A=P(o.A),Bq=P(o.B);page.drawLine({start:A,end:Bq,thickness:.7,color:INK});const mx=(A.x+Bq.x)/2,my=(A.y+Bq.y)/2,t=dimTxt(o.L);page.drawRectangle({x:mx-15,y:my-4.5,width:30,height:9,color:rgb(1,1,1),borderColor:INK,borderWidth:.4});text(t,mx-15,my-2.2,{size:6.5,align:'center',w:30})})}
     page.drawLine({start:{x:ox+8,y:oy+8},end:{x:ox+8+maj*sx,y:oy+8},thickness:1.5,color:INK});text(`${maj} m`,ox+8,oy+12,{size:7,align:'center',w:maj*sx});
     y=oy-6;para(pg.groups.map(g=>`Collecteur ${(g.c.i||0)+1} : ${g.n} forage${pl(g.n)}, ${nf(g.LF)} m de PE, forage le plus éloigné à ${nf(g.DF)} m, chaufferie à ${nf(g.L)} m.`).join(' ')+` Tranchée estimée ${nf(pg.T)} m (tracé ${eq?'en équerre':'en ligne droite'}).`,8.5,GR)}
