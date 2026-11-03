@@ -242,6 +242,8 @@ table.list tr.row:hover td{background:var(--panel2)}
 .pl-ic-res{width:14px!important;height:7px!important;border:0!important;border-radius:1px;background:linear-gradient(90deg,#D7191C 0 20%,#E8B400 20% 40%,#2E9E44 40% 60%,#1F6FD1 60% 80%,#7B4A1E 80%)!important}
 .pl-ic-zoom{width:11px!important;height:11px!important;border:0!important;background:radial-gradient(circle at 42% 42%,transparent 2.6px,currentColor 2.7px,currentColor 3.9px,transparent 4px)!important;position:relative}.pl-ic-zoom::after{content:'';position:absolute;right:0;bottom:1px;width:4px;height:1.6px;background:currentColor;transform:rotate(45deg)}
 .pl-svg.pl-zoomc{cursor:zoom-in}
+.pl-ic-rot{width:11px!important;height:11px!important;border:1.8px solid currentColor!important;border-right-color:transparent!important;border-radius:50%!important;background:none!important}
+.pl-svg.pl-rotc{cursor:grab}
 .pl-ic-cote{width:16px!important;height:8px!important;border:0!important;border-radius:0!important;background:linear-gradient(var(--ink),var(--ink)) center/100% 1.5px no-repeat,linear-gradient(var(--ink),var(--ink)) left/1.5px 100% no-repeat,linear-gradient(var(--ink),var(--ink)) right/1.5px 100% no-repeat!important}
 .pl-ic-emp{width:14px!important;height:10px!important;border:1.5px dashed #7A4E1E!important;border-radius:1px;background:transparent!important}
 .pl-ic-tr{width:14px!important;height:8px!important;border:0!important;background:linear-gradient(135deg,transparent 45%,var(--racc) 45%,var(--racc) 60%,transparent 60%)}
@@ -781,7 +783,7 @@ function empEdges(P){const c=P.reduce((a,q)=>({x:a.x+q.x/P.length,y:a.y+q.y/P.le
 /* cotes arrondies au 50 cm le plus proche */
 const dimTxt=L=>nf(Math.round(L*2)/2)+' m';
 /* réseaux existants (concessionnaires), couleurs de la norme NF P 98-332 */
-const RES_T=[['elec','Électricité (EDF / Enedis)','Électricité','#D7191C','ELECTRICITE'],['gaz','Gaz (GRDF)','Gaz','#E8B400','GAZ'],['tel','Télécom','Télécom','#2E9E44','TELECOM'],['eau','Eau potable','Eau potable','#1F6FD1','EAU_POTABLE'],['ass','Assainissement','Assainissement','#7B4A1E','ASSAINISSEMENT']];
+const RES_T=[['elec','Électricité (EDF / Enedis)','Électricité','#D7191C','ELECTRICITE'],['gaz','Gaz (GRDF)','Gaz','#E8B400','GAZ'],['tel','Télécom','Télécom','#2E9E44','TELECOM'],['eau','Eau potable','Eau potable','#1F6FD1','EAU_POTABLE'],['ass','Assainissement','Assainissement','#7B4A1E','ASSAINISSEMENT'],['autre','Autre réseau','Réseau','#6B6B6B','AUTRE']];
 const resT=k=>RES_T.find(r=>r[0]===k)||RES_T[0];
 let plResT='elec',plRes=null;
 function resList(){const r=quote&&quote.plan&&quote.plan.res;return Array.isArray(r)?r.filter(x=>x&&Array.isArray(x.pts)&&x.pts.length>1):[]}
@@ -798,7 +800,18 @@ function resLab(P){let bk=-1,bl=0;for(let k=1;k<P.length;k++){const l=Math.hypot
   return {x:best.x,y:best.y,ux,uy,nx:uy,ny:-ux,a:Math.atan2(uy,ux)*180/Math.PI,L:bl}}
 const R_OPTS=[5,10,15,20];/* rayon autour des forages (m), 10 m par défaut */
 function planRad(){const r=+(quote&&quote.plan&&quote.plan.rad);return r>0?r:10}
-function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tools=[['zone','Zone de forage'],['f','Forage'],['c0','Collecteur 1'],['c1','Collecteur 2'],['ch','Chaufferie'],['tch','Tranchée'],['tr','Tracé des liaisons'],['cote','Cote'],['emp','Emprise chantier'],['res','Réseaux existants'],['del','Gomme'],['pan','Main'],['zoom','Loupe']];
+/* pivoter l'implantation seule (forages, collecteurs, chaufferie, liaisons, tranchées, zone, emprise, cotes, réseaux), sens horaire, autour de son centre */
+function plRotCenter(){const p=quote.plan||{},it=planItems();let P=it.length?it:[...((p.zone&&p.zone.pts)||[]),...((p.emp&&p.emp.pts)||[]),...(p.trenches||[]).flat(),...resList().flatMap(l=>l.pts)];
+  if(!P.length){const V=planView();return {x:V.x+V.w/2,y:V.y+V.h/2}}const xs=P.map(q=>+q.x),ys=P.map(q=>+q.y);return {x:(Math.min(...xs)+Math.max(...xs))/2,y:(Math.min(...ys)+Math.max(...ys))/2}}
+function plRotateAll(deg,c,noNord){if(!deg)return;const p=quote.plan,a=deg*Math.PI/180,co=Math.cos(a),si=Math.sin(a);c=c||plRotCenter();
+  const rt=q=>{if(!q)return;const dx=+q.x-c.x,dy=+q.y-c.y;q.x=Math.round((c.x+dx*co-dy*si)*100)/100;q.y=Math.round((c.y+dx*si+dy*co)*100)/100};
+  planItems().forEach(rt);Object.values(p.routes||{}).forEach(r=>(r||[]).forEach(rt));(p.trenches||[]).forEach(l=>l.forEach(rt));
+  if(p.zone)(p.zone.pts||[]).forEach(rt);if(p.emp)(p.emp.pts||[]).forEach(rt);(p.dims||[]).forEach(d=>{rt(d.a);rt(d.b)});(p.res||[]).forEach(l=>(l.pts||[]).forEach(rt));
+  /* repère des objets importés sans fond géoréférencé : il tourne avec l'implantation, et le nord aussi */
+  if(p.geo0){const g=p.geo0,o={x:g.ox,y:g.oy};rt(o);g.ox=o.x;g.oy=o.y;g.rot=((+g.rot||0)+deg)%360;if(!noNord&&!(p.bg&&p.bg.geo))p.nord=Math.round((((+p.nord||0)+deg)%360+360)%360*10)/10}}
+function plRotSnap(){const p=quote.plan;return JSON.stringify({items:p.items,routes:p.routes,trenches:p.trenches,zone:p.zone,emp:p.emp,dims:p.dims,res:p.res,geo0:p.geo0,nord:p.nord})}
+function plRotRestore(sn){const p=quote.plan,o=JSON.parse(sn);['items','routes','trenches','zone','emp','dims','res','geo0','nord'].forEach(k=>{if(o[k]===undefined)delete p[k];else p[k]=o[k]})}
+function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tools=[['zone','Zone de forage'],['f','Forage'],['c0','Collecteur 1'],['c1','Collecteur 2'],['ch','Chaufferie'],['tch','Tranchée'],['tr','Tracé des liaisons'],['cote','Cote'],['emp','Emprise chantier'],['res','Réseaux existants'],['rot','Pivoter le plan'],['del','Gomme'],['pan','Main'],['zoom','Loupe']];
   return `<div class="card ${plFull?'pl-full':''}" id="plan-card" style="margin-top:18px"><div class="card-h"><h2>Plan d’implantation</h2><span class="status">facultatif</span><label class="status" style="margin-left:auto;display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="pl-on" ${p.on?'checked':''}> Utiliser le plan pour les longueurs</label></div><div class="card-b">
   <div class="pl-bar"><div class="pl-tools" role="group" aria-label="Outil">${tools.map(([k,t])=>`<button class="btn sm ${plTool===k?'primary':''}" data-pltool="${k}"><i class="pl-ic pl-ic-${k}"></i>${t}</button>`).join('')}<button class="btn sm ${p.lock?'primary':''}" id="pl-lock" aria-pressed="${p.lock?'true':'false'}" title="Verrouille forages, collecteurs, chaufferie, liaisons, tranchées, zone et emprise sur le fond de plan">${LOCK_SVG(!!p.lock)}${p.lock?'Verrouillé':'Verrouiller'}</button><button class="btn sm" id="pl-undo" title="Annuler la dernière modification (Ctrl+Z / ⌘Z)" ${H.i>0||H.t?'':'disabled'}>↶ Annuler</button><button class="btn sm" id="pl-redo" title="Rétablir (Ctrl+Maj+Z / ⌘⇧Z)" ${H.i<H.st.length-1?'':'disabled'}>↷ Rétablir</button></div>
   <div class="pl-opts"><span class="pl-zoom"><button class="btn sm" id="pl-zout" title="Dézoomer (ou molette / pincer à l’endroit voulu, ou outil Loupe)">−</button><button class="btn sm" id="pl-zin" title="Zoomer (ou molette / pincer à l’endroit voulu, ou outil Loupe)">+</button></span><label class="status">Vue <select id="pl-w">${(PL_W.includes(+p.w||60)?PL_W:[...PL_W,+p.w].sort((a,b)=>a-b)).map(w=>`<option value="${w}" ${(+p.w||60)===w?'selected':''}>${nf(Math.round(w))} m</option>`).join('')}</select></label><button class="btn sm" id="pl-zfit" title="Ajuste la vue sur le fond de plan (ou sur les forages s’il n’y a pas de fond)">Plein cadre</button><button class="btn sm" id="pl-full">${plFull?'Quitter le plein écran':'Plein écran'}</button>
@@ -806,7 +819,7 @@ function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tool
   ${p.zone&&p.zone.closed?`<button class="btn sm primary" id="pl-gen" title="Implante les forages du dimensionnement (nombre et espacement) dans la zone de forage">Implanter dans la zone (${+quote.N||0} × ${nf(+quote.E||0)} m)</button>`:'<button class="btn sm" id="pl-gen" title="Place les forages en ligne avec les valeurs du dimensionnement">Placer depuis le dimensionnement</button>'}${p.routes&&Object.keys(p.routes).length?'<button class="btn sm" id="pl-straight" title="Supprime tous les points de passage">Redresser les liaisons</button>':''}<button class="btn sm" id="pl-trauto2" title="Trace les tranchées qui relient les forages aux collecteurs avec le moins de tranchée et de tuyau (réglage dans l’outil Tranchée)">Tranchées auto</button><button class="btn sm ghost danger" id="pl-clear">Tout effacer</button></div></div>
   <div id="pl-bgbar-w">${planBgBar()}</div>
   <p class="pl-hint" id="pl-hint" ${plHint()?'':'hidden'}>${plHint()}</p>
-  <div class="pl-wrap"><svg id="pl-svg" style="aspect-ratio:${plFull?'auto':(1/planAsp()).toFixed(4)}" class="pl-svg ${plTool==='tr'?'pl-edit':''} ${plTool==='zoom'?'pl-zoomc':''} ${plTool==='pan'||(plLocked()&&!PL_LOCK_OK.has(plTool))?'pl-pan':''}" viewBox="${planView().x} ${planView().y} ${planView().w} ${planView().h}" role="img" aria-label="Plan d’implantation"><g id="pl-bgl">${planBgSVG()}</g><g id="pl-fg">${planSVG()}</g></svg></div>
+  <div class="pl-wrap"><svg id="pl-svg" style="aspect-ratio:${plFull?'auto':(1/planAsp()).toFixed(4)}" class="pl-svg ${plTool==='tr'?'pl-edit':''} ${plTool==='zoom'?'pl-zoomc':''} ${plTool==='rot'?'pl-rotc':''} ${plTool==='pan'||(plLocked()&&!PL_LOCK_OK.has(plTool))?'pl-pan':''}" viewBox="${planView().x} ${planView().y} ${planView().w} ${planView().h}" role="img" aria-label="Plan d’implantation"><g id="pl-bgl">${planBgSVG()}</g><g id="pl-fg">${planSVG()}</g></svg></div>
   <div class="pl-leg"><span><i class="pl-ic pl-ic-f"></i>Forage</span><span><i class="pl-ic pl-ic-c0"></i>Collecteur</span><span><i class="pl-ic pl-ic-ch"></i>Chaufferie</span><span><i class="pl-ln"></i>Liaison PE</span><span><i class="pl-ln pl-ln2"></i>vers chaufferie</span>${(quote.plan||{}).noTr?'':'<span><i class="pl-ln pl-tr"></i>Tranchée indicative</span>'}${empClosed()?'<span><i class="pl-ic pl-ic-emp"></i>Emprise du chantier</span>':''}${dimList().length?'<span><i class="pl-ic pl-ic-cote"></i>Cote (m)</span>':''}${(quote.plan||{}).r5?`<span><i class="pl-ic" style="border:1.5px dashed var(--plf);border-radius:50%"></i>Rayon ${planRad()} m</span>`:''}${resUsed().map(r=>`<span><i class="pl-ln pl-ln2" style="background:${r[3]}"></i>${r[2]} (existant)</span>`).join('')}</div>
   <p class="help" id="pl-info" style="margin:8px 0 0">${planInfo()}</p>
   <div id="pl-exp-w">${planExpHTML()}</div>
@@ -915,6 +928,7 @@ function planSVG(){const p=quote.plan||{w:60};const V=planView(),w=V.w,h=V.h,X0=
     let info='';if(dg.k==='f'){const a=pg.asg.find(q=>q.f===dg);if(a&&pg.C[a.j])info=`liaison → ${pg.direct?'chaufferie':'C'+((pg.C[a.j].i||0)+1)} : ${nf(r1(a.d))} m`}
     else if(dg.k==='c'&&pg.ch){const r=routeFor(dg,pg.ch);info=`→ chaufferie : ${nf(r1(polyLen(r)))} m`}
     if(info)s+=mp(dg.x,dg.y+Math.max(u*3.4,ft*1.9),info)}
+  if(plDrag&&plDrag.rot){const c=plDrag.c,z=ui*1.2;s+=`<path d="M${c.x-z} ${c.y}H${c.x+z}M${c.x} ${c.y-z}V${c.y+z}" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/><text x="${c.x+z*1.3}" y="${c.y-z*1.3}" font-size="${fi*1.2}" font-weight="700" fill="var(--accent)" font-family="IBM Plex Mono,monospace" paint-order="stroke" stroke="var(--panel)" stroke-width="${fi/3}">${plDrag.deg>0?'+':''}${plDrag.deg}°</text>`}
   if(plDrag&&plDrag.zr&&plDrag.zr.b){const A=plDrag.zr.a,Bz=plDrag.zr.b;s+=`<rect x="${Math.min(A.x,Bz.x)}" y="${Math.min(A.y,Bz.y)}" width="${Math.abs(Bz.x-A.x)}" height="${Math.abs(Bz.y-A.y)}" fill="var(--accent)" fill-opacity=".08" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>`}
   /* nord */
   const nd=+p.nord||0,nx=X0+w-ui*5,ny=Y0+ui*7;
@@ -1258,6 +1272,8 @@ function plHint(){if(plLocked()&&!PL_LOCK_OK.has(plTool))return '<b>Plan verroui
     const warn=bgOn()&&!quote.plan.bg.cal?' <b class="bad">L’échelle du fond n’est pas calée : la zone et les espacements ne correspondront pas à la photo.</b>':'';
     if(!Z||!Z.closed)return `Zone de forage : cliquer les coins de la zone autorisée (à l’échelle du plan), puis cliquer le 1er point (ou double-clic) pour la fermer. <button class="btn sm ghost danger" id="pl-zdel" ${Z&&Z.pts.length?'':'disabled'}>Effacer</button>${warn}`;
     return `Zone de ${nf(Math.round(polyArea(Z.pts)))} m². Les sommets se déplacent. Retrait des bords <span class="unit-in pl-calw" style="width:80px"><input id="pl-zmarg" inputmode="decimal" value="${Z.marg??1}"><span>m</span></span> <button class="btn sm primary" id="pl-zimpl">Implanter ${N} forage${pl(N)} à ${nf(E)} m</button> <label class="status">Disposition <select id="pl-zmode"><option value="grille" ${(Z.mode||'grille')==='grille'?'selected':''}>quadrillage régulier</option><option value="groupe" ${Z.mode==='groupe'?'selected':''}>groupée près du collecteur (espacement mini)</option></select></label> <label class="status">Maille <select id="pl-zpat"><option value="carre" ${(Z.pat||'carre')==='carre'?'selected':''}>carrée</option><option value="quinconce" ${Z.pat==='quinconce'?'selected':''}>quinconce</option><option value="auto" ${Z.pat==='auto'?'selected':''}>la meilleure</option></select></label> <label class="status" title="Décoché : le collecteur et la chaufferie placés à la main restent où ils sont"><input type="checkbox" id="pl-zautoc" ${Z.autoC?'checked':''}> replacer le collecteur au mieux</label> <button class="btn sm ghost danger" id="pl-zdel">Effacer la zone</button><span class="status" style="display:block;margin-top:4px">Nombre et espacement : ceux du dimensionnement. Quadrillage régulier : le logiciel écarte les forages au maximum (jamais moins que l’espacement demandé) pour remplir la zone. Groupée : espacement demandé, au plus près du collecteur.</span>${warn}`}
+  if(plTool==='rot'){if(plLocked())return 'Plan verrouillé sur le fond : déverrouiller (cadenas) pour pivoter l’implantation seule, ou utiliser « Tourner » du fond pour tout pivoter ensemble.';
+    return `Pivoter l’implantation seule (le fond ne bouge pas) : <b>appuyer sur le plan et tourner autour du centre</b> (par degré ; Maj = par 15°), ou indiquer un angle. ${[-90,-5,-1,1,5,90].map(d=>`<button class="btn sm" data-plrot="${d}">${d>0?'+':''}${d}°</button>`).join(' ')} <span class="unit-in pl-calw" style="width:80px"><input id="pl-rotdeg" inputmode="decimal" placeholder="0"><span>°</span></span> <button class="btn sm primary" id="pl-rot-ok">Pivoter</button> <span class="status">sens des aiguilles d’une montre ; pour le fond : « Tourner » dans la barre du fond</span>`}
   if(plTool==='zoom')return 'Loupe : <b>cliquer</b> à l’endroit à agrandir (×2), ou <b>tracer un rectangle</b> autour de la partie à voir en grand. Maj + clic pour dézoomer. Aussi : molette de la souris, pincer sur le pavé tactile ou la tablette, à l’endroit du curseur. « Plein cadre » pour revenir à tout le plan.';
   if(plTool==='res'){const n=resList().length,sel=`<label class="status">Réseau <select id="pl-rest">${RES_T.map(r=>`<option value="${r[0]}" ${plResT===r[0]?'selected':''}>${r[1]}</option>`).join('')}</select></label>`;
     if(plRes)return `<b style="color:${resT(plRes.t)[3]}">${resT(plRes.t)[1]}</b> en cours (${nf(r1(polyLen(plRes.pts)))} m) : cliquer les points ou faire glisser ; double-clic, Échap ou re-clic sur le dernier point pour terminer.`;
@@ -1283,9 +1299,9 @@ function plHint(){if(plLocked()&&!PL_LOCK_OK.has(plTool))return '<b>Plan verroui
   return ''}
 function hintUpdate(){const ht=$('#pl-hint');if(!ht)return;const h=plHint();ht.hidden=!h;ht.innerHTML=h}
 function planBgBar(){const p=quote.plan||{};const b=p.bg;
-  return `<div class="pl-bgbar"><label class="btn sm" for="pl-file" title="PDF, DWG, DXF, KML/KMZ (Google Earth, Géoportail), PNG, JPG">${b?'Changer le fond':'Importer un fond de plan'} <span class="status">PDF, DWG, DXF, KML, image</span></label><input type="file" id="pl-file" hidden>`+
+  return `<div class="pl-bgbar"><label class="btn sm" for="pl-file" title="PDF, DWG, DXF, KML/KMZ (Google Earth, Géoportail), Shapefile (sélectionner ensemble le .shp, le .dbf et le .prj, ou un .zip), PNG, JPG">${b?'Changer le fond':'Importer un fond de plan'} <span class="status">PDF, DWG, DXF, KML, SHP, image</span></label><input type="file" id="pl-file" multiple hidden><label class="btn sm" for="pl-addf" title="Ajoute au plan, sans changer le fond, les points (forages, collecteurs, chaufferie selon leur nom) et les tracés (réseaux existants : EDF, GRDF, télécom, eau, assainissement) d’un ou plusieurs fichiers KML, KMZ, Shapefile CSV ou Excel (X/Y Lambert 93, longitude/latitude ou WKT)">Ajouter forages / réseaux <span class="status">KML, KMZ, SHP, CSV, Excel</span></label><input type="file" id="pl-addf" multiple hidden>`+
   (b?`<span class="pl-bgname" title="${esc(b.name||'')}">${esc(b.name||'Fond')}${b.cal?'':' <span class="bad">· échelle à caler</span>'}</span>`+
-    (b.geo?'<span class="pl-geo" title="Fond géoréférencé : export KML possible">géoréférencé</span>':'')+(b.kpts&&b.kpts.length?`<button class="btn sm" id="pl-kpts" title="Crée forages, collecteurs et chaufferie à partir des points du KML">Placer les points du KML (${b.kpts.length})</button>`:'')+
+    (b.geo?'<span class="pl-geo" title="Fond géoréférencé : export KML possible">géoréférencé</span>':'')+(b.kpts&&b.kpts.length?`<button class="btn sm" id="pl-kpts" title="Crée forages, collecteurs et chaufferie à partir des points du fichier (nommés F1, C1, chaufferie…)">Placer les points (${b.kpts.length})</button>`:'')+
     (b.pages>1&&plLastFile?`<label class="status">Page <select id="pl-bgpage">${Array.from({length:b.pages},(_,i)=>`<option value="${i+1}" ${(b.page||1)===i+1?'selected':''}>${i+1}</option>`).join('')}</select></label>`:'')+
     `<label class="status" title="Largeur réelle couverte par l’image (ex. lue sur l’échelle de Géoportail ou Google)">Largeur réelle <input id="pl-bgwid" class="pl-sin" inputmode="decimal" placeholder="${nf(Math.round(b.iw*b.mpp))}"> m</label><button class="btn sm" id="pl-bgwid-ok">Appliquer</button>`+
     (b.kind==='pdf'?`<label class="status">Plan au 1/<input id="pl-bgech" class="pl-sin" inputmode="numeric" value="${b.ech||''}" placeholder="200"></label><button class="btn sm" id="pl-bgech-ok">Appliquer</button>`:'')+
@@ -1324,9 +1340,10 @@ async function planImport(file,page){const name=file.name||'fond';const ext=(nam
   try{if(ext==='pdf'||file.type==='application/pdf'){plLastFile=file;await importPdf(file,page||1)}
     else if(ext==='dxf'){await importCad(await readDxf(file),name)}
     else if(ext==='kml'||ext==='kmz'){await importKml(file,ext,name)}
+    else if(['shp','shx','dbf','prj','cpg','zip'].includes(ext)){await importShp(plShpFiles&&plShpFiles.includes(file)?plShpFiles:[file],name.replace(/\.[^.]+$/,''));plShpFiles=null}
     else if(ext==='dwg'){bgMsg('Chargement du lecteur DWG (≈ 10 Mo, la 1re fois)…');await importCad(await readDwg(file),name)}
     else if(/^image\//.test(file.type)||['png','jpg','jpeg','webp','gif'].includes(ext)){const u=URL.createObjectURL(file);const img=await loadImg(u);const k=Math.min(1,2400/Math.max(img.width,img.height));const cv=whiteCanvas(img.width*k,img.height*k);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(u);await bgSet(cv,{kind:'img',name})}
-    else{toast('Format non reconnu : PDF, DWG, DXF ou image');bgMsg('')}}
+    else{toast('Format non reconnu : PDF, DWG, DXF, KML, SHP ou image');bgMsg('')}}
   catch(e){console.error(e);bgMsg('');toast(e&&e.message?e.message:'Import impossible')}}
 /* ----- PDF (pdf.js) ----- */
 let _pdfjs=null;
@@ -1436,13 +1453,15 @@ async function importCad(cad,name){const pr=cadPrims(cad);if(!pr.polys.length)th
   if(pr.truncated)setTimeout(()=>toast('Dessin très chargé : une partie seulement a été lue'),5200)}
 /* ----- KML / KMZ (Google Earth, Géoportail) : projection locale autour du centre du fichier ----- */
 const R_T=6371008.8;
-function geoEN(lon,lat,g){const k=Math.PI/180;return {e:R_T*Math.cos(g.lat0*k)*(lon-g.lon0)*k,n:R_T*(lat-g.lat0)*k}}
-function geoLL(e,n,g){const k=Math.PI/180;return {lat:g.lat0+n/R_T/k,lon:g.lon0+e/(R_T*Math.cos(g.lat0*k))/k}}
+/* rayons de l'ellipsoïde GRS80 à la latitude du chantier (g.ell : imports récents ; sinon sphère, pour les plans déjà enregistrés) */
+function geoR(g){const k=Math.PI/180;if(!g.ell)return {m:R_T,n:R_T};const a=6378137,e2=0.00669438002290,s2=Math.sin(g.lat0*k)**2,w=Math.sqrt(1-e2*s2);return {m:a*(1-e2)/(w*w*w),n:a/w}}
+function geoEN(lon,lat,g){const k=Math.PI/180,r=geoR(g);return {e:r.n*Math.cos(g.lat0*k)*(lon-g.lon0)*k,n:r.m*(lat-g.lat0)*k}}
+function geoLL(e,n,g){const k=Math.PI/180,r=geoR(g);return {lat:g.lat0+n/r.m/k,lon:g.lon0+e/(r.n*Math.cos(g.lat0*k))/k}}
 /* plan (x,y en m, y vers le bas) <-> est/nord, en suivant le fond (déplacement et rotation) */
 function planToGeo(pt){const b=quote.plan&&quote.plan.bg;if(!b||!b.geo)return null;const cx=b.x+b.iw*b.mpp/2,cy=b.y+b.ih*b.mpp/2,a=-(b.rot||0)*Math.PI/180,dx=pt.x-cx,dy=pt.y-cy;
   const rx=dx*Math.cos(a)-dy*Math.sin(a),ry=dx*Math.sin(a)+dy*Math.cos(a);return geoLL(b.geo.cx+rx,b.geo.cy-ry,b.geo)}
 function geoToPlan(e,n){const b=quote.plan.bg,cx=b.x+b.iw*b.mpp/2,cy=b.y+b.ih*b.mpp/2,a=(b.rot||0)*Math.PI/180,rx=e-b.geo.cx,ry=-(n-b.geo.cy);
-  return {x:r1(cx+rx*Math.cos(a)-ry*Math.sin(a)),y:r1(cy+rx*Math.sin(a)+ry*Math.cos(a))}}
+  const r2=x=>Math.round(x*100)/100;return {x:r2(cx+rx*Math.cos(a)-ry*Math.sin(a)),y:r2(cy+rx*Math.sin(a)+ry*Math.cos(a))}}
 async function unzipKml(buf){const dv=new DataView(buf);let eo=-1;for(let i=buf.byteLength-22;i>=Math.max(0,buf.byteLength-65557);i--){if(dv.getUint32(i,true)===0x06054b50){eo=i;break}}
   if(eo<0)throw new Error('KMZ illisible');const cnt=dv.getUint16(eo+10,true);let off=dv.getUint32(eo+16,true);const files=[];
   for(let k=0;k<cnt;k++){if(dv.getUint32(off,true)!==0x02014b50)break;const meth=dv.getUint16(off+10,true),cs=dv.getUint32(off+20,true),nl=dv.getUint16(off+28,true),el=dv.getUint16(off+30,true),cl=dv.getUint16(off+32,true),lho=dv.getUint32(off+42,true);
@@ -1455,28 +1474,161 @@ async function unzipKml(buf){const dv=new DataView(buf);let eo=-1;for(let i=buf.
 function kmlParse(txt){const doc=new DOMParser().parseFromString(txt,'application/xml');if(doc.getElementsByTagName('parsererror').length)throw new Error('KML illisible');
   const byTag=(el,t)=>Array.from(el.getElementsByTagNameNS('*',t));const coords=el=>(el.textContent||'').trim().split(/\s+/).map(c=>c.split(',').map(Number)).filter(c=>c.length>=2&&isFinite(c[0])&&isFinite(c[1]));
   const lines=[],pts=[];
-  for(const pm of byTag(doc,'Placemark')){const nm=((byTag(pm,'name')[0]||{}).textContent||'').trim();
-    for(const p of byTag(pm,'Point')){const c=coords(byTag(p,'coordinates')[0]||p)[0];if(c)pts.push({lon:c[0],lat:c[1],name:nm})}
-    for(const l of [...byTag(pm,'LineString'),...byTag(pm,'LinearRing')]){const c=coords(byTag(l,'coordinates')[0]||l);if(c.length>1)lines.push({c,name:nm})}}
+  const fldOf=el=>{for(let q=el.parentNode;q&&q.nodeType===1;q=q.parentNode){if(/^(Folder|Document)$/.test(q.localName)){const c=Array.from(q.children).find(x=>x.localName==='name');if(c&&c.textContent.trim())return c.textContent.trim()}}return ''};
+  for(const pm of byTag(doc,'Placemark')){const nm=((byTag(pm,'name')[0]||{}).textContent||'').trim(),fld=fldOf(pm);
+    for(const p of byTag(pm,'Point')){const c=coords(byTag(p,'coordinates')[0]||p)[0];if(c)pts.push({lon:c[0],lat:c[1],name:nm,fld})}
+    for(const l of [...byTag(pm,'LineString'),...byTag(pm,'LinearRing')]){const c=coords(byTag(l,'coordinates')[0]||l);if(c.length>1)lines.push({c,name:nm,fld})}}
   return {lines,pts}}
-async function importKml(file,ext,name){const txt=ext==='kmz'?await unzipKml(await file.arrayBuffer()):await readText(file);const k=kmlParse(txt);
+async function importKml(file,ext,name,kd){const txt=kd?'':ext==='kmz'?await unzipKml(await file.arrayBuffer()):await readText(file);const k=kd||kmlParse(txt);
   if(!k.lines.length&&!k.pts.length)throw new Error(/NetworkLink/i.test(txt)?'Ce KML est un simple lien vers la carte Google : dans My Maps, exporter en décochant « Conserver les données à jour » et en cochant « Exporter en tant que fichier KML »':'Aucun point ni tracé dans ce KML');
-  const all=[...k.pts.map(p=>[p.lon,p.lat]),...k.lines.flatMap(l=>l.c)];const lon0=all.reduce((t,c)=>t+c[0],0)/all.length,lat0=all.reduce((t,c)=>t+c[1],0)/all.length;const g={lat0,lon0};
+  const all=[...k.pts.map(p=>[p.lon,p.lat]),...k.lines.flatMap(l=>l.c)];const lon0=all.reduce((t,c)=>t+c[0],0)/all.length,lat0=all.reduce((t,c)=>t+c[1],0)/all.length;const g={lat0,lon0,ell:true};
   const L=k.lines.map(l=>({name:l.name,p:l.c.map(c=>geoEN(c[0],c[1],g))})),P=k.pts.map(p=>({name:p.name,...geoEN(p.lon,p.lat,g)}));
   let e0=Infinity,n0=Infinity,e1=-Infinity,n1=-Infinity;[...L.flatMap(l=>l.p),...P].forEach(q=>{e0=Math.min(e0,q.e);e1=Math.max(e1,q.e);n0=Math.min(n0,q.n);n1=Math.max(n1,q.n)});
-  const pad=Math.max(8,(e1-e0)*.08,(n1-n0)*.08);e0-=pad;e1+=pad;n0-=pad;n1+=pad;if(e1-e0>5000||n1-n0>5000)throw new Error('KML trop étendu (plus de 5 km) : n’exporter que la parcelle');
+  const pad=Math.max(8,(e1-e0)*.08,(n1-n0)*.08);e0-=pad;e1+=pad;n0-=pad;n1+=pad;if(e1-e0>5000||n1-n0>5000)throw new Error((kd?'Fichier':'KML')+' trop étendu (plus de 5 km) : n’exporter que la parcelle');
   const ppm=Math.min(2600/(e1-e0),2600/(n1-n0),40);const cv=whiteCanvas((e1-e0)*ppm,(n1-n0)*ppm);const gx=cv.getContext('2d');const X=e=>(e-e0)*ppm,Y=n=>(n1-n)*ppm;
   gx.lineJoin='round';gx.lineCap='round';gx.strokeStyle='#C0392B';gx.lineWidth=Math.max(1.5,Math.min(4,ppm*.12));
   L.forEach(l=>{gx.beginPath();l.p.forEach((q,j)=>j?gx.lineTo(X(q.e),Y(q.n)):gx.moveTo(X(q.e),Y(q.n)));gx.stroke()});
   const fs=Math.max(11,Math.min(28,ppm*1.1));gx.font=`600 ${fs}px Arial, sans-serif`;gx.textBaseline='middle';
   L.forEach(l=>{if(!l.name)return;const q=l.p[0];gx.fillStyle='#C0392B';gx.fillText(l.name.slice(0,60),X(q.e)+fs*.4,Y(q.n)-fs*.8)});
   P.forEach(q=>{const x=X(q.e),y=Y(q.n),r=Math.max(4,fs*.35);gx.strokeStyle='#C0392B';gx.lineWidth=2;gx.beginPath();gx.moveTo(x-r,y);gx.lineTo(x+r,y);gx.moveTo(x,y-r);gx.lineTo(x,y+r);gx.stroke();if(q.name){gx.fillStyle='#7B241C';gx.fillText(q.name.slice(0,40),x+r+3,y)}});
-  const kpts=P.slice(0,300).map(q=>({name:q.name,e:Math.round(q.e*100)/100,n:Math.round(q.n*100)/100}));
-  await bgSet(cv,{kind:'kml',name,mppSrc:1/ppm,geo:{lat0,lon0,cx:(e0+e1)/2,cy:(n0+n1)/2},kpts});
-  if(kpts.length)setTimeout(()=>toast(`${kpts.length} point${pl(kpts.length)} dans le KML : « Placer les points du KML » pour en faire des forages`),2600)}
+  const kpts=P.slice(0,300).map(q=>({name:q.name,e:Math.round(q.e*1000)/1000,n:Math.round(q.n*1000)/1000}));
+  await bgSet(cv,{kind:'kml',name,mppSrc:1/ppm,geo:{lat0,lon0,ell:true,cx:(e0+e1)/2,cy:(n0+n1)/2},kpts});
+  if(kpts.length)setTimeout(()=>toast(`${kpts.length} point${pl(kpts.length)} dans le fichier : « Placer les points » pour en faire des forages`),2600)}
+/* ----- Shapefile (.shp + .dbf + .prj, ou .zip) : Lambert 93 ou WGS84 → même chemin que le KML (géoréférencé) ----- */
+let plShpFiles=null;
+async function zipEntries(buf){const dv=new DataView(buf);let eo=-1;for(let i=buf.byteLength-22;i>=Math.max(0,buf.byteLength-65557);i--){if(dv.getUint32(i,true)===0x06054b50){eo=i;break}}
+  if(eo<0)throw new Error('ZIP illisible');const cnt=dv.getUint16(eo+10,true);let off=dv.getUint32(eo+16,true);const out={};
+  for(let k=0;k<cnt;k++){if(dv.getUint32(off,true)!==0x02014b50)break;const meth=dv.getUint16(off+10,true),cs=dv.getUint32(off+20,true),nl=dv.getUint16(off+28,true),el=dv.getUint16(off+30,true),cl=dv.getUint16(off+32,true),lho=dv.getUint32(off+42,true);
+    const name=new TextDecoder().decode(new Uint8Array(buf,off+46,nl));off+=46+nl+el+cl;if(/\/$/.test(name)||/__MACOSX/.test(name))continue;
+    const ln=dv.getUint16(lho+26,true),le=dv.getUint16(lho+28,true);const data=new Uint8Array(buf,lho+30+ln+le,cs);
+    out[name]=async()=>{if(meth===0)return data.slice().buffer;if(meth!==8)throw new Error('ZIP : compression non prise en charge');if(typeof DecompressionStream==='undefined')throw new Error('Navigateur trop ancien pour lire ce ZIP : décompresser puis choisir les fichiers .shp, .dbf, .prj');
+      return await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()}}
+  return out}
+function shpParse(buf){const dv=new DataView(buf);if(dv.getInt32(0,false)!==9994)throw new Error('Fichier .shp illisible');const len=Math.min(buf.byteLength,dv.getInt32(24,false)*2);const recs=[];let o=100;
+  while(o+8<=len){const cl=dv.getInt32(o+4,false)*2,c=o+8;if(c+4>len)break;const t=dv.getInt32(c,true);const r={t,parts:[]};
+    const pt=a=>({x:dv.getFloat64(a,true),y:dv.getFloat64(a+8,true)});
+    if(t===1||t===11||t===21)r.pts=[pt(c+4)];
+    else if(t===8||t===18||t===28){const np=dv.getInt32(c+36,true);r.pts=[];for(let k=0;k<np;k++)r.pts.push(pt(c+40+16*k))}
+    else if([3,5,13,15,23,25].includes(t)){const nP=dv.getInt32(c+36,true),np=dv.getInt32(c+40,true);const st=[];for(let k=0;k<nP;k++)st.push(dv.getInt32(c+44+4*k,true));const p0=c+44+4*nP;
+      for(let k=0;k<nP;k++){const a=st[k],b=k+1<nP?st[k+1]:np;const q=[];for(let j=a;j<b;j++)q.push(pt(p0+16*j));r.parts.push(q)}r.closed=t%10===5}
+    recs.push(r);o=c+cl}
+  return recs}
+function dbfParse(buf,enc){if(!buf)return [];const dv=new DataView(buf);const n=dv.getUint32(4,true),hl=dv.getUint16(8,true),rl=dv.getUint16(10,true);const flds=[];
+  for(let o=32;o+32<=hl&&dv.getUint8(o)!==0x0d;o+=32){const nm=new TextDecoder('ascii').decode(new Uint8Array(buf,o,11)).replace(/\0.*$/,'').trim();flds.push({nm,len:dv.getUint8(o+16)})}
+  let dec;try{dec=new TextDecoder(enc||'windows-1252')}catch(e){dec=new TextDecoder('windows-1252')}const rows=[];
+  for(let k=0;k<n;k++){const o=hl+k*rl;if(o+rl>buf.byteLength)break;let p=o+1;const r={};for(const f of flds){r[f.nm]=dec.decode(new Uint8Array(buf,p,f.len)).trim();p+=f.len}rows.push(r)}
+  return rows}
+/* Lambert 93 (EPSG:2154) → longitude / latitude (RGF93 ≈ WGS84), formules IGN */
+function l93ToLL(X,Y){const n=0.7256077650532670,C=11754255.426096,Xs=700000,Ys=12655612.049876,e=0.0818191910428158,l0=3*Math.PI/180;
+  const dx=X-Xs,dy=Y-Ys,R=Math.hypot(dx,dy),g=Math.atan(dx/(-dy)),lon=l0+g/n,li=-Math.log(Math.abs(R/C))/n;
+  let lat=2*Math.atan(Math.exp(li))-Math.PI/2;for(let k=0;k<12;k++){const es=e*Math.sin(lat);lat=2*Math.atan(Math.pow((1+es)/(1-es),e/2)*Math.exp(li))-Math.PI/2}
+  return [lon*180/Math.PI,lat*180/Math.PI]}
+async function importShp(files,name){const d=await shpRead(files);await importKml(null,'shp',name+'.shp',d);
+  setTimeout(()=>toast(`Shapefile importé (${d.geog?'WGS84':'Lambert 93'}) : ${d.pts.length?d.pts.length+' point'+pl(d.pts.length):''}${d.pts.length&&d.lines.length?', ':''}${d.lines.length?d.lines.length+' tracé'+pl(d.lines.length):''}, à l’échelle et géoréférencé`),d.pts.length?5200:2600)}
+async function shpRead(files){const get={};
+  for(const f of files){const nm=f.name||'';if(/\.zip$/i.test(nm)){const z=await zipEntries(await f.arrayBuffer());for(const [k,fn] of Object.entries(z)){const ex=(k.split('.').pop()||'').toLowerCase();if(!get[ex])get[ex]=fn}}
+    else{const ex=(nm.split('.').pop()||'').toLowerCase();if(!get[ex])get[ex]=()=>f.arrayBuffer()}}
+  if(!get.shp)throw new Error('Il manque le fichier .shp : sélectionner ensemble le .shp, le .dbf et le .prj (touche ⌘ ou Ctrl), ou un .zip');
+  const recs=shpParse(await get.shp());if(!recs.length)throw new Error('Aucun objet dans ce shapefile');
+  const prj=get.prj?new TextDecoder().decode(await get.prj()):'';const cpg=get.cpg?new TextDecoder().decode(await get.cpg()).trim():'';
+  const rows=dbfParse(get.dbf?await get.dbf():null,/utf-?8|65001/i.test(cpg)?'utf-8':/8859-?15/i.test(cpg)?'iso-8859-15':/8859|1252|latin/i.test(cpg)?'windows-1252':cpg?'utf-8':'windows-1252');
+  const keys=rows[0]?Object.keys(rows[0]):[];const lk=[/^(nom|name)/i,/^(libel|label|lib)/i,/^(num|numero|n_?o)$/i,/^(ref|ident|id|code)/i].map(re=>keys.find(k=>re.test(k))).find(Boolean)||keys.find(k=>rows.some(r=>r[k]&&isNaN(+r[k])))||keys[0];
+  const all=recs.flatMap(r=>[...(r.pts||[]),...r.parts.flat()]);const xs=all.map(p=>p.x),ys=all.map(p=>p.y);const mx=Math.min(...xs),Mx=Math.max(...xs),my=Math.min(...ys),My=Math.max(...ys);
+  const geog=/GEOGCS/i.test(prj)&&!/PROJCS/i.test(prj)||(!prj&&mx>=-180&&Mx<=180&&my>=-90&&My<=90);
+  const l93=!geog&&(/lambert[_ ]?93|RGF93.*Lambert|2154/i.test(prj)||(/Lambert_Conformal_Conic/i.test(prj)&&/central_meridian",3(\.0+)?\]/i.test(prj)&&/standard_parallel_1",49/i.test(prj))||(!prj&&mx>50000&&Mx<1300000&&my>6000000&&My<7200000));
+  if(!geog&&!l93){if(/PROJCS/i.test(prj))throw new Error('Projection du shapefile non prise en charge ('+((/PROJCS\["([^"]+)"/.exec(prj)||[])[1]||'inconnue')+') : l’enregistrer en Lambert 93 (EPSG:2154) ou en WGS84 dans QGIS');throw new Error('Projection du shapefile inconnue (fichier .prj absent) : sélectionner aussi le .prj')}
+  const ll=p=>geog?[p.x,p.y]:l93ToLL(p.x,p.y);const lines=[],pts=[];
+  recs.forEach((r,k)=>{const lab=lk&&rows[k]?String(rows[k][lk]||'').slice(0,60):'';
+    if(r.pts)r.pts.forEach((p,j)=>{const c=ll(p);pts.push({name:lab+(r.pts.length>1?'-'+(j+1):''),lon:c[0],lat:c[1]})});
+    r.parts.forEach((q,j)=>{if(q.length<2)return;const c=q.map(ll);lines.push({name:j?'':lab,c})})});
+  return {lines,pts,geog}}
+/* CSV (export QGIS, tableur) : colonnes X / Y (Lambert 93) ou longitude / latitude, ou colonne WKT (POINT, LINESTRING, POLYGON…) */
+function csvSplit(line,sep){const out=[];let cur='',q=false;for(let i=0;i<line.length;i++){const ch=line[i];if(q){if(ch==='"'){if(line[i+1]==='"'){cur+='"';i++}else q=false}else cur+=ch}else if(ch==='"')q=true;else if(ch===sep){out.push(cur);cur=''}else cur+=ch}out.push(cur);return out.map(x=>x.trim())}
+function geoConv(xs,ys,hint){const mx=Math.min(...xs),Mx=Math.max(...xs),my=Math.min(...ys),My=Math.max(...ys);
+  if(hint==='deg'||(mx>=-180&&Mx<=180&&my>=-90&&My<=90))return {f:(x,y)=>[x,y],geog:true};
+  if(mx>50000&&Mx<1300000&&my>6000000&&My<7200000)return {f:l93ToLL,geog:false};
+  throw new Error('Coordonnées du CSV non reconnues : les exporter en Lambert 93 (EPSG:2154) ou en WGS84 (longitude, latitude)')}
+function csvGeo(txt,base){const L=txt.replace(/^﻿/,'').split(/\r?\n/).filter(l=>l.trim());if(L.length<2)return {lines:[],pts:[]};
+  const h0=L[0];const sep=[';','\t',','].map(c=>[c,h0.split(c).length]).sort((a,b)=>b[1]-a[1])[0][0];const numv=v=>{v=String(v||'').replace(/\s/g,'');if(!/\d/.test(v))return NaN;if(/,/.test(v)&&!/\./.test(v))v=v.replace(',','.');return +v};
+  /* sans ligne d'en-tête (relevé de géomètre : X ; Y ; Z ; n° ; date…) : on cherche les 2 colonnes de coordonnées */
+  {const r0=csvSplit(h0,sep);if(r0.length>=2&&isFinite(numv(r0[0]))&&r0.filter(v=>isFinite(numv(v))).length>=2){
+    const R=L.map(l=>csvSplit(l,sep)).filter(r=>r.length>=2);const nc=Math.max(...R.map(r=>r.length));let ax=null;
+    for(let i=0;i+1<nc&&!ax;i++){const X=R.map(r=>numv(r[i])),Y=R.map(r=>numv(r[i+1]));if(!X.every(isFinite)||!Y.every(isFinite))continue;
+      if(X.every(x=>x>50000&&x<1300000)&&Y.every(y=>y>6000000&&y<7200000))ax=[i,i+1,''];else if(X.every(x=>Math.abs(x)<=180)&&Y.every(y=>Math.abs(y)<=90)&&X.some(x=>!Number.isInteger(x)))ax=[i,i+1,'deg']}
+    if(!ax)throw new Error('CSV sans en-tête : colonnes de coordonnées non trouvées (Lambert 93 ou longitude / latitude)');
+    let iNm=-1;for(let i=0;i<nc;i++){if(i===ax[0]||i===ax[1])continue;const V=R.map(r=>String(r[i]||'').trim());if(V.every(v=>/^\d{1,4}$/.test(v))&&new Set(V).size===V.length){iNm=i;break}}
+    const P=R.map(r=>({nm:iNm>=0?'F'+String(r[iNm]).trim():'',x:numv(r[ax[0]]),y:numv(r[ax[1]])}));const cv=geoConv(P.map(q=>q.x),P.map(q=>q.y),ax[2]);
+    return {pts:P.map(q=>{const c=cv.f(q.x,q.y);return {name:q.nm,lon:c[0],lat:c[1]}}),lines:[]}}}
+  const H=csvSplit(h0,sep).map(x=>x.replace(/^"|"$/g,''));
+  const rows=L.slice(1).map(l=>csvSplit(l,sep));const ix=re=>H.findIndex(h=>re.test(h));
+  const iW=ix(/^(wkt|geom|geometry|the_geom|geometrie|géométrie)$/i);
+  const iLon=ix(/^(lon|long|lng|longitude)$/i),iLat=ix(/^(lat|latitude)$/i),iX=ix(/^(x|xcoord|x_coord|coord_x|x_l93|xl93|est|easting|e)$/i),iY=ix(/^(y|ycoord|y_coord|coord_y|y_l93|yl93|nord|northing|n)$/i);
+  const iN=[/^(nom|name)/i,/^(libel|label|lib)/i,/^(reseau|réseau|type)/i,/^(num|numero|ref|ident|id|code)/i].map(re=>H.findIndex(h=>re.test(h))).find(i=>i>=0)??-1;
+  const num=v=>{v=String(v||'').replace(/\s/g,'');if(!/\d/.test(v))return NaN;if(/,/.test(v)&&!/\./.test(v))v=v.replace(',','.');return +v};
+  const lab=r=>iN>=0?String(r[iN]||'').slice(0,60):'';const fl=[...H];const wk=[];const pts=[],parts=[];
+  if(iW>=0){rows.forEach(r=>{const w=String(r[iW]||'');const nm=lab(r);const isP=/^\s*(multi)?point/i.test(w);
+      const grp=[...w.matchAll(/\(([^()]+)\)/g)].map(m=>m[1].split(',').map(c=>c.trim().split(/\s+/).map(Number)).filter(c=>c.length>=2&&isFinite(c[0])&&isFinite(c[1])));
+      grp.forEach(g=>{if(isP)g.forEach(c=>pts.push({nm,x:c[0],y:c[1]}));else if(g.length>1)parts.push({nm,c:g})})})}
+  else{const ax=iLon>=0&&iLat>=0?[iLon,iLat,'deg']:iX>=0&&iY>=0?[iX,iY,'']:null;if(!ax)throw new Error('CSV sans coordonnées : il faut des colonnes X et Y (Lambert 93), longitude et latitude, ou une colonne WKT');
+    const P=rows.map(r=>({nm:lab(r),x:num(r[ax[0]]),y:num(r[ax[1]])})).filter(q=>isFinite(q.x)&&isFinite(q.y));
+    if(/r[ée]seau|canal|cana|ligne|trac[ée]|conduite/i.test(base)){let cur=null;P.forEach(q=>{if(!cur||cur.nm!==q.nm){cur={nm:q.nm,c:[]};parts.push(cur)}cur.c.push([q.x,q.y])});for(let k=parts.length-1;k>=0;k--)if(parts[k].c.length<2){pts.push({nm:parts[k].nm,x:parts[k].c[0][0],y:parts[k].c[0][1]});parts.splice(k,1)}}
+    else pts.push(...P);var hint=ax[2]}
+  const xs=[...pts.map(q=>q.x),...parts.flatMap(p=>p.c.map(c=>c[0]))],ys=[...pts.map(q=>q.y),...parts.flatMap(p=>p.c.map(c=>c[1]))];if(!xs.length)return {lines:[],pts:[]};
+  const cv=geoConv(xs,ys,typeof hint==='string'?hint:'');
+  return {pts:pts.map(q=>{const c=cv.f(q.x,q.y);return {name:q.nm,lon:c[0],lat:c[1]}}),lines:parts.map(p=>({name:p.nm,c:p.c.map(c=>cv.f(c[0],c[1]))}))}}
+/* Excel .xlsx : 1re feuille lue puis traitée comme un CSV */
+async function xlsxToCsv(buf){const z=await zipEntries(buf);const txt=async k=>z[k]?new TextDecoder().decode(await z[k]()):'';
+  const ss=[];{const x=await txt('xl/sharedStrings.xml');if(x){const d=new DOMParser().parseFromString(x,'application/xml');for(const si of Array.from(d.getElementsByTagNameNS('*','si')))ss.push(Array.from(si.getElementsByTagNameNS('*','t')).map(t=>t.textContent).join(''))}}
+  let sheet='xl/worksheets/sheet1.xml';{const wb=await txt('xl/workbook.xml'),rel=await txt('xl/_rels/workbook.xml.rels');const m=/<sheet [^>]*r:id="([^"]+)"/.exec(wb);if(m){const r=new RegExp('Id="'+m[1]+'"[^>]*Target="([^"]+)"').exec(rel)||new RegExp('Target="([^"]+)"[^>]*Id="'+m[1]+'"').exec(rel);if(r)sheet='xl/'+r[1].replace(/^\/?xl\//,'').replace(/^\//,'')}}
+  if(!z[sheet])sheet=Object.keys(z).filter(k=>/^xl\/worksheets\/[^/]+\.xml$/.test(k)).sort()[0];if(!sheet)throw new Error('Classeur Excel sans feuille lisible');
+  const d=new DOMParser().parseFromString(await txt(sheet),'application/xml');const out=[];
+  for(const row of Array.from(d.getElementsByTagNameNS('*','row'))){const r=[];for(const c of Array.from(row.getElementsByTagNameNS('*','c'))){const ref=c.getAttribute('r')||'';const col=(ref.match(/^[A-Z]+/)||['A'])[0].split('').reduce((a,ch)=>a*26+ch.charCodeAt(0)-64,0)-1;
+      const t=c.getAttribute('t'),v=(c.getElementsByTagNameNS('*','v')[0]||{}).textContent;let val=t==='s'?ss[+v]||'':t==='inlineStr'?Array.from(c.getElementsByTagNameNS('*','t')).map(x=>x.textContent).join(''):v??'';
+      r[col>=0?col:r.length]=String(val)}
+    if(r.some(x=>x!=null&&x!==''))out.push(Array.from(r,x=>'"'+String(x??'').replace(/"/g,'""')+'"').join(';'))}
+  return out.join('\n')}
+/* ajouter forages et réseaux d'un KML / KMZ / SHP sans changer le fond */
+function resGuess(t){t=String(t||'').toLowerCase();if(!t)return null;
+  if(/gaz|grdf|\bgrt\b/.test(t))return 'gaz';if(/assain|eaux? us|\beu\b|\bep\b|pluvia|[ée]gout|\bstep\b/.test(t))return 'ass';
+  if(/\baep\b|eau|saur|veolia|adduction/.test(t))return 'eau';if(/t[ée]l[ée]com|orange|fibre|\bft\b|\bptt\b|sfr|bouygues/.test(t))return 'tel';
+  if(/edf|enedis|[ée]lec|\bbt\b|\bhta\b|[ée]clairage/.test(t))return 'elec';return null}
+async function readGeo(files){const out={lines:[],pts:[]};
+  for(const f of files.filter(f=>/\.(kml|kmz)$/i.test(f.name||''))){const ext=f.name.split('.').pop().toLowerCase();const txt=ext==='kmz'?await unzipKml(await f.arrayBuffer()):await readText(f);
+    const k=kmlParse(txt),base=f.name.replace(/\.[^.]+$/,'');k.lines.forEach(l=>l.file=base);k.pts.forEach(q=>q.file=base);out.lines.push(...k.lines);out.pts.push(...k.pts)}
+  if(files.some(f=>/\.(xls|ods|numbers)$/i.test(f.name||'')))throw new Error('Tableau à enregistrer en .xlsx (Excel récent) ou en .csv avant l’import');
+  for(const f of files.filter(f=>/\.(csv|txt|xlsx)$/i.test(f.name||''))){const base=f.name.replace(/\.[^.]+$/,'');const k=csvGeo(/\.xlsx$/i.test(f.name)?await xlsxToCsv(await f.arrayBuffer()):await readText(f),base);k.lines.forEach(l=>l.file=base);k.pts.forEach(q=>q.file=base);out.lines.push(...k.lines);out.pts.push(...k.pts)}
+  const sh=files.filter(f=>/\.(shp|shx|dbf|prj|cpg|zip)$/i.test(f.name||''));
+  if(sh.length){const d=await shpRead(sh);const base=((sh.find(f=>/\.(shp|zip)$/i.test(f.name))||sh[0]).name||'').replace(/\.[^.]+$/,'');d.lines.forEach(l=>l.file=base);d.pts.forEach(q=>q.file=base);out.lines.push(...d.lines);out.pts.push(...d.pts)}
+  return out}
+async function addGeoObjects(files){const d=await readGeo(files);if(!d.lines.length&&!d.pts.length)throw new Error('Aucun point ni tracé dans ces fichiers (KML, KMZ, SHP, CSV ou Excel)');
+  const p=planObj();let toPlan,geoBg=!!(p.bg&&p.bg.geo);
+  if(geoBg){const g=p.bg.geo;toPlan=(lon,lat)=>{const en=geoEN(lon,lat,g);return geoToPlan(en.e,en.n)}}
+  else{if(!p.geo0){const all=[...d.pts.map(q=>[q.lon,q.lat]),...d.lines.flatMap(l=>l.c)];const V=planView();
+      p.geo0={lon0:all.reduce((t,c)=>t+c[0],0)/all.length,lat0:all.reduce((t,c)=>t+c[1],0)/all.length,ell:true,ox:V.x+V.w/2,oy:V.y+V.h/2}}
+    const g=p.geo0;toPlan=(lon,lat)=>{const en=geoEN(lon,lat,g),a=(+g.rot||0)*Math.PI/180,rx=en.e,ry=-en.n;return {x:Math.round((g.ox+rx*Math.cos(a)-ry*Math.sin(a))*100)/100,y:Math.round((g.oy+rx*Math.sin(a)+ry*Math.cos(a))*100)/100}}}
+  /* points : forages, collecteurs, chaufferie selon leur nom (sinon forages) */
+  const isF=n=>/^\s*(f|s)\s*\d+|forage|sonde/i.test(n),isC=n=>/^\s*c\s*\d+|collect/i.test(n),isCh=n=>/chauff|pac\b|local technique/i.test(n);
+  let nF=0,nC=0,nCh=0;
+  if(d.pts.length){const named=d.pts.some(q=>isF(q.name||'')||isC(q.name||'')||isCh(q.name||''));
+    if(p.items.some(i=>i.k==='f')&&confirm('Remplacer les forages déjà placés par ceux du fichier ?\n(Annuler = les ajouter aux forages existants)')){p.items=p.items.filter(i=>i.k!=='f');p.routes={};p.assign={};p.noLink={};p.via={}}
+    d.pts.forEach(q=>{const nm=q.name||'',pt=toPlan(q.lon,q.lat);
+      if(isCh(nm)){p.items=p.items.filter(i=>i.k!=='ch');p.items.push({k:'ch',...pt});nCh++}
+      else if(isC(nm)){const m=/(\d+)/.exec(nm);const i=m?Math.min(1,Math.max(0,+m[1]-1)):0;p.items=p.items.filter(x=>!(x.k==='c'&&(x.i||0)===i));p.items.push({k:'c',i,...pt});nC++}
+      else if(isF(nm)||!named){p.items.push({k:'f',...pt});nF++}})}
+  /* tracés : réseaux existants, type deviné d'après le nom, le dossier ou le fichier */
+  const byT={};if(d.lines.length){p.res=Array.isArray(p.res)?p.res:[];
+    d.lines.forEach(l=>{const t=resGuess(l.name)||resGuess(l.fld)||resGuess(l.file)||'autre';p.res.push({t,pts:l.c.map(c=>toPlan(c[0],c[1]))});byT[t]=(byT[t]||0)+1})}
+  /* vue sur les objets importés */
+  {const P=[...p.items,...resList().flatMap(l=>l.pts)];if(P.length){const xs=P.map(q=>q.x),ys=P.map(q=>q.y),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys),asp=planAsp();
+    const w=Math.max(20,(x1-x0)*1.15,(y1-y0)*1.15/asp);p.w=Math.round(w*100)/100;p.vx=(x0+x1)/2-w/2;p.vy=(y0+y1)/2-w*asp/2}}
+  if(nF&&!p.on&&!p.userOff)p.on=true;planChanged();
+  const parts=[];if(nF)parts.push(nF+' forage'+pl(nF));if(nC)parts.push(nC+' collecteur'+pl(nC));if(nCh)parts.push('la chaufferie');
+  Object.entries(byT).forEach(([t,n])=>parts.push(n+' tracé'+pl(n)+' '+resT(t)[2].toLowerCase()));
+  toast('Ajouté : '+parts.join(', '));
+  if(!geoBg&&bgOn())setTimeout(()=>toast('Le fond n’est pas géoréférencé : utiliser « Déplacer le fond » (et « Tourner » si besoin) pour l’aligner sur les objets importés'),2800)}
 /* points du KML → forages / collecteurs / chaufferie selon leur nom */
 function kmlPlacePoints(){const p=planObj(),b=p.bg;if(!b||!b.geo||!b.kpts||!b.kpts.length)return;
-  if(p.items.length&&!confirm('Remplacer les éléments déjà placés par les points du KML ?'))return;
+  if(p.items.length&&!confirm('Remplacer les éléments déjà placés par les points du fichier ?'))return;
   const isF=n=>/^\s*(f|s)\s*\d+|forage|sonde/i.test(n),isC=n=>/^\s*c\s*\d+|collect/i.test(n),isCh=n=>/chauff|pac\b|local technique/i.test(n);
   const named=b.kpts.some(q=>isF(q.name||'')||isC(q.name||'')||isCh(q.name||''));const items=[];let ci=0;
   b.kpts.forEach(q=>{const nm=q.name||'',pt=geoToPlan(q.e,q.n);
@@ -1505,8 +1657,8 @@ async function planKml(){if(!dlApi){toast('Téléchargement indisponible sur cet
 /* rotation du fond (sens horaire), autour de son centre */
 async function bgRotate(deg){const p=planObj(),b=p.bg;if(!b||!deg)return;const img=await loadImg(b.src);const a=deg*Math.PI/180,c=Math.abs(Math.cos(a)),s=Math.abs(Math.sin(a));
   const W=img.width*c+img.height*s,H=img.width*s+img.height*c;const cv=whiteCanvas(W,H);const g=cv.getContext('2d');g.translate(W/2,H/2);g.rotate(a);g.drawImage(img,-img.width/2,-img.height/2);
-  const cx=b.x+b.iw*b.mpp/2,cy=b.y+b.ih*b.mpp/2;const enc=bgEncode(cv);b.mpp=b.mpp/enc.f;if(b.ppt)b.ppt*=enc.f;b.src=enc.src;b.iw=enc.iw;b.ih=enc.ih;b.x=cx-b.iw*b.mpp/2;b.y=cy-b.ih*b.mpp/2;b.rot=((b.rot||0)+deg)%360;
-  markDirty();planBgUpdate();bgSizeCheck()}
+  const cx=b.x+b.iw*b.mpp/2,cy=b.y+b.ih*b.mpp/2;if(plLocked())plRotateAll(deg,{x:cx,y:cy},true);if(b.geo||plLocked())p.nord=Math.round((((+p.nord||0)+deg)%360+360)%360*10)/10;const enc=bgEncode(cv);b.mpp=b.mpp/enc.f;if(b.ppt)b.ppt*=enc.f;b.src=enc.src;b.iw=enc.iw;b.ih=enc.ih;b.x=cx-b.iw*b.mpp/2;b.y=cy-b.ih*b.mpp/2;b.rot=((b.rot||0)+deg)%360;
+  markDirty();planBgUpdate();planDraw();bgSizeCheck()}
 /* fond dans les PDF : seule la partie visible est recadrée puis intégrée */
 async function bgDrawPdf(doc,page,xa,ya,xb,yb,X,Y){const b=quote.plan.bg;const bw=b.iw*b.mpp,bh=b.ih*b.mpp;
   const x0=Math.max(xa,b.x),y0=Math.max(ya,b.y),x1=Math.min(xb,b.x+bw),y1=Math.min(yb,b.y+bh);if(x1<=x0||y1<=y0)return;
@@ -1527,6 +1679,7 @@ function planHit(pt){const w=planView().w;const r=w/40;let best=null,bd=r;planIt
 function planChanged(){routeClean();const p=planObj();if(!p.on&&!p.userOff&&planItems().some(i=>i.k==='f')&&planItems().some(i=>i.k==='c'))p.on=true;planSync();markDirty();renderDevisKeepScroll()}
 function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.preventDefault();const p=planObj();
   if(plTool==='pan'||e.button===1){const V=planView(),r=svg.getBoundingClientRect();plDrag={pan:true,sx:e.clientX,sy:e.clientY,vx:V.x,vy:V.y,k:V.w/r.width};svg.setPointerCapture?.(e.pointerId);return}
+  if(plTool==='rot'){const q=planRaw(e),c=plRotCenter();plDrag={rot:true,c,a0:Math.atan2(q.y-c.y,q.x-c.x),snap:plRotSnap(),deg:0,moved:false};svg.setPointerCapture?.(e.pointerId);planDraw();return}
   if(plTool==='zoom'){const q=planRaw(e);plDrag={zr:{a:q,b:null},out:e.altKey||e.shiftKey,moved:false};svg.setPointerCapture?.(e.pointerId);return}
   const pt=planPt(e);
   if(plLocked()&&!PL_LOCK_OK.has(plTool)){if(plTool==='del'){const q=planRaw(e),tol=planView().w/70;let bo=null,bd=tol;dimList().forEach(o=>{const d=segDist(q.x,q.y,o.A,o.B);if(d<bd){bd=d;bo=o}});if(bo){p.dims.splice(p.dims.indexOf(bo.d),1);markDirty();renderDevisKeepScroll();toast('Cote supprimée');return}}
@@ -1590,7 +1743,8 @@ function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.pr
   else if(plTool==='c0'||plTool==='c1'){const ci=plTool==='c1'?1:0;p.items=p.items.filter(i=>!(i.k==='c'&&(i.i||0)===ci));p.items.push({k:'c',i:ci,x:pt.x,y:pt.y})}
   else if(plTool==='ch'){p.items=p.items.filter(i=>i.k!=='ch');p.items.push({k:'ch',x:pt.x,y:pt.y})}
   planChanged()}
-function onPlanMove(e){if(plDrag&&plDrag.zr){const q=planRaw(e),a=plDrag.zr.a;if(plDrag.moved||Math.hypot(q.x-a.x,q.y-a.y)>planView().w/60){plDrag.zr.b=q;plDrag.moved=true;planDraw()}return}
+function onPlanMove(e){if(plDrag&&plDrag.rot){const q=planRaw(e),c=plDrag.c;let d=(Math.atan2(q.y-c.y,q.x-c.x)-plDrag.a0)*180/Math.PI;d=((d+540)%360)-180;const st=e.shiftKey?15:1;d=Math.round(d/st)*st;if(d!==plDrag.deg){plRotRestore(plDrag.snap);plRotateAll(d,c);plDrag.deg=d;plDrag.moved=true;planDraw()}return}
+if(plDrag&&plDrag.zr){const q=planRaw(e),a=plDrag.zr.a;if(plDrag.moved||Math.hypot(q.x-a.x,q.y-a.y)>planView().w/60){plDrag.zr.b=q;plDrag.moved=true;planDraw()}return}
 if(plDrag&&plDrag.dim!=null){const d=quote.plan.dims&&quote.plan.dims[plDrag.dim];if(d){d[plDrag.end]=dimSnap(planRaw(e));plDrag.moved=true;planDraw()}return}
   if(plDrag&&plDrag.ev!=null){const q=planRaw(e),v=quote.plan.emp&&quote.plan.emp.pts[plDrag.ev];if(v&&(v.x!==q.x||v.y!==q.y)){v.x=q.x;v.y=q.y;plDrag.moved=true;planDraw()}return}
   if(!plDrag&&plTool==='cote'&&plCote&&e.target.closest&&e.target.closest('#pl-svg')){plCoteHover=dimSnap(planRaw(e));planDraw();hintUpdate();return}
@@ -1601,7 +1755,7 @@ if(plDrag&&plDrag.res&&plRes){const q=planRaw(e),last=plRes.pts[plRes.pts.length
 if(plDrag&&plDrag.tch&&plTch){const q=planRaw(e),last=plTch.pts[plTch.pts.length-1],tol=planView().w/150;if(Math.hypot(q.x-last.x,q.y-last.y)>tol){plTch.pts.push(q);plDrag.moved=true}plLinkHover=q;planDraw();return}
   if(plDrag&&plDrag.tv){const q=trSnap(planRaw(e)),l=quote.plan.trenches[plDrag.tv.li];if(l){l[plDrag.tv.vi]={x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100};plDrag.moved=true;planDraw()}return}
   if(!plDrag&&plTool==='tch'&&plTch&&e.target.closest&&e.target.closest('#pl-svg')){plLinkHover=trSnap(planRaw(e));planDraw();return}if(plDrag&&plDrag.link&&plLink){const q=planRaw(e),last=plLink.pts[plLink.pts.length-1]||plLink.from,tol=planView().w/200;if(Math.hypot(q.x-last.x,q.y-last.y)>tol){plLink.pts.push(q);plDrag.moved=true}plLinkHover=q;planDraw();return}if(!plDrag&&plTool==='tr'&&plLink&&e.target.closest&&e.target.closest('#pl-svg')){plLinkHover=planPt(e);planDraw();return}if(!plDrag){if(plTool==='zone'&&quote.plan&&quote.plan.zone&&!quote.plan.zone.closed&&quote.plan.zone.pts.length&&e.target.closest&&e.target.closest('#pl-svg')){plZoneHover=planPt(e);planDraw()}return}if(plDrag.zv!=null){const q=planPt(e),v=quote.plan.zone.pts[plDrag.zv];if(v&&(v.x!==q.x||v.y!==q.y)){v.x=q.x;v.y=q.y;plDrag.moved=true;planDraw()}return}if(plDrag.pan){const p=quote.plan;p.vx=plDrag.vx-(e.clientX-plDrag.sx)*plDrag.k;p.vy=plDrag.vy-(e.clientY-plDrag.sy)*plDrag.k;planDraw();return}if(plDrag.bg){const q=planRaw(e),bg=quote.plan.bg;const nx=plDrag.ox+q.x-plDrag.sx,ny=plDrag.oy+q.y-plDrag.sy;const lk=plLocked();if(lk)plShiftAll(nx-bg.x,ny-bg.y);bg.x=nx;bg.y=ny;plDrag.moved=true;planBgUpdate();if(lk)planDraw();return}const pt=planPt(e);if(plDrag.wp){const w=quote.plan.routes[plDrag.wp.key][plDrag.wp.idx];if(w&&(w.x!==pt.x||w.y!==pt.y)){w.x=pt.x;w.y=pt.y;plDrag.moved=true;planDraw()}return}let q=pt;if(plDrag.it.k==='f'){q=fPush(pt,plDrag.it);if(!q)return}if(q.x!==plDrag.it.x||q.y!==plDrag.it.y){plDrag.it.x=q.x;plDrag.it.y=q.y;plDrag.moved=true;planDraw()}}
-function onPlanUp(e){if(!plDrag)return;if(plDrag.zr){const Z=plDrag.zr,out=plDrag.out,mv=plDrag.moved;plDrag=null;
+function onPlanUp(e){if(!plDrag)return;if(plDrag.rot){const d=plDrag.deg;plDrag=null;if(d){planChanged();toast(`Implantation pivotée de ${nf(d)}°`)}else planDraw();return}if(plDrag.zr){const Z=plDrag.zr,out=plDrag.out,mv=plDrag.moved;plDrag=null;
     if(mv&&Z.b){const x0=Math.min(Z.a.x,Z.b.x),x1=Math.max(Z.a.x,Z.b.x),y0=Math.min(Z.a.y,Z.b.y),y1=Math.max(Z.a.y,Z.b.y),asp=planAsp(),p=planObj();
       const w=Math.min(3000,Math.max(4,x1-x0,(y1-y0)/asp));p.w=w;p.vx=(x0+x1)/2-w/2;p.vy=(y0+y1)/2-w*asp/2;planDraw()}
     else planZoom(out?2:.5,Z.a.x,Z.a.y);
@@ -1870,7 +2024,7 @@ function onDevisInput(e){
   if(tg.id==='pl-bgop'){const b=quote.plan&&quote.plan.bg;if(b){b.op=+tg.value/100;markDirty();planBgUpdate()}return}
   if(tg.id==='pl-symk'){planObj().symK=+tg.value/100;markDirty();planDraw();return}
   if(tg.id==='pl-note'){planObj().note=tg.value;markDirty();return}
-  if(['pl-file','pl-bgech','pl-bgrot','pl-caldist','pl-bgpdf','pl-bgshow','pl-bgpage','pl-bgwid','pl-grid','pl-zmarg','pl-tr','pl-zautoc','pl-zmode','pl-zpat','pl-trmode','pl-cotes','pl-mat','pl-trbiais','pl-rest','pl-r5','pl-rad'].includes(tg.id))return;
+  if(['pl-file','pl-addf','pl-bgech','pl-bgrot','pl-caldist','pl-bgpdf','pl-bgshow','pl-bgpage','pl-bgwid','pl-grid','pl-zmarg','pl-tr','pl-zautoc','pl-zmode','pl-zpat','pl-trmode','pl-cotes','pl-mat','pl-trbiais','pl-rest','pl-r5','pl-rad'].includes(tg.id))return;
   if(tg.id==='pl-w'||tg.id==='pl-trace'||tg.id==='pl-on'||tg.id==='pl-fmt'||tg.id==='pl-ech'||tg.id==='pl-ppm')return;
   if(tg.id==='pl-nord'){planObj().nord=pnum(tg.value)||0;markDirty();planDraw();return}
   if(tg.dataset.k){const k=tg.dataset.k;quote[k]=tg.dataset.nn?pnum(tg.value):tg.dataset.n?(pnum(tg.value)??0):tg.value;markDirty();
@@ -1896,7 +2050,11 @@ function onDevisChange(e){
   const tg=e.target;
   if(tg.id==='usedOnly'){usedOnly=tg.checked;store.set('usedOnly',usedOnly);renderDevis();return}
   if(tg.id==='pl-empcote'){empObj().noCote=!tg.checked;markDirty();planDraw();return}
-  if(tg.id==='pl-file'){const f=tg.files&&tg.files[0];tg.value='';if(plLocked()){plLockMsg();return}if(f)planImport(f);return}
+  if(tg.id==='pl-addf'){const fl=[...(tg.files||[])];tg.value='';if(plLocked()){plLockMsg();return}if(!fl.length)return;bgMsg('Import en cours…');addGeoObjects(fl).then(()=>bgMsg('')).catch(e=>{console.error(e);bgMsg('');toast(e&&e.message?e.message:'Import impossible')});return}
+  if(tg.id==='pl-file'){const fl=[...(tg.files||[])];tg.value='';if(plLocked()){plLockMsg();return}if(!fl.length)return;
+    if(fl.every(f=>/\.(csv|txt|xlsx|xls)$/i.test(f.name||''))){bgMsg('Import en cours…');addGeoObjects(fl).then(()=>bgMsg('')).catch(e=>{console.error(e);bgMsg('');toast(e&&e.message?e.message:'Import impossible')});return}
+    const sh=fl.filter(f=>/\.(shp|shx|dbf|prj|cpg|qpj|xml|zip)$/i.test(f.name||''));if(sh.length&&sh.length===fl.length&&!(fl.length===1&&/\.xml$/i.test(fl[0].name))){plShpFiles=fl;planImport(fl.find(f=>/\.shp$/i.test(f.name))||fl.find(f=>/\.zip$/i.test(f.name))||fl[0]);return}
+    planImport(fl.find(f=>!/\.(shx|dbf|prj|cpg|xml)$/i.test(f.name))||fl[0]);return}
   if(tg.id==='pl-bgpage'){if(plLastFile)planImport(plLastFile,+tg.value);return}
   if(tg.id==='pl-bgshow'){const b=quote.plan&&quote.plan.bg;if(b){b.show=tg.checked;markDirty();planBgUpdate()}return}
   if(tg.id==='pl-bgpdf'){planObj().bgPdf=tg.checked;markDirty();return}
@@ -1924,11 +2082,12 @@ function renderDevisKeepScroll(){const y=window.scrollY;renderDevis();window.scr
 function onDevisClick(e){
   const b=e.target.closest('button');if(!b)return;
   if(b.dataset.d2set){const [k,D]=b.dataset.d2set.split(':');quote[k]=+D;markDirty();document.querySelectorAll(`select[data-k="${k}"]`).forEach(x=>x.value=String(+D));refreshLines();if(typeof updateHydro==='function')updateHydro();toast(+D?`Ø${D} imposé collecteur → chaufferie`:'Ø collecteur → chaufferie en auto');return}
-  if(b.dataset.pltool){plTool=b.dataset.pltool;document.querySelectorAll('[data-pltool]').forEach(x=>x.classList.toggle('primary',x===b));const sv=$('#pl-svg');if(sv)sv.classList.toggle('pl-edit',plTool==='tr');if(sv)sv.classList.toggle('pl-move',plTool==='bg');if(sv)sv.classList.toggle('pl-zoomc',plTool==='zoom');if(sv)sv.classList.toggle('pl-pan',plTool==='pan'||(plLocked()&&!PL_LOCK_OK.has(plTool)));plCal={};plLink=null;plLinkHover=null;plCote=null;plCoteHover=null;plEmpHover=null;if(plTch)trFinish();if(plRes)resFinish();hintUpdate();planDraw();return}
+  if(b.dataset.pltool){plTool=b.dataset.pltool;document.querySelectorAll('[data-pltool]').forEach(x=>x.classList.toggle('primary',x===b));const sv=$('#pl-svg');if(sv)sv.classList.toggle('pl-edit',plTool==='tr');if(sv)sv.classList.toggle('pl-move',plTool==='bg');if(sv)sv.classList.toggle('pl-zoomc',plTool==='zoom');if(sv)sv.classList.toggle('pl-rotc',plTool==='rot');if(sv)sv.classList.toggle('pl-pan',plTool==='pan'||(plLocked()&&!PL_LOCK_OK.has(plTool)));plCal={};plLink=null;plLinkHover=null;plCote=null;plCoteHover=null;plEmpHover=null;if(plTch)trFinish();if(plRes)resFinish();hintUpdate();planDraw();return}
+  if(b.dataset.plrot||b.id==='pl-rot-ok'){if(plLocked()){plLockMsg();return}const d=b.dataset.plrot?+b.dataset.plrot:pnum(($('#pl-rotdeg')||{}).value);if(!d)return;plRotateAll(d);planChanged();toast(`Implantation pivotée de ${nf(d)}°`);return}
   if(b.id==='pl-undo'){histUndo();return}
   if(b.id==='pl-redo'){histRedo();return}
   if(b.id==='pl-lock'){const p=planObj();p.lock=!p.lock;if(plTch)trFinish();if(plRes)resFinish();plLink=null;plCal={};plEmpHover=null;plZoneHover=null;markDirty();renderDevisKeepScroll();toast(p.lock?'Implantation verrouillée sur le fond':'Implantation déverrouillée');return}
-  if(plLocked()&&['pl-straight','pl-relink','pl-trauto','pl-trauto2','pl-tchdel','pl-zdel','pl-zimpl','pl-kpts','pl-empdel','pl-bgdel','pl-bgwid-ok','pl-bgrot-ok','pl-bgech-ok','pl-calok','pl-gen','pl-clear','pl-resdel'].includes(b.id)){plLockMsg();return}
+  if(plLocked()&&['pl-straight','pl-relink','pl-trauto','pl-trauto2','pl-tchdel','pl-zdel','pl-zimpl','pl-kpts','pl-empdel','pl-bgdel','pl-bgwid-ok','pl-bgech-ok','pl-calok','pl-gen','pl-clear','pl-resdel'].includes(b.id)){plLockMsg();return}
   if(b.id==='pl-straight'){if(confirm('Supprimer tous les points de passage des liaisons et les rattachements choisis à la main ?')){planObj().routes={};planObj().assign={};planObj().noLink={};planChanged()}return}
   if(b.id==='pl-pdf'){planPdf();return}
   if(b.id==='pl-dimdel'){if(confirm('Effacer toutes les cotes du plan ?')){planObj().dims=[];plCote=null;markDirty();renderDevisKeepScroll()}return}
