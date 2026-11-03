@@ -1258,12 +1258,12 @@ document.addEventListener('wheel',e=>{const svg=e.target.closest&&e.target.close
 function planRaw(e){const svg=$('#pl-svg');const pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const q=pt.matrixTransform(svg.getScreenCTM().inverse());return {x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100}}
 function bgOn(){const b=quote.plan&&quote.plan.bg;return !!(b&&b.src&&b.show!==false)}
 function planBgSVG(){const p=quote.plan||{w:60};const V=planView();const b=p.bg;
-  return `<rect id="pl-bgrect" x="${V.x}" y="${V.y}" width="${V.w}" height="${V.h}" fill="var(--panel)"/>`+(bgOn()?`<image id="pl-bgimg" href="${b.src}" x="${b.x}" y="${b.y}" width="${b.iw*b.mpp}" height="${b.ih*b.mpp}" preserveAspectRatio="none" opacity="${b.op??.6}"/>`:'')}
+  return `<rect id="pl-bgrect" x="${V.x}" y="${V.y}" width="${V.w}" height="${V.h}" fill="var(--panel)"/>`+(bgOn()?`<image id="pl-bgimg" href="${b.src}" x="${b.x}" y="${b.y}" width="${b.iw*b.mpp}" height="${b.ih*b.mpp}" preserveAspectRatio="none" opacity="${b.op??.6}" ${bgTf(b)?`transform="${bgTf(b)}"`:''}/>`:'')}
 function planBgUpdate(){const L=$('#pl-bgl');if(!L)return;const p=quote.plan||{w:60};const V=planView();const r=$('#pl-bgrect');if(r){r.setAttribute('x',V.x);r.setAttribute('y',V.y);r.setAttribute('width',V.w);r.setAttribute('height',V.h)}
   let im=$('#pl-bgimg');if(!bgOn()){if(im)im.remove();return}const b=p.bg;
   if(!im){im=document.createElementNS('http://www.w3.org/2000/svg','image');im.id='pl-bgimg';im.setAttribute('preserveAspectRatio','none');L.appendChild(im)}
   if(im.getAttribute('href')!==b.src)im.setAttribute('href',b.src);
-  im.setAttribute('x',b.x);im.setAttribute('y',b.y);im.setAttribute('width',b.iw*b.mpp);im.setAttribute('height',b.ih*b.mpp);im.setAttribute('opacity',b.op??.6)}
+  im.setAttribute('x',b.x);im.setAttribute('y',b.y);im.setAttribute('width',b.iw*b.mpp);im.setAttribute('height',b.ih*b.mpp);im.setAttribute('opacity',b.op??.6);const tf=bgTf(b);if(tf)im.setAttribute('transform',tf);else im.removeAttribute('transform')}
 function plHint(){if(plLocked()&&!PL_LOCK_OK.has(plTool))return '<b>Plan verrouillé sur le fond</b> : forages, collecteurs, chaufferie, liaisons, tranchées, zone et emprise ne bougent plus. <b>Faire glisser le plan pour le décaler</b> (avec n’importe quel outil), zoomer avec − / + ou en pinçant. Restent actifs : les <b>Cotes</b> (et la Gomme sur une cote) et « Déplacer le fond », qui déplace alors le fond et toute l’implantation ensemble. Cliquer sur <b>Verrouillé</b> pour modifier.';
   if(plLocked()&&plTool==='bg')return 'Fond et implantation verrouillés ensemble : faire glisser pour déplacer le tout (le calage reste juste). Cliquer sur <b>Verrouillé</b> pour déplacer le fond seul.';
   if(plTool==='tr'){if(plLink)return `Tracé en cours depuis ${plLink.from.k==='f'?'le forage':'le collecteur'} : dessiner en faisant glisser ou cliquer les points de passage, puis <b>${plLink.from.k==='f'?'un collecteur — ou un autre forage pour le récupérer en passant':'la chaufferie'}</b> pour terminer (${plLink.pts.length} point${pl(plLink.pts.length)}). Échap ou clic sur le point de départ pour annuler.`;
@@ -1306,7 +1306,7 @@ function planBgBar(){const p=quote.plan||{};const b=p.bg;
     `<label class="status" title="Largeur réelle couverte par l’image (ex. lue sur l’échelle de Géoportail ou Google)">Largeur réelle <input id="pl-bgwid" class="pl-sin" inputmode="decimal" placeholder="${nf(Math.round(b.iw*b.mpp))}"> m</label><button class="btn sm" id="pl-bgwid-ok">Appliquer</button>`+
     (b.kind==='pdf'?`<label class="status">Plan au 1/<input id="pl-bgech" class="pl-sin" inputmode="numeric" value="${b.ech||''}" placeholder="200"></label><button class="btn sm" id="pl-bgech-ok">Appliquer</button>`:'')+
     `<button class="btn sm ${plTool==='cal'?'primary':''}" data-pltool="cal">Caler l’échelle</button><button class="btn sm ${plTool==='bg'?'primary':''}" data-pltool="bg">Déplacer le fond</button>`+
-    `<label class="status">Rotation <input id="pl-bgrot" class="pl-sin" inputmode="decimal" placeholder="0">°</label><button class="btn sm" id="pl-bgrot-ok" title="Tourne le fond (sens horaire)">Tourner</button>`+
+    `<label class="status">Rotation <input id="pl-bgrot" class="pl-sin" inputmode="decimal" placeholder="0">°</label><button class="btn sm" id="pl-bgrot-ok" title="Tourne le fond (sens horaire), sans perte de qualité">Tourner</button><button class="btn sm" data-bgrot="-1" title="Fond : 1° dans le sens inverse des aiguilles d’une montre">↺ 1°</button><button class="btn sm" data-bgrot="1" title="Fond : 1° dans le sens des aiguilles d’une montre">↻ 1°</button><button class="btn sm" data-bgrot="0.2" title="Fond : 0,2° (réglage fin)">↻ 0,2°</button>`+
     `<label class="status">Opacité <input type="range" id="pl-bgop" min="10" max="100" value="${Math.round((b.op??.6)*100)}"></label>`+
     `<label class="status"><input type="checkbox" id="pl-bgshow" ${b.show!==false?'checked':''}> afficher</label><button class="btn sm" id="pl-fit" title="Ajuste la zone pour voir le fond et les forages">Recadrer</button><button class="btn sm ghost danger" id="pl-bgdel">Retirer</button>`:'')+
   `<span id="pl-bgmsg" class="status"></span></div>`}
@@ -1655,14 +1655,21 @@ async function planKml(){if(!dlApi){toast('Téléchargement indisponible sur cet
   try{await dlApi.save({filename:`plan-implantation-${plName()}.kml`,data:new Blob([kml],{type:'application/vnd.google-earth.kml+xml'})});toast('KML : à ouvrir dans Google Earth')}
   catch(e){if(e?.code!=='cancelled'&&e?.code!=='declined')toast('Export annulé')}}
 /* rotation du fond (sens horaire), autour de son centre */
-async function bgRotate(deg){const p=planObj(),b=p.bg;if(!b||!deg)return;const img=await loadImg(b.src);const a=deg*Math.PI/180,c=Math.abs(Math.cos(a)),s=Math.abs(Math.sin(a));
-  const W=img.width*c+img.height*s,H=img.width*s+img.height*c;const cv=whiteCanvas(W,H);const g=cv.getContext('2d');g.translate(W/2,H/2);g.rotate(a);g.drawImage(img,-img.width/2,-img.height/2);
-  const cx=b.x+b.iw*b.mpp/2,cy=b.y+b.ih*b.mpp/2;if(plLocked())plRotateAll(deg,{x:cx,y:cy},true);if(b.geo||plLocked())p.nord=Math.round((((+p.nord||0)+deg)%360+360)%360*10)/10;const enc=bgEncode(cv);b.mpp=b.mpp/enc.f;if(b.ppt)b.ppt*=enc.f;b.src=enc.src;b.iw=enc.iw;b.ih=enc.ih;b.x=cx-b.iw*b.mpp/2;b.y=cy-b.ih*b.mpp/2;b.rot=((b.rot||0)+deg)%360;
-  markDirty();planBgUpdate();planDraw();bgSizeCheck()}
+/* rotation du fond sans perte : l'image d'origine est gardée telle quelle, la rotation (b.vrot, sens horaire, autour de son centre) n'est appliquée qu'à l'affichage et aux exports */
+function bgRotate(deg){const p=planObj(),b=p.bg;if(!b||!deg)return;const cx=b.x+b.iw*b.mpp/2,cy=b.y+b.ih*b.mpp/2;
+  if(plLocked())plRotateAll(deg,{x:cx,y:cy},true);if(b.geo||plLocked())p.nord=Math.round((((+p.nord||0)+deg)%360+360)%360*10)/10;
+  const nr=v=>Math.round(((v%360)+540)%360*100)/100-180;b.vrot=nr((+b.vrot||0)+deg);b.rot=nr((+b.rot||0)+deg);if(!b.vrot)delete b.vrot;
+  markDirty();planBgUpdate();planDraw()}
+function bgTf(b){const v=+b.vrot||0;return v?`rotate(${v} ${b.x+b.iw*b.mpp/2} ${b.y+b.ih*b.mpp/2})`:''}
 /* fond dans les PDF : seule la partie visible est recadrée puis intégrée */
-async function bgDrawPdf(doc,page,xa,ya,xb,yb,X,Y){const b=quote.plan.bg;const bw=b.iw*b.mpp,bh=b.ih*b.mpp;
+async function bgDrawPdf(doc,page,xa,ya,xb,yb,X,Y){const b0=quote.plan.bg;let b=b0,img=await loadImg(b0.src);
+  /* fond tourné : on fait tourner l'image d'origine une seule fois, en pleine définition, juste pour l'export */
+  if(+b0.vrot){const a=b0.vrot*Math.PI/180,c=Math.abs(Math.cos(a)),s2=Math.abs(Math.sin(a)),W=Math.ceil(img.width*c+img.height*s2),H=Math.ceil(img.width*s2+img.height*c);
+    const cv0=document.createElement('canvas');cv0.width=W;cv0.height=H;const g0=cv0.getContext('2d');g0.imageSmoothingQuality='high';g0.translate(W/2,H/2);g0.rotate(a);g0.drawImage(img,-img.width/2,-img.height/2);
+    const k=b0.iw/img.width,cx=b0.x+b0.iw*b0.mpp/2,cy=b0.y+b0.ih*b0.mpp/2,mpp=b0.mpp*k;b={op:b0.op,mpp,iw:W,ih:H,x:cx-W*mpp/2,y:cy-H*mpp/2};img=cv0}
+  const bw=b.iw*b.mpp,bh=b.ih*b.mpp;
   const x0=Math.max(xa,b.x),y0=Math.max(ya,b.y),x1=Math.min(xb,b.x+bw),y1=Math.min(yb,b.y+bh);if(x1<=x0||y1<=y0)return;
-  const img=await loadImg(b.src);const sx=(x0-b.x)/b.mpp,sy=(y0-b.y)/b.mpp,sw=(x1-x0)/b.mpp,sh=(y1-y0)/b.mpp;
+  const sx=(x0-b.x)/b.mpp,sy=(y0-b.y)/b.mpp,sw=(x1-x0)/b.mpp,sh=(y1-y0)/b.mpp;
   const ow=Math.max(1,Math.min(Math.round(sw*1.5),3200)),oh=Math.max(1,Math.round(sh*ow/sw));const cv=whiteCanvas(ow,oh);const g=cv.getContext('2d');g.globalAlpha=Math.min(1,(b.op??.6)+.1);g.drawImage(img,sx,sy,sw,sh,0,0,ow,oh);
   const im=await doc.embedJpg(dataUrlBytes(cv.toDataURL('image/jpeg',.85)));page.drawImage(im,{x:X(x0),y:Y(y1),width:X(x1)-X(x0),height:Y(y0)-Y(y1)})}
 function planPt(e){const svg=$('#pl-svg');const pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const q=pt.matrixTransform(svg.getScreenCTM().inverse());
@@ -2084,6 +2091,7 @@ function onDevisClick(e){
   if(b.dataset.d2set){const [k,D]=b.dataset.d2set.split(':');quote[k]=+D;markDirty();document.querySelectorAll(`select[data-k="${k}"]`).forEach(x=>x.value=String(+D));refreshLines();if(typeof updateHydro==='function')updateHydro();toast(+D?`Ø${D} imposé collecteur → chaufferie`:'Ø collecteur → chaufferie en auto');return}
   if(b.dataset.pltool){plTool=b.dataset.pltool;document.querySelectorAll('[data-pltool]').forEach(x=>x.classList.toggle('primary',x===b));const sv=$('#pl-svg');if(sv)sv.classList.toggle('pl-edit',plTool==='tr');if(sv)sv.classList.toggle('pl-move',plTool==='bg');if(sv)sv.classList.toggle('pl-zoomc',plTool==='zoom');if(sv)sv.classList.toggle('pl-rotc',plTool==='rot');if(sv)sv.classList.toggle('pl-pan',plTool==='pan'||(plLocked()&&!PL_LOCK_OK.has(plTool)));plCal={};plLink=null;plLinkHover=null;plCote=null;plCoteHover=null;plEmpHover=null;if(plTch)trFinish();if(plRes)resFinish();hintUpdate();planDraw();return}
   if(b.dataset.plrot||b.id==='pl-rot-ok'){if(plLocked()){plLockMsg();return}const d=b.dataset.plrot?+b.dataset.plrot:pnum(($('#pl-rotdeg')||{}).value);if(!d)return;plRotateAll(d);planChanged();toast(`Implantation pivotée de ${nf(d)}°`);return}
+  if(b.dataset.bgrot){bgRotate(+b.dataset.bgrot);return}
   if(b.id==='pl-undo'){histUndo();return}
   if(b.id==='pl-redo'){histRedo();return}
   if(b.id==='pl-lock'){const p=planObj();p.lock=!p.lock;if(plTch)trFinish();if(plRes)resFinish();plLink=null;plCal={};plEmpHover=null;plZoneHover=null;markDirty();renderDevisKeepScroll();toast(p.lock?'Implantation verrouillée sur le fond':'Implantation déverrouillée');return}
