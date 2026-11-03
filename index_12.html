@@ -410,7 +410,8 @@ function pnSonde(P){const p=+quote.pn||0;return p||(P>150?20:16)}
 function sdrPN(pn){return pn==25?7.4:pn==20?9:11}
 /* ---------- plan d'implantation (coordonnées en mètres) ---------- */
 function planItems(){return (quote&&quote.plan&&Array.isArray(quote.plan.items))?quote.plan.items:[]}
-function planOn(){const it=planItems();return !!(quote.plan&&quote.plan.on&&it.some(i=>i.k==='f')&&it.some(i=>i.k==='c'))}
+function planDirect(){const it=planItems();return it.filter(i=>i.k==='f').length===1&&!it.some(i=>i.k==='c')&&it.some(i=>i.k==='ch')}
+function planOn(){const it=planItems();return !!(quote.plan&&quote.plan.on&&it.some(i=>i.k==='f')&&(it.some(i=>i.k==='c')||planDirect()))}
 const r1=x=>Math.round(x*10)/10;
 function planDist(a,b){return quote.plan&&quote.plan.trace==='equerre'?Math.abs(a.x-b.x)+Math.abs(a.y-b.y):Math.hypot(a.x-b.x,a.y-b.y)}
 /* tracé de chaque liaison : points de passage enregistrés dans quote.plan.routes, clé 'f:<id du forage>' ou 'c:<n° collecteur>' */
@@ -464,14 +465,16 @@ const legs=p=>p.slice(1).map((q,k)=>[p[k],q]);
 function mstLen(pts){if(pts.length<2)return 0;const inT=[true,...pts.slice(1).map(()=>false)];const best=pts.map(p=>planDist(pts[0],p));let tot=0;
   for(let k=1;k<pts.length;k++){let bi=-1,bd=Infinity;for(let i=0;i<pts.length;i++)if(!inT[i]&&best[i]<bd){bd=best[i];bi=i}inT[bi]=true;tot+=bd;for(let i=0;i<pts.length;i++)if(!inT[i]){const d=planDist(pts[bi],pts[i]);if(d<best[i])best[i]=d}}return tot}
 function planGeo(){
-  const it=planItems();const F=it.filter(i=>i.k==='f'),C=it.filter(i=>i.k==='c').sort((a,b)=>(a.i||0)-(b.i||0)).slice(0,2),ch=it.find(i=>i.k==='ch');
+  const it=planItems();const F=it.filter(i=>i.k==='f'),ch=it.find(i=>i.k==='ch');let C=it.filter(i=>i.k==='c').sort((a,b)=>(a.i||0)-(b.i||0)).slice(0,2);
+  /* un seul forage sans collecteur : raccordé directement à la chaufferie (2 Y) */const direct=!C.length&&F.length===1&&!!ch;if(direct)C=[ch];
   const asn=(quote.plan&&quote.plan.assign)||{};const asg=F.map(f=>{let j=0,d=Infinity;C.forEach((c,k)=>{const dd=trActive()?(r=>r?polyLen(r):1e6+planDist(f,c))(netPath(f,c)):planDist(f,c);if(dd<d){d=dd;j=k}});if(f.id&&asn[f.id]!=null){const k2=C.findIndex(c=>(c.i||0)===asn[f.id]);if(k2>=0)j=k2}const r=C[j]?routeFor(f,C[j]):[f];return {f,j,d:C[j]?polyLen(r):0,r}}).filter(x=>!plNoLink(x.f));
-  for(let it2=0;it2<8;it2++){let ch2=false;asg.forEach(x=>{const t=plVia(x.f);if(!t)return;const y=asg.find(z=>z.f===t);if(y&&y.j!==x.j&&C[y.j]){x.j=y.j;x.r=routeFor(x.f,C[x.j]);x.d=polyLen(x.r);ch2=true}});if(!ch2)break}const Cch=ch?C.filter(c=>!plNoLink(c)):[];
+  for(let it2=0;it2<8;it2++){let ch2=false;asg.forEach(x=>{const t=plVia(x.f);if(!t)return;const y=asg.find(z=>z.f===t);if(y&&y.j!==x.j&&C[y.j]){x.j=y.j;x.r=routeFor(x.f,C[x.j]);x.d=polyLen(x.r);ch2=true}});if(!ch2)break}const Cch=ch&&!direct?C.filter(c=>!plNoLink(c)):[];
   const Lq=k=>k&&quote.L2!=null&&quote.L2!==''?+quote.L2:(+quote.L||0);
-  const all=C.map((c,k)=>{const a=asg.filter(x=>x.j===k);const rc=ch&&!plNoLink(c)?routeFor(c,ch):null;const custom=a.some(x=>routeWps(x.f).length||plVia(x.f));
+  const all=C.map((c,k)=>{const a=asg.filter(x=>x.j===k);const rc=ch&&!direct&&!plNoLink(c)?routeFor(c,ch):null;const custom=a.some(x=>routeWps(x.f).length||plVia(x.f));
     return {n:a.length,LF:r1(2*a.reduce((t,x)=>t+x.d,0)),DF:r1(a.reduce((m,x)=>Math.max(m,x.d),0)),L:ch?(rc?r1(polyLen(rc)):0):Lq(k),c,rc,mst:custom?unionLen(a.flatMap(x=>legs(x.r))):mstLen([c,...a.map(x=>x.f)])}});
   const groups=all.filter(g=>g.n>0);
-  return {N:F.length,groups,T:r1(trActive()?trNet().len:groups.reduce((t,g)=>t+g.mst+g.L,0)),asg,C,Cch,ch,F,nc:F.length-asg.length}}
+  if(direct)groups.forEach(g=>g.direct=true);
+  return {N:F.length,groups,T:r1(trActive()?trNet().len:groups.reduce((t,g)=>t+g.mst+g.L,0)),asg,C,Cch,ch,F,nc:F.length-asg.length,direct}}
 function baseVars(){const P=+quote.P||0,mpj=+quote.mpj||100,E=+quote.E||0,D1=+quote.D1||0,D2=+quote.D2||0,D2B=+quote.D2b||0;
   /* forages alignés tous les E m, chacun relié en direct à son collecteur (aller + retour) : forage k à k×E → 2·k·E */
   /* collecteur au bout de la ligne, ou au milieu : deux demi-lignes de part et d'autre */
@@ -479,6 +482,7 @@ function baseVars(){const P=+quote.P||0,mpj=+quote.mpj||100,E=+quote.E||0,D1=+qu
   const grp=n=>{const n1=mid?Math.ceil(n/2):n,n2=mid?Math.floor(n/2):0;return {n,LF:E*(n1*(n1+1)+n2*(n2+1)),DF:n1*E}};
   let N,G,T,src='param';
   if(planOn()){const pg=planGeo();N=pg.N;G=pg.groups;T=pg.T;src='plan'}
+  else if((+quote.N||0)===1&&quote.nc!=null&&quote.nc!==''&&+quote.nc===0){N=1;const L=+quote.L||0;G=[{n:1,LF:2*L,DF:L,L:0,direct:true}];T=L}
   else{N=+quote.N||0;const two=+quote.nc===2&&N>=2;
     const NB=two?Math.max(1,Math.min(N-1,quote.N2!=null&&quote.N2!==''?Math.round(+quote.N2):Math.floor(N/2))):0;
     const L=+quote.L||0,L2=quote.L2!=null&&quote.L2!==''?+quote.L2:L;
@@ -488,7 +492,7 @@ function baseVars(){const P=+quote.P||0,mpj=+quote.mpj||100,E=+quote.E||0,D1=+qu
   /* distance du forage le plus éloigné saisie à la main (vide = calculée) : sert à la perte de charge */
   G.forEach((g,i)=>{const d=pnum(i?quote.df2:quote.df1);g.DFcalc=g.DF;g.DFman=d!=null&&d>0;if(g.DFman)g.DF=d});
   const Z={n:0,LF:0,DF:0,L:0};const g0=G[0]||Z,g1=G[1]||Z;const M=N*P;
-  return {N,P,L:g0.L,L2:g1.L,M,J:mpj>0?Math.ceil(M/mpj):0,E,D1,D2,D2B:G.length>1?D2B:0,NA:g0.n,NB:g1.n,NC:Math.max(1,G.length),LF:g0.LF+g1.LF,LC:2*g0.L,LCB:2*g1.L,T,JR:+quote.jr||0,JS:2*(mpj>0?Math.ceil(M/mpj):0)+(+quote.jr||0),ZO:quote.zone==='orange'?1:0,DF:Math.max(g0.DF,g1.DF),G:G.length?G:[{...Z}],src}}
+  return {DIR:g0.direct?1:0,N,P,L:g0.L,L2:g1.L,M,J:mpj>0?Math.ceil(M/mpj):0,E,D1,D2,D2B:G.length>1?D2B:0,NA:g0.n,NB:g1.n,NC:Math.max(1,G.length),LF:g0.LF+g1.LF,LC:2*g0.L,LCB:2*g1.L,T,JR:+quote.jr||0,JS:2*(mpj>0?Math.ceil(M/mpj):0)+(+quote.jr||0),ZO:quote.zone==='orange'?1:0,DF:Math.max(g0.DF,g1.DF),G:G.length?G:[{...Z}],src}}
 /* Glycol : ancienne règle forfaitaire (M+L)/25*20 remplacée par le volume réel du réseau */
 function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String(i.rule||'').replace(/\s/g,'')==='(M+L)/25*20')i.rule='GLY'});if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='decl')){const k=items.findIndex(i=>i.id==='trt');items.splice(k,0,{id:'decl',sec:'loc',grp:'Administratif',name:'Déclarations (BRGM, DICT, rapport de fin de travaux)',unit:'forfait',price:0,qty:1,rule:'',kind:'frais'})}
   if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='zo')){const k=items.findIndex(i=>i.id==='trt');items.splice(k+1,0,{id:'zo',sec:'loc',grp:'Sous-traitance',name:'Déclaration zone orange (avis d’expert agréé)',unit:'forfait',price:0,rule:'ZO',kind:'st',poste:'zoneorange'})}
@@ -615,11 +619,11 @@ function hydroFor(v){
   const so=segment('Sonde (une boucle du double U)',Ds,2*v.P,Q/(2*N),fl,`${nf(v.P)} m × 2 (descente + remontée) · Ø${Ds} PN${pn}`,sdr);
   const G=v.G&&v.G.length?v.G:[{n:v.N,DF:v.DF,L:v.L}],two=G.length>1,sf=1+(+h.sing||0)/100;
   const groups=G.map((g,i)=>{const lab=two?' '+(i+1):'';const D2g=i?v.D2B:v.D2;const au=i?v.D2Bauto:v.D2auto;
-    const br=segment('Forage le plus éloigné → collecteur'+lab,v.D1||40,2*g.DF,Q/N,fl,`${nf(g.DF)} m × 2 (aller + retour) · ${g.DFman?'distance saisie':v.src==='plan'?'mesuré sur le plan':'collecteur '+(quote.coll==='milieu'?'au milieu':'au bout')}${v.D1auto?' · Ø selon profondeur':''}`);
+    const br=segment(g.direct?'Forage → chaufferie (sans collecteur, 2 Y)':'Forage le plus éloigné → collecteur'+lab,v.D1||40,2*g.DF,Q/N,fl,`${nf(g.DF)} m × 2 (aller + retour) · ${g.DFman?'distance saisie':v.src==='plan'?'mesuré sur le plan':'collecteur '+(quote.coll==='milieu'?'au milieu':'au bout')}${v.D1auto?' · Ø selon profondeur':''}`);
     const mn=segment('Collecteur'+lab+' → chaufferie',D2g||63,2*g.L,Q*(g.n||0)/N,fl,`${two?g.n+' forage'+pl(g.n)+' · ':''}${nf(g.L)} m × 2 (aller + retour)${au?' · Ø choisi selon le débit':' · Ø imposé'}`);
-    const path=so.dp+br.dp+mn.dp;return {i,n:g.n,br,mn,path,pathRes:path*sf}});
+    const path=so.dp+br.dp+mn.dp;return {i,n:g.n,br,mn,path,pathRes:path*sf,direct:!!g.direct}});
   const crit=groups.reduce((a,g)=>!a||g.path>a.path?g:a,null);
-  const segs=[so];groups.forEach(g=>{g.br.crit=g.mn.crit=two&&g===crit;segs.push(g.br,g.mn)});
+  const segs=[so];groups.forEach(g=>{g.br.crit=g.mn.crit=two&&g===crit;segs.push(g.br);if(!g.direct)segs.push(g.mn)});
   const lin=crit?crit.path:so.dp,sing=lin*(+h.sing||0)/100,pac=+h.pac||0,tot=lin+sing+pac;
   const reseau=lin+sing,dispo=+h.dispo||0;
   const verdict=dispo>0?(dispo>=reseau?{ok:true,txt:`Le circulateur de la PAC suffit : ${nf(dispo)} kPa disponibles pour ${nf(reseau)} kPa de réseau (marge ${nf(dispo-reseau)} kPa).`}
@@ -630,9 +634,9 @@ function dfFields(){const v=vars();const two=v.NC>1;
   return (v.G||[]).slice(0,two?2:1).map((g,i)=>{const k=i?'df2':'df1';const val=quote[k];
     return `<div class="f"><label for="q-${k}">Forage le plus loin → collecteur${two?' '+(i+1):''}</label><div class="unit-in"><input id="q-${k}" data-k="${k}" data-n="1" data-nn="1" data-df="1" inputmode="decimal" value="${val==null?'':esc(val)}" placeholder="${nf(g.DFcalc)}" title="Distance réelle entre le forage le plus éloigné et le collecteur (un sens). Vide = calculée : ${nf(g.DFcalc)} m"><span>m</span></div></div>`}).join('')}
 function hfield(k,label,unit,ph){const val=quote.h[k];return `<div class="f"><label for="h-${k}">${label}</label><div class="unit-in"><input id="h-${k}" data-h="${k}" inputmode="decimal" value="${val==null?'':esc(val)}" placeholder="${ph??''}"><span>${unit}</span></div></div>`}
-function d2Fields(){const two=+quote.nc===2;const opt=k=>[0,...d2List()].map(o=>`<option value="${o}" ${(+quote[k]||0)===o?'selected':''}>${o?'Ø '+o+' imposé':'Auto (selon débit)'}</option>`).join('');
+function d2Fields(){if(vars().DIR)return '<p class="help" style="margin:0">Forage raccordé directement à la chaufferie (sans collecteur) : la liaison est au Ø des liaisons forages.</p>';const two=+quote.nc===2;const opt=k=>[0,...d2List()].map(o=>`<option value="${o}" ${(+quote[k]||0)===o?'selected':''}>${o?'Ø '+o+' imposé':'Auto (selon débit)'}</option>`).join('');
   return `<div class="f"><label for="h-D2">Ø collecteur${two?' 1':''} → chaufferie</label><select id="h-D2" data-k="D2" data-n="1">${opt('D2')}</select></div>`+(two?`<div class="f"><label for="h-D2b">Ø collecteur 2 → chaufferie</label><select id="h-D2b" data-k="D2b" data-n="1">${opt('D2b')}</select></div>`:'')}
-function d2CmpHTML(){const v=vars();const G=v.G&&v.G.length?v.G:[{}];const two=v.NC>1&&G.length>1;let out='';
+function d2CmpHTML(){const v=vars();if(v.DIR)return '';const G=v.G&&v.G.length?v.G:[{}];const two=v.NC>1&&G.length>1;let out='';
   for(let gi=0;gi<(two?2:1);gi++){const k=gi?'D2b':'D2';const cur=gi?v.D2B:v.D2,au=gi?v.D2Bauto:v.D2auto;
     const base=gi?{...v,D2Bauto:false}:{...v,D2auto:false};const rec=autoD2(base,gi).D;
     const rows=d2List().map(D=>{const r=hydroFor(gi?{...base,D2B:D}:{...base,D2:D});const g=r.groups[gi]||r.groups[0];const mn=g.mn;const pam=mn.L?mn.dp*1000/mn.L:0;
@@ -718,8 +722,9 @@ function sfield(k,label,opts,autoLbl='Auto'){return `<div class="f"><label for="
 function pfield(k,label,unit,step='1'){return `<div class="f"><label for="q-${k}">${label}</label><div class="unit-in"><input id="q-${k}" data-k="${k}" data-n="1" inputmode="decimal" value="${esc(quote[k])}"><span>${unit}</span></div></div>`}
 
 function nnfield(k,label,unit,ph){const v=quote[k];return `<div class="f"><label for="q-${k}">${label}</label><div class="unit-in"><input id="q-${k}" data-k="${k}" data-n="1" data-nn="1" inputmode="decimal" value="${v==null?'':esc(v)}" placeholder="${esc(ph)}"><span>${unit}</span></div></div>`}
-function colFields(){const two=+quote.nc===2;const N=+quote.N||0;
-  return `<div class="f"><label for="q-nc">Collecteurs</label><select id="q-nc" data-k="nc" data-n="1"><option value="1" ${two?'':'selected'}>1 collecteur</option><option value="2" ${two?'selected':''}>2 collecteurs</option></select></div>`+
+function colFields(){const two=+quote.nc===2;const N=+quote.N||0;const dir=N===1&&quote.nc!=null&&quote.nc!==''&&+quote.nc===0;
+  if(dir)return `<div class="f"><label for="q-nc">Collecteurs</label><select id="q-nc" data-k="nc" data-n="1"><option value="0" selected>Sans collecteur (2 Y)</option><option value="1">1 collecteur</option></select></div>`+pfield('L','Forage → chaufferie','m');
+  return `<div class="f"><label for="q-nc">Collecteurs</label><select id="q-nc" data-k="nc" data-n="1"><option value="0">Sans collecteur (1 seul forage, 2 Y)</option><option value="1" ${two?'':'selected'}>1 collecteur</option><option value="2" ${two?'selected':''}>2 collecteurs</option></select></div>`+
   (two?nnfield('N2','Forages sur collecteur 2','u',String(Math.floor(N/2)))+`<div class="f"><label>Forages sur collecteur 1</label><div class="unit-in"><input id="d-NA" disabled value=""><span>u</span></div></div>`:'')+
   pfield('L',two?'Collecteur 1 → chaufferie':'Collecteur → chaufferie','m')+sfield('D2',two?'Ø collecteur 1 → chaufferie':'Ø collecteur → chaufferie',[0,...d2List()],'Auto (selon débit)')+
   (two?nnfield('L2','Collecteur 2 → chaufferie','m',String(+quote.L||0))+sfield('D2b','Ø collecteur 2 → chaufferie',[0,...d2List()],'Auto (selon débit)'):'')}
@@ -816,10 +821,10 @@ function fPush(q,self){for(let n=0;n<8;n++){const w=fTooClose(q,self);if(!w)retu
 function fClosePairs(){const F=planItems().filter(i=>i.k==='f'),out=[];for(let a=0;a<F.length;a++)for(let b=a+1;b<F.length;b++){const d=Math.hypot(F[a].x-F[b].x,F[a].y-F[b].y);if(d<F_MIN-.005)out.push([F[a],F[b],d])}return out}
 function planInfo(){const it=planItems();if(!it.length)return 'Plan vide : placer les forages, le ou les collecteurs et la chaufferie, ou partir du dimensionnement.';
   const pg=planGeo();const parts=[`<b>${pg.N}</b> forage${pl(pg.N)}`];
-  pg.groups.forEach((g,k)=>parts.push(`collecteur ${(g.c.i||0)+1} : ${g.n} forage${pl(g.n)}, PE ${nf(g.LF)} m, plus éloigné ${nf(g.DF)} m, chaufferie ${nf(g.L)} m`));
+  pg.groups.forEach((g,k)=>parts.push(g.direct?`raccordé directement à la chaufferie, sans collecteur (2 Y) : ${nf(g.LF/2)} m, PE ${nf(g.LF)} m`:`collecteur ${(g.c.i||0)+1} : ${g.n} forage${pl(g.n)}, PE ${nf(g.LF)} m, plus éloigné ${nf(g.DF)} m, chaufferie ${nf(g.L)} m`));
   if(pg.C.length&&pg.F.length)parts.push(`tranchée estimée ${nf(pg.T)} m`);
   {const cp=fClosePairs(),NUM=plNum();if(cp.length)parts.push(`<b class="bad">forages à moins de ${F_MIN} m : ${cp.slice(0,4).map(([a,b,d])=>`F${NUM.get(a)}–F${NUM.get(b)} ${nf(r1(d))} m`).join(', ')}${cp.length>4?'…':''}</b>`)}
-  const miss=[];if(!pg.C.length)miss.push('un collecteur');if(!pg.ch)miss.push('la chaufferie');
+  const miss=[];if(!pg.C.length)miss.push(pg.N===1?'un collecteur (ou la chaufferie pour un raccordement direct)':'un collecteur');if(!pg.ch)miss.push('la chaufferie');
   const on=quote.plan&&quote.plan.on;
   return parts.join(' · ')+(miss.length?` · <span class="warnc">manque ${miss.join(' et ')}</span>`:'')+(on?(planOn()?' · <span class="good">longueurs du chiffrage prises sur le plan</span>':''):' · <span class="status">cocher « Utiliser le plan » pour l’appliquer au chiffrage</span>')}
 /* vue du plan : coin haut-gauche (vx, vy) et largeur w en mètres ; la hauteur suit la forme de la zone */
@@ -907,7 +912,7 @@ function planSVG(){const p=quote.plan||{w:60};const V=planView(),w=V.w,h=V.h,X0=
     const nb=it.filter(i=>i!==dg).map(i=>({i,d:Math.hypot(i.x-dg.x,i.y-dg.y)})).sort((p,q)=>p.d-q.d).slice(0,2);
     nb.forEach(o=>{s+=`<line x1="${dg.x}" y1="${dg.y}" x2="${o.i.x}" y2="${o.i.y}" stroke="#111" stroke-width="1.4" stroke-dasharray="5 4" opacity=".85" vector-effect="non-scaling-stroke"/>`});
     nb.forEach(o=>{s+=mp(dg.x+(o.i.x-dg.x)*.6,dg.y+(o.i.y-dg.y)*.6,nf(Math.round(o.d*10)/10)+' m')});
-    let info='';if(dg.k==='f'){const a=pg.asg.find(q=>q.f===dg);if(a&&pg.C[a.j])info=`liaison → C${(pg.C[a.j].i||0)+1} : ${nf(r1(a.d))} m`}
+    let info='';if(dg.k==='f'){const a=pg.asg.find(q=>q.f===dg);if(a&&pg.C[a.j])info=`liaison → ${pg.direct?'chaufferie':'C'+((pg.C[a.j].i||0)+1)} : ${nf(r1(a.d))} m`}
     else if(dg.k==='c'&&pg.ch){const r=routeFor(dg,pg.ch);info=`→ chaufferie : ${nf(r1(polyLen(r)))} m`}
     if(info)s+=mp(dg.x,dg.y+Math.max(u*3.4,ft*1.9),info)}
   if(plDrag&&plDrag.zr&&plDrag.zr.b){const A=plDrag.zr.a,Bz=plDrag.zr.b;s+=`<rect x="${Math.min(A.x,Bz.x)}" y="${Math.min(A.y,Bz.y)}" width="${Math.abs(Bz.x-A.x)}" height="${Math.abs(Bz.y-A.y)}" fill="var(--accent)" fill-opacity=".08" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>`}
@@ -1045,7 +1050,7 @@ async function planPdf(){
   line({x:tx0,y:ky},{x:tx0+tw0,y:ky},.5,LN);ky-=4;
   const v=vars();const row=(k,val)=>{if(!val)return;T(k,tx0,ky-7,{s:6,col:GR});const ls=[];let cur='';for(const w of pt(val).split(/\s+/)){const t=cur?cur+' '+w:w;if(F.widthOfTextAtSize(t,8)>tw0&&cur){ls.push(cur);cur=w}else cur=t}ls.push(cur);ls.slice(0,2).forEach((l,j)=>T(l,tx0,ky-16-j*9.5,{s:8,f:B}));ky-=12+ls.slice(0,2).length*9.5};
   row('Chantier',quote.nom);row('Lieu',quote.lieu);row('Client',quote.client);
-  row('Forages',`${v.N} × ${nf(v.P)} m, soit ${nf(v.M)} m forés`);row('Collecteurs',pg.groups.length>1?`2 (${pg.groups.map(g=>g.n).join(' + ')} forages)`:'1');
+  row('Forages',`${v.N} × ${nf(v.P)} m, soit ${nf(v.M)} m forés`);row('Collecteurs',pg.direct?'aucun : forage direct en chaufferie (2 Y)':pg.groups.length>1?`2 (${pg.groups.map(g=>g.n).join(' + ')} forages)`:'1');if(pg.direct&&pg.asg[0]&&p.matPdf!==true)row('Forage → chaufferie',nf(r1(pg.asg[0].d))+' m');
   if(pg.ch&&pg.Cch.length&&p.matPdf!==true)row(pg.C.length>1?'Collecteurs → chaufferie':'Collecteur → chaufferie',pg.Cch.map(c=>(pg.C.length>1?'C'+((c.i||0)+1)+' : ':'')+nf(r1(polyLen(routeFor(c,pg.ch))))+' m').join(' · '));
   row('Date',quote.date?new Date(quote.date).toLocaleDateString('fr-FR'):new Date().toLocaleDateString('fr-FR'));row('Établi par',quote.chiffreur);
   if(port){col(1);footX=tx0;footW=tw0;ky-=pad}else{line({x:tx0,y:ky},{x:tx0+tw0,y:ky},.5,LN);ky-=6}
@@ -1059,10 +1064,10 @@ async function planPdf(){
   if(port){col(2);ky-=pad}else{ky-=4;line({x:tx0,y:ky},{x:tx0+tw0,y:ky},.5,LN);ky-=6}T('LÉGENDE',tx0,ky-7,{s:6,col:GR});ky-=12;
   const lg=(draw,txt)=>{draw(tx0+4*K,ky-3.5);T(txt,tx0+10*K,ky-6,{s:7});ky-=p.matPdf===true?10:11};
   lg((x,y)=>{page.drawCircle({x,y,size:1.7*K,color:WH,borderColor:FOR,borderWidth:1.1});page.drawCircle({x,y,size:.6*K,color:FOR})},`Forage géothermique (${nf(v.P)} m)`);
-  lg((x,y)=>{page.drawRectangle({x:x-2*K,y:y-2*K,width:4*K,height:4*K,color:ACC})},'Collecteur');
+  if(!pg.direct)lg((x,y)=>{page.drawRectangle({x:x-2*K,y:y-2*K,width:4*K,height:4*K,color:ACC})},'Collecteur');
   lg((x,y)=>{const q=.75*K;page.drawSvgPath(chBox(q),{x,y,color:LOC});page.drawSvgPath(chFlame(q),{x,y,color:WH})},'Chaufferie');
-  lg((x,y)=>line({x:x-3.5*K,y},{x:x+3.5*K,y},.7,ACC),`Liaison PE forage → collecteur (Ø${v.D1})`);
-  lg((x,y)=>line({x:x-3.5*K,y},{x:x+3.5*K,y},1.6,ACC),'Liaison PE collecteur → chaufferie');if(p.cotes!==false)lg((x,y)=>{page.drawRectangle({x:x-3.5*K,y:y-1.4*K,width:7*K,height:2.8*K,color:WH,borderColor:GR,borderWidth:.4})},'Distance entre forages (m)');
+  lg((x,y)=>line({x:x-3.5*K,y},{x:x+3.5*K,y},pg.direct?1.2:.7,ACC),pg.direct?`Liaison PE forage → chaufferie, sans collecteur (Ø${v.D1}, 2 Y)`:`Liaison PE forage → collecteur (Ø${v.D1})`);
+  if(!pg.direct)lg((x,y)=>line({x:x-3.5*K,y},{x:x+3.5*K,y},1.6,ACC),'Liaison PE collecteur → chaufferie');if(p.cotes!==false)lg((x,y)=>{page.drawRectangle({x:x-3.5*K,y:y-1.4*K,width:7*K,height:2.8*K,color:WH,borderColor:GR,borderWidth:.4})},'Distance entre forages (m)');
   if(!p.noTr)lg((x,y)=>line({x:x-3.5*K,y},{x:x+3.5*K,y},4,SAND),'Tranchée (tracé indicatif)');
   if(p.r5)lg((x,y)=>page.drawCircle({x,y,size:2.6*K,borderColor:FOR,borderWidth:.6,borderDashArray:[1.5,1.2]}),`Rayon de ${planRad()} m autour des forages`);
   {const RC=h=>rgb(parseInt(h.slice(1,3),16)/255,parseInt(h.slice(3,5),16)/255,parseInt(h.slice(5,7),16)/255);resUsed().forEach(r=>{const c=RC(r[3]);lg((x,y)=>line({x:x-3.5*K,y},{x:x+3.5*K,y},1.6,c),r[1]+' – existant')})}
@@ -1141,35 +1146,38 @@ async function planDxf(){
   if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}if(!planItems().length){toast('Plan vide');return}
   const p=planObj(),pg=planGeo(),eq=p.trace==='equerre';const o=pg.ch||pg.C[0]||planItems()[0];
   /* repère : origine sur la chaufferie (ou le collecteur 1), X vers la droite, Y vers le haut, 1 unité = 1 m */
-  const X=x=>+(x-o.x).toFixed(3),Y=y=>+(o.y-y).toFixed(3);const ascii=t=>String(t).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\x20-\x7e]/g,'-');
+  /* fond importé d'un DWG / DXF, ni tourné ni remplacé : on reprend ses coordonnées et ses unités, pour superposer le fichier au dessin d'origine */
+  const bgc=p.bg,cd=bgc&&bgc.kind==='cad'&&bgc.cad&&bgc.iw===bgc.cad.iw&&bgc.ih===bgc.cad.ih&&!((+bgc.rot||0)%360)?bgc.cad:null;
+  const S=cd?cd.mpp/bgc.mpp/cd.u:1,sz=v=>+(v*S).toFixed(4);
+  const X=cd?(x=>+(cd.x0+(x-bgc.x)*S).toFixed(4)):(x=>+(x-o.x).toFixed(3)),Y=cd?(y=>+(cd.y1-(y-bgc.y)*S).toFixed(4)):(y=>+(o.y-y).toFixed(3));const ascii=t=>String(t).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\x20-\x7e]/g,'-');
   const E=[];const ln=(lay,a,b)=>E.push(`0\nLINE\n8\n${lay}\n10\n${X(a.x)}\n20\n${Y(a.y)}\n30\n0\n11\n${X(b.x)}\n21\n${Y(b.y)}\n31\n0`);
-  const tx=(lay,x,y,h,t,c)=>E.push(`0\nTEXT\n8\n${lay}\n10\n${X(x)}\n20\n${Y(y)}\n30\n0\n40\n${h}\n1\n${ascii(t)}`+(c?`\n72\n1\n11\n${X(x)}\n21\n${Y(y)}\n31\n0`:''));
+  const tx=(lay,x,y,h,t,c)=>E.push(`0\nTEXT\n8\n${lay}\n10\n${X(x)}\n20\n${Y(y)}\n30\n0\n40\n${sz(h)}\n1\n${ascii(t)}`+(c?`\n72\n1\n11\n${X(x)}\n21\n${Y(y)}\n31\n0`:''));
   const seg=(lay,a,b)=>legs(routeFor(a,b)).forEach(([p1,p2])=>ln(lay,p1,p2));
   pg.asg.forEach(q=>{const c=pg.C[q.j];if(c)seg('PE_FORAGES',q.f,c)});if(trActive())trSegs().forEach(([a,b])=>ln('TRANCHEES',a,b));
   if(pg.ch)pg.Cch.forEach(c=>{seg('PE_CHAUFFERIE',c,pg.ch);const r=routeFor(c,pg.ch),m=polyMid(r);tx('COTES',m.x,m.y-.4,.6,nf(r1(polyLen(r))).replace(/\s/g,'')+' m',1)});
   const num=plNum();
   planItems().forEach(i=>{
-    if(i.k==='f'){E.push(`0\nCIRCLE\n8\nFORAGES\n10\n${X(i.x)}\n20\n${Y(i.y)}\n30\n0\n40\n0.5`);E.push(`0\nPOINT\n8\nFORAGES\n10\n${X(i.x)}\n20\n${Y(i.y)}\n30\n0`);tx('FORAGES',i.x+.7,i.y-.7,.6,'F'+num.get(i))}
+    if(i.k==='f'){E.push(`0\nCIRCLE\n8\nFORAGES\n10\n${X(i.x)}\n20\n${Y(i.y)}\n30\n0\n40\n${sz(0.5)}`);E.push(`0\nPOINT\n8\nFORAGES\n10\n${X(i.x)}\n20\n${Y(i.y)}\n30\n0`);tx('FORAGES',i.x+.7,i.y-.7,.6,'F'+num.get(i))}
     if(i.k==='c'){const z=.6,c=[[-z,-z],[z,-z],[z,z],[-z,z]].map(([a,b])=>({x:i.x+a,y:i.y+b}));c.forEach((q,k)=>ln('COLLECTEURS',q,c[(k+1)%4]));tx('COLLECTEURS',i.x+.9,i.y-.9,.6,'C'+((i.i||0)+1))}
     if(i.k==='ch'){const c=[[-1.5,-1],[1.5,-1],[1.5,1],[-1.5,1]].map(([a,b])=>({x:i.x+a,y:i.y+b}));c.forEach((q,k)=>ln('CHAUFFERIE',q,c[(k+1)%4]));tx('CHAUFFERIE',i.x,i.y+1.8,.6,'Chaufferie',1)}});
   if(p.zone&&p.zone.closed&&p.zone.pts.length>2){const Q=p.zone.pts;Q.forEach((a,k)=>ln('ZONE_FORAGE',a,Q[(k+1)%Q.length]))}
   if(empClosed()){const Q=p.emp.pts;Q.forEach((a,k)=>ln('EMPRISE_CHANTIER',a,Q[(k+1)%Q.length]));
-    if(empCote())empEdges(Q).forEach(e=>{const tx0=e.G.mx+e.nx*.6,ty0=e.G.my+e.ny*.6;E.push(`0\nTEXT\n8\nEMPRISE_CHANTIER\n10\n${X(tx0)}\n20\n${Y(ty0)}\n30\n0\n40\n0.5\n1\n${ascii(dimTxt(e.L).replace(/\s/g,''))}\n50\n${(-e.G.a).toFixed(2)}\n72\n1\n11\n${X(tx0)}\n21\n${Y(ty0)}\n31\n0`)})}
-  if(p.r5)planItems().forEach(i=>{if(i.k==='f')E.push(`0\nCIRCLE\n8\nRAYON_${planRad()}M\n10\n${X(i.x)}\n20\n${Y(i.y)}\n30\n0\n40\n${planRad()}`)});
-  resList().forEach(l=>{const T=resT(l.t),lay='RESEAU_'+T[4];for(let k=1;k<l.pts.length;k++)ln(lay,l.pts[k-1],l.pts[k]);const lb=resLab(l.pts);if(lb){const tx0=lb.x+lb.nx*.5,ty0=lb.y+lb.ny*.5;E.push(`0\nTEXT\n8\n${lay}\n10\n${X(tx0)}\n20\n${Y(ty0)}\n30\n0\n40\n0.5\n1\n${ascii(T[2]+' existant')}\n50\n${(-lb.a).toFixed(2)}\n72\n1\n11\n${X(tx0)}\n21\n${Y(ty0)}\n31\n0`)}});
+    if(empCote())empEdges(Q).forEach(e=>{const tx0=e.G.mx+e.nx*.6,ty0=e.G.my+e.ny*.6;E.push(`0\nTEXT\n8\nEMPRISE_CHANTIER\n10\n${X(tx0)}\n20\n${Y(ty0)}\n30\n0\n40\n${sz(0.5)}\n1\n${ascii(dimTxt(e.L).replace(/\s/g,''))}\n50\n${(-e.G.a).toFixed(2)}\n72\n1\n11\n${X(tx0)}\n21\n${Y(ty0)}\n31\n0`)})}
+  if(p.r5)planItems().forEach(i=>{if(i.k==='f')E.push(`0\nCIRCLE\n8\nRAYON_${planRad()}M\n10\n${X(i.x)}\n20\n${Y(i.y)}\n30\n0\n40\n${sz(planRad())}`)});
+  resList().forEach(l=>{const T=resT(l.t),lay='RESEAU_'+T[4];for(let k=1;k<l.pts.length;k++)ln(lay,l.pts[k-1],l.pts[k]);const lb=resLab(l.pts);if(lb){const tx0=lb.x+lb.nx*.5,ty0=lb.y+lb.ny*.5;E.push(`0\nTEXT\n8\n${lay}\n10\n${X(tx0)}\n20\n${Y(ty0)}\n30\n0\n40\n${sz(0.5)}\n1\n${ascii(T[2]+' existant')}\n50\n${(-lb.a).toFixed(2)}\n72\n1\n11\n${X(tx0)}\n21\n${Y(ty0)}\n31\n0`)}});
   dimList().forEach(o=>{const G=dimGeom(o.A,o.B),tk=.35;ln('COTES',o.A,o.B);[o.A,o.B].forEach(q=>ln('COTES',{x:q.x-(G.ux+G.nx)*tk,y:q.y-(G.uy+G.ny)*tk},{x:q.x+(G.ux+G.nx)*tk,y:q.y+(G.uy+G.ny)*tk}));
-    const tx0=G.mx-G.nx*.35,ty0=G.my-G.ny*.35;E.push(`0\nTEXT\n8\nCOTES\n10\n${X(tx0)}\n20\n${Y(ty0)}\n30\n0\n40\n0.5\n1\n${ascii(dimTxt(G.L).replace(/\s/g,''))}\n50\n${(-G.a).toFixed(2)}\n72\n1\n11\n${X(tx0)}\n21\n${Y(ty0)}\n31\n0`)});
-  const bb=planBBox(3);tx('TEXTES',bb.x0,bb.y0+bb.h+1.5,.8,`Plan d'implantation ${quote.nom||''} - Hydreau Forage - unites : metres (1 unite = 1 m)`);
+    const tx0=G.mx-G.nx*.35,ty0=G.my-G.ny*.35;E.push(`0\nTEXT\n8\nCOTES\n10\n${X(tx0)}\n20\n${Y(ty0)}\n30\n0\n40\n${sz(0.5)}\n1\n${ascii(dimTxt(G.L).replace(/\s/g,''))}\n50\n${(-G.a).toFixed(2)}\n72\n1\n11\n${X(tx0)}\n21\n${Y(ty0)}\n31\n0`)});
+  const bb=planBBox(3);tx('TEXTES',bb.x0,bb.y0+bb.h+1.5,.8,`Plan d'implantation ${quote.nom||''} - Hydreau Forage - ${cd?'coordonnees et unites du plan '+ascii(bgc.name||'importe'):'unites : metres (1 unite = 1 m)'}`);
   const layers=[['TRANCHEES',33],['ZONE_FORAGE',1],['EMPRISE_CHANTIER',32],['FORAGES',30],['COLLECTEURS',5],['CHAUFFERIE',3],['PE_FORAGES',4],['PE_CHAUFFERIE',5],['COTES',7],['TEXTES',7]];
   const dxf=['0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1009\n9\n$INSBASE\n10\n0\n20\n0\n30\n0\n0\nENDSEC',
     '0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLTYPE\n70\n1\n0\nLTYPE\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0.0\n0\nENDTAB',
     `0\nTABLE\n2\nLAYER\n70\n${layers.length}\n`+layers.map(([n,c])=>`0\nLAYER\n2\n${n}\n70\n0\n62\n${c}\n6\nCONTINUOUS`).join('\n')+'\n0\nENDTAB\n0\nENDSEC',
     '0\nSECTION\n2\nENTITIES\n'+E.join('\n')+'\n0\nENDSEC\n0\nEOF\n'].join('\n');
-  try{await dlApi.save({filename:`plan-implantation-${plName()}.dxf`,data:new Blob([dxf.replace(/\n/g,'\r\n')],{type:'application/dxf'})});toast('DXF : 1 unité = 1 m, origine sur la '+(pg.ch?'chaufferie':'collecteur 1'))}
+  try{await dlApi.save({filename:`plan-implantation-${plName()}.dxf`,data:new Blob([dxf.replace(/\n/g,'\r\n')],{type:'application/dxf'})});toast(cd?'DXF aux coordonnées du plan importé : dans AutoCAD, l’insérer au point 0,0 à l’échelle 1 (ou copier-coller avec les coordonnées d’origine), puis enregistrer en DWG':bgc&&bgc.kind==='cad'?'Fond tourné ou importé avant cette version : DXF en mètres, origine sur la '+(pg.ch?'chaufferie':'collecteur 1')+'. Réimporter le DWG pour garder ses coordonnées':'DXF : 1 unité = 1 m, origine sur la '+(pg.ch?'chaufferie':'collecteur 1'))}
   catch(e){if(e?.code!=='cancelled'&&e?.code!=='declined')toast('Export annulé')}}
 function planDraw(){const ew=$('#pl-exp-w');if(ew&&!ew.contains(document.activeElement))ew.innerHTML=planExpHTML();const svg=$('#pl-svg');if(!svg)return;svg.style.aspectRatio=plFull?'auto':(1/planAsp()).toFixed(4);const V=planView();svg.setAttribute('viewBox',`${V.x} ${V.y} ${V.w} ${V.h}`);const fg=$('#pl-fg');if(fg){fg.innerHTML=planSVG();planBgUpdate()}else svg.innerHTML=planSVG();const pin=$('#pl-info');if(pin)pin.innerHTML=planInfo()}
 /* recopie dans le chiffrage ce que donne le plan (nombre de forages, collecteurs, longueurs vers la chaufferie) */
-function planSync(){if(!planOn())return;const pg=planGeo();quote.N=pg.N;quote.nc=pg.groups.length>1?2:1;quote.N2=pg.groups[1]?pg.groups[1].n:null;
+function planSync(){if(!planOn())return;const pg=planGeo();quote.N=pg.N;quote.nc=pg.direct?0:pg.groups.length>1?2:1;if(pg.direct){quote.L=pg.asg[0]?r1(pg.asg[0].d):0;quote.L2=null;return}quote.N2=pg.groups[1]?pg.groups[1].n:null;
   if(pg.ch){quote.L=pg.groups[0]?pg.groups[0].L:0;quote.L2=pg.groups[1]?pg.groups[1].L:null}}
 function planLocks(){const on=planOn(),ch=on&&planGeo().ch;
   [['N',on],['E',on],['nc',on],['N2',on],['L',ch],['L2',ch]].forEach(([k,lk])=>{const el=$('#q-'+k);if(!el)return;el.disabled=!!lk;el.title=lk?'Donné par le plan d’implantation':''});
@@ -1256,7 +1264,7 @@ function plHint(){if(plLocked()&&!PL_LOCK_OK.has(plTool))return '<b>Plan verroui
     return `Réseaux existants (DT-DICT) : choisir le réseau, puis dessiner son tracé sur le plan, en faisant glisser ou point par point (double-clic pour terminer). Les sommets se déplacent ; <b>Gomme</b> sur un réseau pour l’effacer. ${sel}`+(n?` <button class="btn sm ghost danger" id="pl-resdel">Effacer les ${n} réseau${n>1?'x':''}</button>`:'')}
   if(plTool==='tch'){if(plTch)return `Tranchée en cours (${nf(r1(polyLen(plTch.pts)))} m) : dessiner en faisant glisser, ou cliquer les points ; double-clic, Échap ou re-clic sur le dernier point pour terminer.`;
     return 'Tranchée : dessiner librement (faire glisser) ou point par point la tranchée principale, en passant par les forages ; les bouts s’accrochent aux forages, collecteurs, chaufferie et aux autres tranchées. Les liaisons suivent alors les tranchées par le chemin le plus court, et chaque forage est raccordé au point le plus proche. Pour <b>contourner un arbre</b> : tirer le <b>+</b> au milieu d’un tronçon (crée un sommet), ou déplacer les carrés ; Gomme sur un tronçon pour l’effacer, puis redessiner le passage. Maj + clic pour partir d’une tranchée existante sur un +.'+` <span style="display:block;margin-top:4px"><button class="btn sm primary" id="pl-trauto">Tracer automatiquement</button> <label class="status" title="La tranchée passe de forage en forage en évitant les virages à angle droit (raccords en biais par un autre forage) et les croisements"><input type="checkbox" id="pl-trbiais" ${quote.plan&&quote.plan.trBiais===false?'':'checked'}> éviter les angles droits</label> <label class="status">Priorité <select id="pl-trmode">${TR_MODES.map(m=>`<option value="${m[0]}" ${((quote.plan&&quote.plan.trMode)||'tranchee')===m[0]?'selected':''}>${m[1]}</option>`).join('')}</select></label></span>`+((quote.plan&&quote.plan.trenches&&quote.plan.trenches.length)?` <button class="btn sm ghost danger" id="pl-tchdel">Effacer toutes les tranchées</button>`:'')}
-  if(plTool==='del'){const pg=planOn()?planGeo():null,n=pg?pg.nc:0,nc=pg&&pg.ch?pg.C.length-pg.Cch.length:0;
+  if(plTool==='del'){const pg=planOn()?planGeo():null,n=pg?pg.nc:0,nc=pg&&pg.ch&&!pg.direct?pg.C.length-pg.Cch.length:0;
     return 'Gomme : cliquer un forage, un collecteur ou la chaufferie pour l’effacer ; cliquer <b>n’importe quelle liaison</b> pour la supprimer (le forage reste en place, non raccordé, entouré en pointillé — le relier ensuite avec l’outil <b>Liaisons</b>). Tronçon de tranchée : cliquer là où aucune liaison ne passe, ou <b>Maj + clic</b>.'+
       ((n||nc)?` <span style="display:block;margin-top:4px"><b class="bad">${n?n+' forage'+pl(n)+' non raccordé'+pl(n):''}${n&&nc?' · ':''}${nc?nc+' collecteur'+pl(nc)+' sans liaison chaufferie':''}</b> — non compté${pl(n+nc)} dans les longueurs de PE. <button class="btn sm" id="pl-relink">Tout raccorder en direct</button></span>`:'')}
   if(plTool==='cote'){const n=dimList().length,warn=bgOn()&&!quote.plan.bg.cal?' <b class="bad">L’échelle du fond n’est pas calée : les distances lues sur la photo seront fausses (bouton « Caler l’échelle »).</b>':'';
@@ -1423,6 +1431,7 @@ async function importCad(cad,name){const pr=cadPrims(cad);if(!pr.polys.length)th
   g.fillStyle='#2b2b2b';g.textBaseline='alphabetic';pr.texts.forEach(t=>{const px=t.h*u*ppm;if(px<5||px>400)return;g.save();g.translate(X(t.x),Y(t.y));g.rotate(-t.r);g.font=`${px}px Arial, sans-serif`;g.fillText(String(t.t).slice(0,120),0,0);g.restore()});
   const unitName={1:'mètres',.01:'centimètres',.001:'millimètres',.0254:'pouces',.3048:'pieds',.1:'décimètres'}[u]||'';
   await bgSet(cv,{kind:'cad',name,mppSrc:1/ppm,cadUnits:unitName,cadGuess:guess});
+  {const b=planObj().bg;if(b&&b.kind==='cad'){b.cad={x0,y1,u,iw:b.iw,ih:b.ih,mpp:b.mpp};store.set('draft',quote)}}
   if(guess)setTimeout(()=>toast(`Unités du fichier non indiquées : lues en ${unitName}. Si l’échelle est fausse, utiliser « Caler l’échelle ».`),2600);
   if(pr.truncated)setTimeout(()=>toast('Dessin très chargé : une partie seulement a été lue'),5200)}
 /* ----- KML / KMZ (Google Earth, Géoportail) : projection locale autour du centre du fichier ----- */
@@ -1482,7 +1491,7 @@ async function planKml(){if(!dlApi){toast('Téléchargement indisponible sur cet
   const v=vars(),pg=planGeo(),num=plNum();let pm='';
   planItems().forEach(i=>{const nm=i.k==='f'?'F'+num.get(i):i.k==='c'?'C'+((i.i||0)+1):'Chaufferie';const st=i.k==='f'?'f':i.k==='c'?'c':'ch';
     const ds=i.k==='f'?`Forage géothermique ${nf(v.P)} m`:i.k==='c'?'Collecteur':'Chaufferie';pm+=`<Placemark><name>${x(nm)}</name><description>${x(ds)}</description><styleUrl>#${st}</styleUrl><Point><coordinates>${ll(i)}</coordinates></Point></Placemark>\n`});
-  pg.asg.forEach(a=>{const c=pg.C[a.j];if(!c)return;pm+=`<Placemark><name>Liaison F${num.get(a.f)} → C${(c.i||0)+1} (${nf(r1(a.d))} m)</name><styleUrl>#pe</styleUrl><LineString><tessellate>1</tessellate><coordinates>${a.r.map(ll).join(' ')}</coordinates></LineString></Placemark>\n`});
+  pg.asg.forEach(a=>{const c=pg.C[a.j];if(!c)return;pm+=`<Placemark><name>Liaison F${num.get(a.f)} → ${pg.direct?'chaufferie':'C'+((c.i||0)+1)} (${nf(r1(a.d))} m)</name><styleUrl>#pe</styleUrl><LineString><tessellate>1</tessellate><coordinates>${a.r.map(ll).join(' ')}</coordinates></LineString></Placemark>\n`});
   if(pg.ch)pg.Cch.forEach(c=>{const r=routeFor(c,pg.ch);pm+=`<Placemark><name>Liaison C${(c.i||0)+1} → chaufferie (${nf(r1(polyLen(r)))} m)</name><styleUrl>#pe2</styleUrl><LineString><tessellate>1</tessellate><coordinates>${r.map(ll).join(' ')}</coordinates></LineString></Placemark>\n`});
   if(empClosed()){const Q=quote.plan.emp.pts;pm+=`<Placemark><name>Emprise du chantier (${nf(Math.round(polyArea(Q)))} m²)</name><styleUrl>#emp</styleUrl><LineString><tessellate>1</tessellate><coordinates>${[...Q,Q[0]].map(ll).join(' ')}</coordinates></LineString></Placemark>\n`}
   resList().forEach(l=>{const T=resT(l.t);pm+=`<Placemark><name>${x(T[1])} – existant (${nf(r1(polyLen(l.pts)))} m)</name><styleUrl>#res_${l.t}</styleUrl><LineString><tessellate>1</tessellate><coordinates>${l.pts.map(ll).join(' ')}</coordinates></LineString></Placemark>\n`});
@@ -1670,7 +1679,8 @@ function planGen(){const p=planObj();const N=+quote.N||0;if(!N){toast('Indiquer 
   const NB=two?Math.max(1,Math.min(N-1,quote.N2!=null&&quote.N2!==''?Math.round(+quote.N2):Math.floor(N/2))):0,NA=N-NB;
   const L2=quote.L2!=null&&quote.L2!==''?+quote.L2:L;const items=[];
   const d0=mid?Math.max(COLL_MIN,E/2):COLL_MIN;const row=(n,cx,y,ci)=>{if(mid){const n1=Math.ceil(n/2);for(let k=1;k<=n1;k++)items.push({k:'f',x:cx-(d0+(k-1)*E),y});for(let k=1;k<=n-n1;k++)items.push({k:'f',x:cx+d0+(k-1)*E,y})}else for(let k=1;k<=n;k++)items.push({k:'f',x:cx+d0+(k-1)*E,y});items.push({k:'c',i:ci,x:cx,y})};
-  const chx=-Math.max(L,0);items.push({k:'ch',x:chx,y:0});row(NA,0,0,0);
+  const dirG=N===1&&quote.nc!=null&&quote.nc!==''&&+quote.nc===0;
+  const chx=-Math.max(L,dirG?3:0);items.push({k:'ch',x:chx,y:0});if(dirG)items.push({k:'f',x:0,y:0});else row(NA,0,0,0);
   if(two){const dy=Math.max((Math.max(NA,NB)+1)*E*(mid?0.6:1),6),dx=Math.sqrt(Math.max(L2*L2-dy*dy,0));row(NB,chx+dx,dy,1)}
   /* ancrage : sur la chaufferie déjà placée (ou le collecteur 1), sinon au centre du fond / de la vue ; la vue et le fond ne bougent pas */
   const old=planItems(),och=old.find(i=>i.k==='ch'),oc=old.find(i=>i.k==='c'&&!(i.i||0));let ox,oy;
@@ -2068,7 +2078,7 @@ const POSTES=[
   {id:'forage',ds:'forage',unit:'ml',name:()=>'Forage',desc:v=>[`${v.N} forage${pl(v.N)} de ${nf(v.P)} m`,'Pré-tubage','Marteau fond de trou']},
   {id:'sondes',ds:'forage',unit:'ml',name:()=>'Mise en place des sondes et fourniture',desc:v=>[`Sondes géothermiques double U PE100 Ø${v.P>150?40:32} PN${pnSonde(v.P)}, garantie 30 ans`,'Cimentation : coulis géothermique > 2 W/m.K']},
   {id:'collecteur',ds:'racc',unit:'forfait',name:v=>v.NC>1?`2 collecteurs extérieurs (${v.NA} + ${v.NB} forages)`:`Collecteur extérieur ${v.N} forage${pl(v.N)}`,desc:()=>['Collecteur extérieur PEHD avec vannes d’arrêt','Manchons électrosoudables et PEHD des forages vers le collecteur']},
-  {id:'raccordement',ds:'racc',unit:'forfait',name:()=>'Raccordement',desc:v=>[`Liaisons forages → collecteur : ${nf(v.LF)} m de PE Ø${v.D1}`,...(v.NC>1?[...(v.L>0?[`Liaison collecteur 1 → chaufferie : ${nf(v.LC)} m de PE Ø${v.D2}`]:[]),...(v.L2>0?[`Liaison collecteur 2 → chaufferie : ${nf(v.LCB)} m de PE Ø${v.D2B}`]:[])]:(v.L>0?[`Liaison collecteur → chaufferie : ${nf(v.LC)} m de PE Ø${v.D2}`]:[])),'Électrosoudure','Mise en pression du réseau']},
+  {id:'raccordement',ds:'racc',unit:'forfait',name:()=>'Raccordement',desc:v=>v.DIR?[`Forage raccordé directement à la chaufferie, sans collecteur (2 Y) : ${nf(v.LF)} m de PE Ø${v.D1}`,'Électrosoudure','Mise en pression du réseau']:[`Liaisons forages → collecteur : ${nf(v.LF)} m de PE Ø${v.D1}`,...(v.NC>1?[...(v.L>0?[`Liaison collecteur 1 → chaufferie : ${nf(v.LC)} m de PE Ø${v.D2}`]:[]),...(v.L2>0?[`Liaison collecteur 2 → chaufferie : ${nf(v.LCB)} m de PE Ø${v.D2B}`]:[])]:(v.L>0?[`Liaison collecteur → chaufferie : ${nf(v.LC)} m de PE Ø${v.D2}`]:[])),'Électrosoudure','Mise en pression du réseau']},
   {id:'glycol',ds:'racc',unit:'L',name:()=>'Glycol',desc:()=>[`Monopropylène glycol alimentaire, pour un dosage à ${nf(concGly())} %`]},
   {id:'terrassement',ds:'racc',unit:'forfait',name:()=>'Terrassement',desc:v=>['Ouverture et fermeture de tranchées',...(v.T>0?[`Longueur de tranchée estimée : ${nf(v.T)} m`]:[])]},
   {id:'deblais',ds:'racc',unit:'forfait',name:()=>'Évacuation des déblais',desc:()=>[]},
@@ -2501,8 +2511,8 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
   h2('Dimensionnement');
   const Ds=v.P>150?40:32;
   kv([['Nombre de forages',`${v.N}`],['Profondeur par forage',`${nf(v.P)} m`],['Mètres forés',`${nf(v.M)} m`],['Sondes',`Double U PE100 Ø${Ds} PN${pnSonde(v.P)}`],
-      ...(v.src==='plan'?[['Implantation','selon plan ci-dessous']]:[['Espacement entre forages',`${nf(v.E)} m`]]),['Liaisons forages -> collecteur'+(v.NC>1?'s':''),`${nf(v.LF)} m de PE Ø${v.D1} (aller + retour)`],
-      ...(v.NC>1?[['Collecteurs',`2 (${v.NA} + ${v.NB} forages)`],['Collecteur 1 -> chaufferie',`${nf(v.L)} m, soit ${nf(v.LC)} m de PE Ø${v.D2}`],['Collecteur 2 -> chaufferie',`${nf(v.L2)} m, soit ${nf(v.LCB)} m de PE Ø${v.D2B}`]]
+      ...(v.src==='plan'?[['Implantation','selon plan ci-dessous']]:[['Espacement entre forages',`${nf(v.E)} m`]]),...(v.DIR?[['Liaison forage -> chaufferie',`sans collecteur (2 Y), ${nf(v.LF/2)} m, soit ${nf(v.LF)} m de PE Ø${v.D1} (aller + retour)`]]:[['Liaisons forages -> collecteur'+(v.NC>1?'s':''),`${nf(v.LF)} m de PE Ø${v.D1} (aller + retour)`]]),
+      ...(v.DIR?[]:v.NC>1?[['Collecteurs',`2 (${v.NA} + ${v.NB} forages)`],['Collecteur 1 -> chaufferie',`${nf(v.L)} m, soit ${nf(v.LC)} m de PE Ø${v.D2}`],['Collecteur 2 -> chaufferie',`${nf(v.L2)} m, soit ${nf(v.LCB)} m de PE Ø${v.D2B}`]]
         :[['Collecteur -> chaufferie',`${nf(v.L)} m, soit ${nf(v.LC)} m de PE Ø${v.D2}`]]),['Tranchée',`${nf(v.T)} m`]]);
   if(v.src==='plan'&&mode==='descriptif'){h2('Plan d’implantation');const p=quote.plan,pw=+p.w||60,ph=pw*0.6,vx=+p.vx||0,vy=+p.vy||0,bw=CW,bh=bw*0.6,sx=bw/pw;ensure(bh+24);
     const ox=M,oy=y-bh,P=(a)=>({x:ox+(a.x-vx)*sx,y:oy+bh-(a.y-vy)*sx});const FOR=rgb(224/255,24/255,45/255),LOC=rgb(79/255,107/255,58/255),GRID=rgb(.9,.92,.91);
@@ -2511,7 +2521,7 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
     const pg=planGeo(),eq=p.trace==='equerre';const ln=(a,b,th,dash)=>{const o={thickness:th,color:ACC,...(dash?{dashArray:[3,2]}:{})};legs(routeFor(a,b)).forEach(([p1,p2])=>page.drawLine({start:P(p1),end:P(p2),...o}))};
     pg.asg.forEach(a=>{const c=pg.C[a.j];if(c)ln(a.f,c,.7,true)});if(pg.ch)pg.Cch.forEach(c=>{ln(c,pg.ch,2,false);const rr=routeFor(c,pg.ch),mm=P(polyMid(rr)),mx=mm.x,my=mm.y;text(`${nf(r1(polyLen(rr)))} m`,mx-20,my+4,{size:7.5,f:B,align:'center',w:40})});
     pg.F.forEach((f,k)=>{const A=P(f);page.drawCircle({x:A.x,y:A.y,size:3.2,color:FOR});text(String(k+1),A.x-10,A.y+5,{size:6.5,color:GR,align:'center',w:20})});
-    pg.C.forEach(c=>{const A=P(c);page.drawRectangle({x:A.x-6,y:A.y-6,width:12,height:12,color:ACC});text('C'+((c.i||0)+1),A.x-6,A.y-2.6,{size:6.5,f:B,color:rgb(1,1,1),align:'center',w:12})});
+    pg.C.forEach(c=>{if(c.k!=='c')return;const A=P(c);page.drawRectangle({x:A.x-6,y:A.y-6,width:12,height:12,color:ACC});text('C'+((c.i||0)+1),A.x-6,A.y-2.6,{size:6.5,f:B,color:rgb(1,1,1),align:'center',w:12})});
     if(pg.ch){const A=P(pg.ch);page.drawRectangle({x:A.x-24,y:A.y-7,width:48,height:14,color:LOC});text('Chaufferie',A.x-24,A.y-3,{size:7,f:B,color:rgb(1,1,1),align:'center',w:48})}
     {const inV=q=>q.x>=vx&&q.x<=vx+pw&&q.y>=vy&&q.y<=vy+ph;const EMC=rgb(122/255,78/255,30/255);
       if(empClosed()){const Q=p.emp.pts;Q.forEach((a,k)=>{const b2=Q[(k+1)%Q.length];if(inV(a)||inV(b2))page.drawLine({start:P(a),end:P(b2),thickness:1,color:EMC,dashArray:[6,2,1.5,2]})});
@@ -2523,7 +2533,7 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
         const ru=resUsed();if(ru.length){let lx=ox+6;const ly=oy+bh-10;ru.forEach(r=>{const c=RC(r[3]),t=pt(r[2]+' existant'),w=F.widthOfTextAtSize(t,6.5);page.drawRectangle({x:lx-2,y:ly-3,width:w+18,height:10,color:rgb(1,1,1),opacity:.85});page.drawLine({start:{x:lx,y:ly+1.5},end:{x:lx+10,y:ly+1.5},thickness:1.6,color:c});page.drawText(t,{x:lx+13,y:ly-.6,size:6.5,font:F,color:INK});lx+=w+24})}}
       dimList().forEach(o=>{if(!inV(o.A)||!inV(o.B))return;const A=P(o.A),Bq=P(o.B);page.drawLine({start:A,end:Bq,thickness:.7,color:INK});const mx=(A.x+Bq.x)/2,my=(A.y+Bq.y)/2,t=dimTxt(o.L);page.drawRectangle({x:mx-15,y:my-4.5,width:30,height:9,color:rgb(1,1,1),borderColor:INK,borderWidth:.4});text(t,mx-15,my-2.2,{size:6.5,align:'center',w:30})})}
     page.drawLine({start:{x:ox+8,y:oy+8},end:{x:ox+8+maj*sx,y:oy+8},thickness:1.5,color:INK});text(`${maj} m`,ox+8,oy+12,{size:7,align:'center',w:maj*sx});
-    y=oy-6;para(pg.groups.map(g=>`Collecteur ${(g.c.i||0)+1} : ${g.n} forage${pl(g.n)}, ${nf(g.LF)} m de PE, forage le plus éloigné à ${nf(g.DF)} m, chaufferie à ${nf(g.L)} m.`).join(' ')+` Tranchée estimée ${nf(pg.T)} m (tracé ${eq?'en équerre':'en ligne droite'}).`,8.5,GR);if(String(p.note||'').trim()){y-=2;para('Note : '+String(p.note).trim(),9,INK)}}
+    y=oy-6;para(pg.groups.map(g=>g.direct?`Forage raccordé directement à la chaufferie (sans collecteur, 2 Y) : ${nf(g.LF/2)} m, soit ${nf(g.LF)} m de PE.`:`Collecteur ${(g.c.i||0)+1} : ${g.n} forage${pl(g.n)}, ${nf(g.LF)} m de PE, forage le plus éloigné à ${nf(g.DF)} m, chaufferie à ${nf(g.L)} m.`).join(' ')+` Tranchée estimée ${nf(pg.T)} m (tracé ${eq?'en équerre':'en ligne droite'}).`,8.5,GR);if(String(p.note||'').trim()){y-=2;para('Note : '+String(p.note).trim(),9,INK)}}
   /* sections */
   const cols=withPrices?[{t:'Désignation',w:235},{t:'Unité',w:45},{t:'Quantité',w:60,a:'right'},{t:'PU HT',w:80,a:'right'},{t:'Total HT',w:95.28,a:'right'}]
                        :[{t:'Désignation',w:335},{t:'Unité',w:70},{t:'Quantité',w:110.28,a:'right'}];
