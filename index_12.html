@@ -854,7 +854,15 @@ function planInfo(){const it=planItems();if(!it.length)return 'Plan vide : place
 let plFull=false;
 function planAsp(){const sv=$('#pl-svg');if(plFull&&sv){const r=sv.getBoundingClientRect();if(r.width>50&&r.height>50)return r.height/r.width}
   const b=quote.plan&&quote.plan.bg;if(bgOn()&&b.iw&&b.ih)return Math.max(.45,Math.min(1.25,(b.ih*b.mpp)/(b.iw*b.mpp)));return .6}
-function planView(){const p=quote.plan||{};const w=+p.w||60;return {x:+p.vx||0,y:+p.vy||0,w,h:w*planAsp()}}
+/* avec un fond affiché, la vue reste sur le fond (et les éléments placés) : on ne peut plus le faire glisser hors du cadre ni dézoomer dans le vide */
+function planViewBounds(){if(!bgOn()||(plDrag&&plDrag.bg))return null;const b=quote.plan.bg,W=b.iw*b.mpp,H=b.ih*b.mpp,cx=b.x+W/2,cy=b.y+H/2,a=(+b.vrot||0)*Math.PI/180,co=Math.abs(Math.cos(a)),si=Math.abs(Math.sin(a));
+  const hw=(W*co+H*si)/2,hh=(W*si+H*co)/2;let x0=cx-hw,x1=cx+hw,y0=cy-hh,y1=cy+hh;planItems().forEach(i=>{x0=Math.min(x0,i.x);x1=Math.max(x1,i.x);y0=Math.min(y0,i.y);y1=Math.max(y1,i.y)});
+  return {x0,x1,y0,y1}}
+function planView(){const p=quote.plan||{};let w=+p.w||60,x=+p.vx||0,y=+p.vy||0;const asp=planAsp();const B=planViewBounds();
+  if(B){const bw=B.x1-B.x0,bh=B.y1-B.y0;w=Math.min(w,Math.min(bw,bh/asp));const h=w*asp;
+    x=w>=bw-1e-6?(B.x0+B.x1)/2-w/2:Math.min(Math.max(x,B.x0),B.x1-w);y=h>=bh-1e-6?(B.y0+B.y1)/2-h/2:Math.min(Math.max(y,B.y0),B.y1-h);
+    if(quote.plan&&(p.w!==w||p.vx!==x||p.vy!==y)){p.w=Math.round(w*100)/100;p.vx=x;p.vy=y;w=p.w}}
+  return {x,y,w,h:w*asp}}
 function planSymU(w){const k=+(quote.plan&&quote.plan.symK)||1;return k*planSymU0(w)}
 function planSymU0(w){const it=planItems();let d=Infinity;for(let a=0;a<it.length;a++)for(let b=a+1;b<it.length;b++){const q=Math.hypot(it[a].x-it[b].x,it[a].y-it[b].y);if(q>.05&&q<d)d=q}
   return Math.max(w/450,Math.min(w/100,d/3.4))}
