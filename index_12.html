@@ -245,6 +245,7 @@ table.list tr.row:hover td{background:var(--panel2)}
 .pl-ic-rot{width:11px!important;height:11px!important;border:1.8px solid currentColor!important;border-right-color:transparent!important;border-radius:50%!important;background:none!important}
 .pl-svg.pl-rotc{cursor:grab}
 .pl-ic-note{width:14px!important;height:10px!important;border:0!important;border-radius:0!important;background:linear-gradient(135deg,transparent 46%,currentColor 46%,currentColor 58%,transparent 58%)!important;position:relative}.pl-ic-note::after{content:'';position:absolute;left:0;bottom:0;border-left:5px solid currentColor;border-top:5px solid transparent}
+.pl-ic-gps{width:11px!important;height:11px!important;border:1.8px solid currentColor!important;border-radius:50%!important;background:radial-gradient(circle,currentColor 2px,transparent 2.5px)!important}
 .pl-ic-cote{width:16px!important;height:8px!important;border:0!important;border-radius:0!important;background:linear-gradient(var(--ink),var(--ink)) center/100% 1.5px no-repeat,linear-gradient(var(--ink),var(--ink)) left/1.5px 100% no-repeat,linear-gradient(var(--ink),var(--ink)) right/1.5px 100% no-repeat!important}
 .pl-ic-emp{width:14px!important;height:10px!important;border:1.5px dashed #7A4E1E!important;border-radius:1px;background:transparent!important}
 .pl-ic-tr{width:14px!important;height:8px!important;border:0!important;background:linear-gradient(135deg,transparent 45%,var(--racc) 45%,var(--racc) 60%,transparent 60%)}
@@ -771,7 +772,7 @@ function empLab(P,off){let bk=0,by=Infinity;P.forEach((a,k)=>{const b=P[(k+1)%P.
   /* décalé vers l'intérieur de l'emprise, pour laisser la cote du côté à l'extérieur */const c=P.reduce((q,v)=>({x:q.x+v.x/P.length,y:q.y+v.y/P.length}),{x:0,y:0}),G=dimGeom(a,b);let nx=G.nx,ny=G.ny;if(nx*(c.x-m.x)+ny*(c.y-m.y)<0){nx=-nx;ny=-ny}return {x:m.x+nx*off,y:m.y+ny*off}}
 /* verrouillage de l'implantation sur le fond */
 const plLocked=()=>!!(quote&&quote.plan&&quote.plan.lock);
-const PL_LOCK_OK=new Set(['pan','cote','bg','zoom','note']);
+const PL_LOCK_OK=new Set(['pan','cote','bg','zoom','note','gps']);
 function plLockMsg(){toast('Plan verrouillé : cliquer sur le cadenas pour modifier l’implantation')}
 const LOCK_SVG=on=>`<svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true" style="flex:none"><rect x="1" y="6" width="10" height="7.5" rx="1.5" fill="currentColor"/><path d="${on?'M3.2 6V4.2a2.8 2.8 0 0 1 5.6 0V6':'M3.2 6V4.2a2.8 2.8 0 0 1 5.4-1'}" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`;
 function plShiftAll(dx,dy){if(!dx&&!dy)return;const p=quote.plan,mv=q=>{if(q){q.x=+q.x+dx;q.y=+q.y+dy}};
@@ -827,7 +828,41 @@ function annHit(q){const r=planView().w/45;let best=null,bd=r;annList().forEach(
 function annLineHit(q){const tol=planView().w/70;let bi=-1,bd=tol;annList().forEach((n,i)=>{const d=segDist(q.x,q.y,n.a,n.b);if(d<bd){bd=d;bi=i}});return bi}
 /* pointe de flèche (triangle) en coordonnées quelconques : A = pointe, B = départ, L = longueur, W = demi-largeur */
 function annHead(A,B,L,W){const dx=A.x-B.x,dy=A.y-B.y,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d;return [A,{x:A.x-ux*L-uy*W,y:A.y-uy*L+ux*W},{x:A.x-ux*L+uy*W,y:A.y-uy*L-ux*W}]}
-function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tools=[['zone','Zone de forage'],['f','Forage'],['c0','Collecteur 1'],['c1','Collecteur 2'],['ch','Chaufferie'],['tch','Tranchée'],['tr','Tracé des liaisons'],['cote','Cote'],['emp','Emprise chantier'],['res','Réseaux existants'],['rot','Déplacer / pivoter le plan'],['note','Annotation'],['del','Gomme'],['pan','Main'],['zoom','Loupe']];
+/* ---------- calage GPS : 1 ou 2 points connus (angle de bâtiment…) ---------- */
+let plGps={};
+function planGeoOn(){try{return !!planToGeo({x:0,y:0})}catch(e){return false}}
+/* coordonnées tapées : « 48.1173, -1.6778 » (Google Maps), degrés-minutes-secondes, ou X Y Lambert 93 */
+function parseCoord(str){str=String(str||'').trim();if(!str)return null;
+  if(/[°'"’″NSEWO]/i.test(str)&&/°/.test(str)){const parts=[...str.matchAll(/(-?\d+(?:[.,]\d+)?)\s*°\s*(?:(\d+(?:[.,]\d+)?)\s*['’′]\s*)?(?:(\d+(?:[.,]\d+)?)\s*(?:["″]|''|’’)\s*)?([NSEWO])?/gi)];
+    if(parts.length>=2){const v=parts.slice(0,2).map(m=>{let d=+m[1].replace(',','.'),x=Math.abs(d)+(+(m[2]||'0').replace(',','.'))/60+(+(m[3]||'0').replace(',','.'))/3600;if(d<0||/[SWO]/i.test(m[4]||''))x=-x;return {v:x,h:(m[4]||'').toUpperCase()}});
+      let lat=v[0].v,lon=v[1].v;if(/[EWO]/.test(v[0].h)||/[NS]/.test(v[1].h)){lat=v[1].v;lon=v[0].v}return {lat,lon}}}
+  const t=(str.match(/-?\d+(?:[.,]\d+)?/g)||[]).map(x=>+x.replace(',','.'));if(t.length<2)return null;const [a,b]=t;
+  if(a>50000&&a<1300000&&b>6000000&&b<7200000){const c=l93ToLL(a,b);return {lon:c[0],lat:c[1],l93:true}}
+  if(Math.abs(a)<=90&&Math.abs(b)<=180){if(a>=-10&&a<=12&&b>=40&&b<=52)return {lat:b,lon:a};return {lat:a,lon:b}}
+  return null}
+/* longitude / latitude → Lambert 93 (formules IGN) */
+function llToL93(lon,lat){const n=0.7256077650532670,C=11754255.426096,Xs=700000,Ys=12655612.049876,e=0.0818191910428158,l0=3*Math.PI/180,k=Math.PI/180;
+  const ph=lat*k,es=e*Math.sin(ph),li=Math.log(Math.tan(Math.PI/4+ph/2)*Math.pow((1-es)/(1+es),e/2)),R=C*Math.exp(-n*li),g=n*(lon*k-l0);return [Xs+R*Math.sin(g),Ys-R*Math.cos(g)]}
+function gpsApply(){const p=planObj(),A=plGps.A,cA=parseCoord(($('#pl-gpsA')||{}).value);if(!A){toast('Cliquer d’abord le point sur le plan');return}if(!cA){toast('Coordonnées du point 1 non reconnues (ex. 48.11730, -1.67780)');return}
+  const B=plGps.B,cB=B?parseCoord(($('#pl-gpsB')||{}).value):null;if(B&&!cB){toast('Coordonnées du point 2 non reconnues');return}
+  const g={lat0:cA.lat,lon0:cA.lon,ell:true};let th=(+p.nord||0)*Math.PI/180,msg='';
+  if(B&&cB){const en=geoEN(cB.lon,cB.lat,g),dG=Math.hypot(en.e,en.n),dx=B.x-A.x,dy=B.y-A.y,dP=Math.hypot(dx,dy);if(dG<1||dP<.5){toast('Les 2 points sont trop proches');return}
+    th=Math.atan2(en.n,en.e)-Math.atan2(-dy,dx);p.nord=Math.round((((th*180/Math.PI)%360)+360)%360*10)/10;th=p.nord*Math.PI/180;
+    const ec=(dP/dG-1)*100;
+    if(p.bg&&($('#pl-gpsscale')||{}).checked){const k=dG/dP,b=p.bg;b.mpp*=k;b.x=A.x+(b.x-A.x)*k;b.y=A.y+(b.y-A.y)*k;b.cal=true;msg=` · échelle du fond corrigée de ${nf(Math.round(-ec*10)/10)} %`}
+    else msg=` · écart d’échelle entre le plan et le GPS : ${nf(Math.round(ec*10)/10)} % (${nf(r1(dP))} m sur le plan pour ${nf(r1(dG))} m réels)`}
+  if(p.bg){const b=p.bg,cx=b.x+b.iw*b.mpp/2,cy=b.y+b.ih*b.mpp/2,dx=cx-A.x,dy=cy-A.y;b.rot=Math.round(th*180/Math.PI*100)/100;
+    b.geo={...g,cx:dx*Math.cos(th)+dy*Math.sin(th),cy:dx*Math.sin(th)-dy*Math.cos(th)};delete p.gps}
+  else p.gps={...g,px:A.x,py:A.y};
+  plGps={};markDirty();renderDevisKeepScroll();toast(`Plan calé sur ${B?'2 points':'1 point'} GPS · nord à ${nf(+p.nord||0)}°${msg}`);if(msg&&!/corrigée/.test(msg)&&Math.abs(parseFloat(msg.split(':')[1]))>2)setTimeout(()=>toast('Écart d’échelle important : vérifier les points ou cocher « corriger l’échelle du fond »'),3500)}
+async function gpsCsv(){if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}if(!planGeoOn()){toast('Caler d’abord le plan avec l’outil « Point GPS » (ou un fond KML / SHP)');return}
+  const num=plNum(),it=planItems(),f=(v,d)=>v.toFixed(d).replace('.',',');const rows=[['Élément','Latitude','Longitude','X Lambert 93','Y Lambert 93']];
+  const add=(nm,q)=>{const g=planToGeo(q),L=llToL93(g.lon,g.lat);rows.push([nm,f(g.lat,7),f(g.lon,7),f(L[0],2),f(L[1],2)])};
+  it.filter(i=>i.k==='f').sort((a,b)=>(num.get(a)||0)-(num.get(b)||0)).forEach(i=>add('F'+num.get(i),i));it.filter(i=>i.k==='c').forEach(i=>add('C'+((i.i||0)+1),i));it.filter(i=>i.k==='ch').forEach(i=>add('Chaufferie',i));
+  annList().forEach((n,k)=>add('Annotation '+(k+1)+(n.t?' : '+annLines(n.t)[0]:''),n.a));
+  const txt='﻿'+rows.map(r=>r.map(c=>/[;"\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c).join(';')).join('\r\n');
+  await dlApi.save({filename:`coordonnees-forages-${plName()}.csv`,data:new Blob([txt],{type:'text/csv;charset=utf-8'})});toast('Coordonnées des forages enregistrées (WGS84 et Lambert 93)')}
+function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tools=[['zone','Zone de forage'],['f','Forage'],['c0','Collecteur 1'],['c1','Collecteur 2'],['ch','Chaufferie'],['tch','Tranchée'],['tr','Tracé des liaisons'],['cote','Cote'],['emp','Emprise chantier'],['res','Réseaux existants'],['rot','Déplacer / pivoter le plan'],['note','Annotation'],['gps','Point GPS'],['del','Gomme'],['pan','Main'],['zoom','Loupe']];
   return `<div class="card ${plFull?'pl-full':''}" id="plan-card" style="margin-top:18px"><div class="card-h"><h2>Plan d’implantation</h2><span class="status">facultatif</span><label class="status" style="margin-left:auto;display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="pl-on" ${p.on?'checked':''}> Utiliser le plan pour les longueurs</label></div><div class="card-b">
   <div class="pl-bar"><div class="pl-tools" role="group" aria-label="Outil">${tools.map(([k,t])=>`<button class="btn sm ${plTool===k?'primary':''}" data-pltool="${k}"><i class="pl-ic pl-ic-${k}"></i>${t}</button>`).join('')}<button class="btn sm ${p.lock?'primary':''}" id="pl-lock" aria-pressed="${p.lock?'true':'false'}" title="Verrouille forages, collecteurs, chaufferie, liaisons, tranchées, zone et emprise sur le fond de plan">${LOCK_SVG(!!p.lock)}${p.lock?'Verrouillé':'Verrouiller'}</button><button class="btn sm" id="pl-undo" title="Annuler la dernière modification (Ctrl+Z / ⌘Z)" ${H.i>0||H.t?'':'disabled'}>↶ Annuler</button><button class="btn sm" id="pl-redo" title="Rétablir (Ctrl+Maj+Z / ⌘⇧Z)" ${H.i<H.st.length-1?'':'disabled'}>↷ Rétablir</button></div>
   <div class="pl-opts"><span class="pl-zoom"><button class="btn sm" id="pl-zout" title="Dézoomer (ou molette / pincer à l’endroit voulu, ou outil Loupe)">−</button><button class="btn sm" id="pl-zin" title="Zoomer (ou molette / pincer à l’endroit voulu, ou outil Loupe)">+</button></span><label class="status">Vue <select id="pl-w">${(PL_W.includes(+p.w||60)?PL_W:[...PL_W,+p.w].sort((a,b)=>a-b)).map(w=>`<option value="${w}" ${(+p.w||60)===w?'selected':''}>${nf(Math.round(w))} m</option>`).join('')}</select></label><button class="btn sm" id="pl-zfit" title="Ajuste la vue sur le fond de plan (ou sur les forages s’il n’y a pas de fond)">Plein cadre</button><button class="btn sm" id="pl-full">${plFull?'Quitter le plein écran':'Plein écran'}</button>
@@ -959,6 +994,7 @@ function planSVG(){const p=quote.plan||{w:60};const V=planView(),w=V.w,h=V.h,X0=
     let info='';if(dg.k==='f'){const a=pg.asg.find(q=>q.f===dg);if(a&&pg.C[a.j])info=`liaison → ${pg.direct?'chaufferie':'C'+((pg.C[a.j].i||0)+1)} : ${nf(r1(a.d))} m`}
     else if(dg.k==='c'&&pg.ch){const r=routeFor(dg,pg.ch);info=`→ chaufferie : ${nf(r1(polyLen(r)))} m`}
     if(info)s+=mp(dg.x,dg.y+Math.max(u*3.4,ft*1.9),info)}
+  if(plTool==='gps')[['A','1'],['B','2']].forEach(([k,l])=>{const q=plGps[k];if(!q)return;const z=ui*1.4;s+=`<circle cx="${q.x}" cy="${q.y}" r="${z}" fill="none" stroke="#C2185B" stroke-width="2" vector-effect="non-scaling-stroke"/><path d="M${q.x-z*1.6} ${q.y}H${q.x+z*1.6}M${q.x} ${q.y-z*1.6}V${q.y+z*1.6}" stroke="#C2185B" stroke-width="1.5" vector-effect="non-scaling-stroke"/><text x="${q.x+z*1.4}" y="${q.y-z*1.4}" font-size="${fi*1.1}" font-weight="700" fill="#C2185B" font-family="Barlow,sans-serif" paint-order="stroke" stroke="var(--panel)" stroke-width="${fi/3}">${l}</text>`});
   if(plDrag&&plDrag.mv&&plDrag.moved){const A=plDrag.q0,Bq={x:A.x+plDrag.dx,y:A.y+plDrag.dy};s+=`<line x1="${A.x}" y1="${A.y}" x2="${Bq.x}" y2="${Bq.y}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"/><text x="${Bq.x+ui*1.5}" y="${Bq.y-ui*1.5}" font-size="${fi*1.1}" font-weight="700" fill="var(--accent)" font-family="IBM Plex Mono,monospace" paint-order="stroke" stroke="var(--panel)" stroke-width="${fi/3}">${nf(r1(Math.hypot(plDrag.dx,plDrag.dy)))} m</text>`}
   if(plDrag&&plDrag.rot){const c=plDrag.c,z=ui*1.2;s+=`<path d="M${c.x-z} ${c.y}H${c.x+z}M${c.x} ${c.y-z}V${c.y+z}" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/><text x="${c.x+z*1.3}" y="${c.y-z*1.3}" font-size="${fi*1.2}" font-weight="700" fill="var(--accent)" font-family="IBM Plex Mono,monospace" paint-order="stroke" stroke="var(--panel)" stroke-width="${fi/3}">${plDrag.deg>0?'+':''}${plDrag.deg}°</text>`}
   if(plDrag&&plDrag.zr&&plDrag.zr.b){const A=plDrag.zr.a,Bz=plDrag.zr.b;s+=`<rect x="${Math.min(A.x,Bz.x)}" y="${Math.min(A.y,Bz.y)}" width="${Math.abs(Bz.x-A.x)}" height="${Math.abs(Bz.y-A.y)}" fill="var(--accent)" fill-opacity=".08" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>`}
@@ -1005,7 +1041,7 @@ function planExpHTML(){const p=quote.plan||{};const fit=planFitScale();
   <span class="pl-exp-b"><button class="btn sm" id="pl-pdf" title="Plan à l’échelle avec cartouche, à imprimer à 100 %">PDF à l’échelle</button>
   <button class="btn sm" id="pl-png" title="Image à fond transparent, à poser sur une vue satellite">Image PNG</button>
   ${bgOn()?`<label class="status"><input type="checkbox" id="pl-bgpdf" ${p.bgPdf!==false?'checked':''}> fond dans le PDF</label>`:''}<label class="status">résolution <select id="pl-ppm">${[10,20,40].map(n=>`<option value="${n}" ${(+p.ppm||20)===n?'selected':''}>${n} px/m</option>`).join('')}</select></label>
-  <button class="btn sm" id="pl-dxf" title="Fichier DXF en mètres réels, pour AutoCAD ou un plan de masse">DXF (AutoCAD)</button>${quote.plan&&quote.plan.bg&&quote.plan.bg.geo?'<button class="btn sm" id="pl-kml" title="Forages, collecteurs, chaufferie et liaisons à leur position réelle, à ouvrir dans Google Earth">KML (Google Earth)</button>':'<button class="btn sm" disabled title="Importer d’abord un fond KML/KMZ pour géoréférencer le plan">KML (Google Earth)</button>'}</span>
+  <button class="btn sm" id="pl-dxf" title="Fichier DXF en mètres réels, pour AutoCAD ou un plan de masse">DXF (AutoCAD)</button>${planGeoOn()?'<button class="btn sm" id="pl-gpscsv" title="Coordonnées GPS (WGS84) et Lambert 93 des forages, collecteurs et chaufferie, pour l’implantation sur site">Coordonnées (CSV)</button><button class="btn sm" id="pl-kml" title="Forages, collecteurs, chaufferie et liaisons à leur position réelle, à ouvrir dans Google Earth">KML (Google Earth)</button>':'<button class="btn sm" disabled title="Caler d’abord le plan avec l’outil « Point GPS » (1 ou 2 angles de bâtiment), ou importer un fond KML / SHP">Coordonnées / KML</button>'}</span>
   <label class="status" style="flex-basis:100%;display:flex;gap:8px;align-items:flex-start;color:var(--ink2)" title="Texte imprimé dans le cartouche du PDF à l’échelle et sous le plan du PDF descriptif">Note sur le PDF<textarea id="pl-note" rows="2" maxlength="600" placeholder="ex. : accès par le portail nord, réseau EDF à 1,50 m du forage F3, stockage des tiges côté route…" style="flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:5px 7px;color:var(--ink);font:inherit;font-size:13px;resize:vertical">${esc(p.note||'')}</textarea></label></div>`}
 /* numérotation logique : collecteur 1 puis 2 ; autour de chaque collecteur, dans le sens des aiguilles d'une montre en partant
    de la direction de la chaufferie (ordre des sorties du collecteur) ; forages alignés dans la même direction : du plus proche au plus loin */
@@ -1315,6 +1351,10 @@ function plHint(){if(plLocked()&&!PL_LOCK_OK.has(plTool))return '<b>Plan verroui
     const warn=bgOn()&&!quote.plan.bg.cal?' <b class="bad">L’échelle du fond n’est pas calée : la zone et les espacements ne correspondront pas à la photo.</b>':'';
     if(!Z||!Z.closed)return `Zone de forage : cliquer les coins de la zone autorisée (à l’échelle du plan), puis cliquer le 1er point (ou double-clic) pour la fermer. <button class="btn sm ghost danger" id="pl-zdel" ${Z&&Z.pts.length?'':'disabled'}>Effacer</button>${warn}`;
     return `Zone de ${nf(Math.round(polyArea(Z.pts)))} m². Les sommets se déplacent. Retrait des bords <span class="unit-in pl-calw" style="width:80px"><input id="pl-zmarg" inputmode="decimal" value="${Z.marg??1}"><span>m</span></span> <button class="btn sm primary" id="pl-zimpl">Implanter ${N} forage${pl(N)} à ${nf(E)} m</button> <label class="status">Disposition <select id="pl-zmode"><option value="grille" ${(Z.mode||'grille')==='grille'?'selected':''}>quadrillage régulier</option><option value="groupe" ${Z.mode==='groupe'?'selected':''}>groupée près du collecteur (espacement mini)</option></select></label> <label class="status">Maille <select id="pl-zpat"><option value="carre" ${(Z.pat||'carre')==='carre'?'selected':''}>carrée</option><option value="quinconce" ${Z.pat==='quinconce'?'selected':''}>quinconce</option><option value="auto" ${Z.pat==='auto'?'selected':''}>la meilleure</option></select></label> <label class="status" title="Décoché : le collecteur et la chaufferie placés à la main restent où ils sont"><input type="checkbox" id="pl-zautoc" ${Z.autoC?'checked':''}> replacer le collecteur au mieux</label> <button class="btn sm ghost danger" id="pl-zdel">Effacer la zone</button><span class="status" style="display:block;margin-top:4px">Nombre et espacement : ceux du dimensionnement. Quadrillage régulier : le logiciel écarte les forages au maximum (jamais moins que l’espacement demandé) pour remplir la zone. Groupée : espacement demandé, au plus près du collecteur.</span>${warn}`}
+  if(plTool==='gps'){const p=quote.plan||{},on=planGeoOn(),inp=(id,v,ph)=>`<input id="${id}" value="${esc(v||'')}" placeholder="${ph}" style="width:230px;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:4px 7px;color:var(--ink);font-family:var(--mono)">`;
+    const st=on?`<span class="pl-geo">plan calé</span> `:'';
+    if(!plGps.A)return `${st}Caler le plan sur le GPS : <b>cliquer un point connu sur le plan</b> (angle de bâtiment, borne…), puis donner ses coordonnées. Avec <b>2 points</b>, l’orientation est exacte et l’échelle est vérifiée. Ensuite : coordonnées de tous les forages (CSV, Google Earth).${on?' <button class="btn sm" id="pl-gpscsv">Coordonnées (CSV)</button> <button class="btn sm ghost danger" id="pl-gpsdel">Retirer le calage</button>':''}${p.bg&&!p.bg.cal?' <span class="bad">· échelle du fond pas encore calée</span>':''}`;
+    return `${st}<b>Point 1</b> ${inp('pl-gpsA',plGps.va,'48.11730, -1.67780 ou X Y Lambert 93')} `+(plGps.B?`<b>Point 2</b> ${inp('pl-gpsB',plGps.vb,'coordonnées du 2e point')} ${p.bg?`<label class="status"><input type="checkbox" id="pl-gpsscale" ${p.bg.cal?'':'checked'}> corriger l’échelle du fond</label> `:''}`:`<span class="status">cliquer un 2e point sur le plan (conseillé) ou</span> `)+`<button class="btn sm primary" id="pl-gpsok">Caler</button> <button class="btn sm ghost" id="pl-gpsre">Recommencer</button> <span class="status">copier les coordonnées depuis Google Maps (clic droit sur le point) ou Géoportail ; sans 2e point, le nord du plan (champ Nord) sert d’orientation</span>`}
   if(plTool==='note'){const A=annList(),n=A[plAnSel];
     if(n)return `<b>Annotation ${plAnSel+1}</b> : <textarea id="pl-antxt" rows="2" maxlength="300" placeholder="ex. : regard EU à conserver, accès foreuse, attention câble…" style="width:min(100%,460px);vertical-align:middle;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:4px 7px;color:var(--ink);font:inherit;font-size:13px;resize:vertical">${esc(n.t||'')}</textarea> <button class="btn sm" id="pl-anok">OK</button> <button class="btn sm ghost danger" id="pl-andel">Supprimer</button> <span class="status">déplacer la pointe ou le texte en les faisant glisser ; Entrée pour une nouvelle ligne</span>`;
     return `Annotation : <b>appuyer sur l’endroit à montrer</b> (pointe de la flèche) et <b>glisser jusqu’où mettre le texte</b>, puis écrire le texte. Cliquer une annotation pour la modifier ; Gomme pour l’effacer. Imprimée dans les PDF, le PNG et le DXF.`+(A.length?` <button class="btn sm ghost danger" id="pl-anclr">Effacer les ${A.length} annotation${pl(A.length)}</button>`:'')}
@@ -1508,7 +1548,10 @@ function geoR(g){const k=Math.PI/180;if(!g.ell)return {m:R_T,n:R_T};const a=6378
 function geoEN(lon,lat,g){const k=Math.PI/180,r=geoR(g);return {e:r.n*Math.cos(g.lat0*k)*(lon-g.lon0)*k,n:r.m*(lat-g.lat0)*k}}
 function geoLL(e,n,g){const k=Math.PI/180,r=geoR(g);return {lat:g.lat0+n/r.m/k,lon:g.lon0+e/(r.n*Math.cos(g.lat0*k))/k}}
 /* plan (x,y en m, y vers le bas) <-> est/nord, en suivant le fond (déplacement et rotation) */
-function planToGeo(pt){const b=quote.plan&&quote.plan.bg;if(!b||!b.geo)return null;const cx=b.x+b.iw*b.mpp/2,cy=b.y+b.ih*b.mpp/2,a=-(b.rot||0)*Math.PI/180,dx=pt.x-cx,dy=pt.y-cy;
+function planToGeo(pt){const p=quote.plan||{},b=p.bg;
+  if(!(b&&b.geo)){if(p.gps){const g=p.gps,t=(+p.nord||0)*Math.PI/180,dx=pt.x-g.px,dy=pt.y-g.py;return geoLL(dx*Math.cos(t)+dy*Math.sin(t),dx*Math.sin(t)-dy*Math.cos(t),g)}
+    if(p.geo0){const g=p.geo0,a=-(+g.rot||0)*Math.PI/180,dx=pt.x-g.ox,dy=pt.y-g.oy;const rx=dx*Math.cos(a)-dy*Math.sin(a),ry=dx*Math.sin(a)+dy*Math.cos(a);return geoLL(rx,-ry,g)}
+    return null}const cx=b.x+b.iw*b.mpp/2,cy=b.y+b.ih*b.mpp/2,a=-(b.rot||0)*Math.PI/180,dx=pt.x-cx,dy=pt.y-cy;
   const rx=dx*Math.cos(a)-dy*Math.sin(a),ry=dx*Math.sin(a)+dy*Math.cos(a);return geoLL(b.geo.cx+rx,b.geo.cy-ry,b.geo)}
 function geoToPlan(e,n){const b=quote.plan.bg,cx=b.x+b.iw*b.mpp/2,cy=b.y+b.ih*b.mpp/2,a=(b.rot||0)*Math.PI/180,rx=e-b.geo.cx,ry=-(n-b.geo.cy);
   const r2=x=>Math.round(x*100)/100;return {x:r2(cx+rx*Math.cos(a)-ry*Math.sin(a)),y:r2(cy+rx*Math.sin(a)+ry*Math.cos(a))}}
@@ -1688,7 +1731,7 @@ function kmlPlacePoints(){const p=planObj(),b=p.bg;if(!b||!b.geo||!b.kpts||!b.kp
   p.items=items;p.routes={};p.assign={};p.noLink={};p.via={};const nF=items.filter(i=>i.k==='f').length;planChanged();
   toast(`${nF} forage${pl(nF)}${items.some(i=>i.k==='c')?', collecteur(s)':''}${items.some(i=>i.k==='ch')?', chaufferie':''} placés depuis le KML`)}
 /* export KML : positions réelles, à ouvrir dans Google Earth */
-async function planKml(){if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}const b=quote.plan&&quote.plan.bg;if(!b||!b.geo){toast('Importer d’abord un fond KML/KMZ');return}
+async function planKml(){if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}if(!planGeoOn()){toast('Caler d’abord le plan avec l’outil « Point GPS », ou importer un fond KML / SHP');return}
   const x=t=>String(t).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));const ll=q=>{const g=planToGeo(q);return `${g.lon.toFixed(7)},${g.lat.toFixed(7)},0`};
   const v=vars(),pg=planGeo(),num=plNum();let pm='';
   planItems().forEach(i=>{const nm=i.k==='f'?'F'+num.get(i):i.k==='c'?'C'+((i.i||0)+1):'Chaufferie';const st=i.k==='f'?'f':i.k==='c'?'c':'ch';
@@ -1736,6 +1779,7 @@ function planHit(pt){const w=planView().w;const r=w/40;let best=null,bd=r;planIt
 function planChanged(){routeClean();const p=planObj();if(!p.on&&!p.userOff&&planItems().some(i=>i.k==='f')&&planItems().some(i=>i.k==='c'))p.on=true;planSync();markDirty();renderDevisKeepScroll()}
 function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.preventDefault();const p=planObj();
   if(plTool==='pan'||e.button===1){const V=planView(),r=svg.getBoundingClientRect();plDrag={pan:true,sx:e.clientX,sy:e.clientY,vx:V.x,vy:V.y,k:V.w/r.width};svg.setPointerCapture?.(e.pointerId);return}
+  if(plTool==='gps'){const q=planRaw(e);if(!plGps.A||plGps.wantB===false)plGps={A:q,va:($('#pl-gpsA')||{}).value||plGps.va||''};else plGps.B=q;hintUpdate();planDraw();setTimeout(()=>{const t=$(plGps.B?'#pl-gpsB':'#pl-gpsA');if(t)t.focus()},30);return}
   if(plTool==='note'){const q=planRaw(e),h=annHit(q);if(h){plAnSel=h.i;plDrag={an:h.i,end:h.end,moved:false};svg.setPointerCapture?.(e.pointerId);hintUpdate();planDraw();return}
     const li=annLineHit(q);if(li>=0){plAnSel=li;hintUpdate();planDraw();setTimeout(()=>{const t=$('#pl-antxt');if(t)t.focus()},30);return}
     const p2=planObj();p2.ann=Array.isArray(p2.ann)?p2.ann:[];p2.ann.push({a:{x:q.x,y:q.y},b:{x:q.x,y:q.y},t:''});plAnSel=p2.ann.length-1;plDrag={an:plAnSel,end:'b',isNew:true,moved:false};svg.setPointerCapture?.(e.pointerId);planDraw();return}
@@ -2091,6 +2135,8 @@ function onDevisInput(e){
   const tg=e.target;
   if(tg.id==='pl-bgop'){const b=quote.plan&&quote.plan.bg;if(b){b.op=+tg.value/100;markDirty();planBgUpdate()}return}
   if(tg.id==='pl-symk'){planObj().symK=+tg.value/100;markDirty();planDraw();return}
+  if(tg.id==='pl-gpsA'){plGps.va=tg.value;return}
+  if(tg.id==='pl-gpsB'){plGps.vb=tg.value;return}
   if(tg.id==='pl-antxt'){const n=annList()[plAnSel];if(n){n.t=tg.value;markDirty();planDraw()}return}
   if(tg.id==='pl-note'){planObj().note=tg.value;markDirty();return}
   if(['pl-file','pl-addf','pl-bgech','pl-bgrot','pl-caldist','pl-bgpdf','pl-bgshow','pl-bgpage','pl-bgwid','pl-grid','pl-zmarg','pl-tr','pl-zautoc','pl-zmode','pl-zpat','pl-trmode','pl-cotes','pl-mat','pl-trbiais','pl-rest','pl-r5','pl-rad','pl-mvstep','pl-rescht','pl-reslab'].includes(tg.id))return;
@@ -2154,7 +2200,7 @@ function renderDevisKeepScroll(){const y=window.scrollY;renderDevis();window.scr
 function onDevisClick(e){
   const b=e.target.closest('button');if(!b)return;
   if(b.dataset.d2set){const [k,D]=b.dataset.d2set.split(':');quote[k]=+D;markDirty();document.querySelectorAll(`select[data-k="${k}"]`).forEach(x=>x.value=String(+D));refreshLines();if(typeof updateHydro==='function')updateHydro();toast(+D?`Ø${D} imposé collecteur → chaufferie`:'Ø collecteur → chaufferie en auto');return}
-  if(b.dataset.pltool){plTool=b.dataset.pltool;document.querySelectorAll('[data-pltool]').forEach(x=>x.classList.toggle('primary',x===b));const sv=$('#pl-svg');if(sv)sv.classList.toggle('pl-edit',plTool==='tr');if(sv)sv.classList.toggle('pl-move',plTool==='bg');if(sv)sv.classList.toggle('pl-zoomc',plTool==='zoom');if(sv)sv.classList.toggle('pl-rotc',plTool==='rot'&&plRotMode!=='move');if(sv)sv.classList.toggle('pl-move',plTool==='bg'||(plTool==='rot'&&plRotMode==='move'));if(sv)sv.classList.toggle('pl-pan',plTool==='pan'||(plLocked()&&!PL_LOCK_OK.has(plTool)));plCal={};plLink=null;plLinkHover=null;plCote=null;plCoteHover=null;plEmpHover=null;if(plTch)trFinish();if(plRes)resFinish();plAnSel=-1;plResSel=-1;hintUpdate();planDraw();return}
+  if(b.dataset.pltool){plTool=b.dataset.pltool;document.querySelectorAll('[data-pltool]').forEach(x=>x.classList.toggle('primary',x===b));const sv=$('#pl-svg');if(sv)sv.classList.toggle('pl-edit',plTool==='tr');if(sv)sv.classList.toggle('pl-move',plTool==='bg');if(sv)sv.classList.toggle('pl-zoomc',plTool==='zoom');if(sv)sv.classList.toggle('pl-rotc',plTool==='rot'&&plRotMode!=='move');if(sv)sv.classList.toggle('pl-move',plTool==='bg'||(plTool==='rot'&&plRotMode==='move'));if(sv)sv.classList.toggle('pl-pan',plTool==='pan'||(plLocked()&&!PL_LOCK_OK.has(plTool)));plCal={};plLink=null;plLinkHover=null;plCote=null;plCoteHover=null;plEmpHover=null;if(plTch)trFinish();if(plRes)resFinish();plAnSel=-1;plResSel=-1;if(plTool!=='gps')plGps={};hintUpdate();planDraw();return}
   if(b.dataset.plmode){plRotMode=b.dataset.plmode;const sv=$('#pl-svg');if(sv){sv.classList.toggle('pl-move',plRotMode==='move');sv.classList.toggle('pl-rotc',plRotMode!=='move')}hintUpdate();return}
   if(b.dataset.plmv){if(plLocked()){plLockMsg();return}const st=+(window.plMvStep||.5),[x,y]=b.dataset.plmv.split(',').map(Number);plMoveAll(x*st,y*st);plRoundAll();planChanged();return}
   if(b.dataset.plrot||b.id==='pl-rot-ok'){if(plLocked()){plLockMsg();return}const d=b.dataset.plrot?+b.dataset.plrot:pnum(($('#pl-rotdeg')||{}).value);if(!d)return;plRotateAll(d);planChanged();toast(`Implantation pivotée de ${nf(d)}°`);return}
@@ -2180,6 +2226,10 @@ function onDevisClick(e){
   if(b.id==='pl-zdel'){const p=planObj();delete p.zone;plZoneHover=null;markDirty();renderDevisKeepScroll();return}
   if(b.id==='pl-zimpl'){const m=pnum(($('#pl-zmarg')||{}).value);zoneObj().marg=m==null?1:Math.max(0,m);const ac=$('#pl-zautoc');if(ac)zoneObj().autoC=ac.checked;zoneImplant();return}
   if(b.id==='pl-kml'){planKml();return}
+  if(b.id==='pl-gpscsv'){gpsCsv();return}
+  if(b.id==='pl-gpsok'){gpsApply();return}
+  if(b.id==='pl-gpsre'){plGps={};hintUpdate();planDraw();return}
+  if(b.id==='pl-gpsdel'){const p=planObj();delete p.gps;if(p.bg)delete p.bg.geo;markDirty();renderDevisKeepScroll();toast('Calage GPS retiré');return}
   if(b.id==='pl-kpts'){kmlPlacePoints();return}
   if(b.id==='pl-bgdel'){const p=planObj();if(p.bg){delete p.bg;plCal={};if(plTool==='cal'||plTool==='bg')plTool='f';markDirty();renderDevisKeepScroll()}return}
   if(b.id==='pl-fit'){planFit(true);planDraw();return}
