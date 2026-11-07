@@ -378,7 +378,7 @@ const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){retu
 
 /* ---------- formula engine ---------- */
 const FN={ceil:Math.ceil,floor:Math.floor,round:Math.round,max:Math.max,min:Math.min};
-const VARS=['N','P','M','L','J','E','D1','D2','LF','LC','T','JR','JS','ACH','VR','GLY','ZO','NA','NB','LCB','D2B','NC'];
+const VARS=['N','P','M','L','J','E','D1','D2','LF','LC','T','JR','JS','ACH','VR','GLY','ZO','NA','NB','LCB','D2B','NC','JL','JF','DIR'];
 const ruleCache=new Map();
 function compile(rule){
   if(ruleCache.has(rule))return ruleCache.get(rule);
@@ -405,7 +405,7 @@ let dirty=false, view='devis', usedOnly=false, catDraft=null, listFilter='';
 
 function blankQuote(){
   return {id:null,nom:'',lieu:'',client:'',tel:'',mail:'',archi:'',interlocuteur:'',chiffreur:'Fred',
-    date:new Date().toISOString().slice(0,10),N:1,P:100,L:20,D2:0,mpj:100,jr:2,com:0,ffj:null,obj:80,h:{wpm:null,dT:3,conc:30,sing:30,pac:0,model:'',qPac:null,dispo:null},E:10,D1:0,nc:1,N2:null,L2:null,D2b:0,df1:null,df2:null,pn:0,plan:null,coef:{...DEF_COEF},q:{},snap:{},extra:[],prixRetenu:null,tva:20,notes:'',updated:0,dvs:null};
+    date:new Date().toISOString().slice(0,10),N:1,P:100,L:20,D2:0,mpj:100,jr:2,jl:1,com:0,ffj:null,obj:80,h:{wpm:null,dT:3,conc:30,sing:30,pac:0,model:'',qPac:null,dispo:null},E:10,D1:0,nc:1,N2:null,L2:null,D2b:0,df1:null,df2:null,pn:0,plan:null,coef:{...DEF_COEF},q:{},snap:{},extra:[],prixRetenu:null,tva:20,notes:'',updated:0,dvs:null};
 }
 function normQuote(q){const b=blankQuote();const o=Object.assign(b,clone(q));o.h=Object.assign(blankQuote().h,o.h||{});o.coef=Object.assign({...DEF_COEF},o.coef||{});o.q=o.q||{};o.snap=o.snap||{};o.extra=o.extra||[];return o}
 
@@ -496,13 +496,16 @@ function baseVars(){const P=+quote.P||0,mpj=+quote.mpj||100,E=+quote.E||0,D1=+qu
   /* distance du forage le plus éloigné saisie à la main (vide = calculée) : sert à la perte de charge */
   G.forEach((g,i)=>{const d=pnum(i?quote.df2:quote.df1);g.DFcalc=g.DF;g.DFman=d!=null&&d>0;if(g.DFman)g.DF=d});
   const Z={n:0,LF:0,DF:0,L:0};const g0=G[0]||Z,g1=G[1]||Z;const M=N*P;
-  return {DIR:g0.direct?1:0,N,P,L:g0.L,L2:g1.L,M,J:mpj>0?Math.ceil(M/mpj):0,E,D1,D2,D2B:G.length>1?D2B:0,NA:g0.n,NB:g1.n,NC:Math.max(1,G.length),LF:g0.LF+g1.LF,LC:2*g0.L,LCB:2*g1.L,T,JR:+quote.jr||0,JS:2*(mpj>0?Math.ceil(M/mpj):0)+(+quote.jr||0),ZO:quote.zone==='orange'?1:0,DF:Math.max(g0.DF,g1.DF),G:G.length?G:[{...Z}],src}}
+  return {DIR:g0.direct?1:0,N,P,L:g0.L,L2:g1.L,M,J:mpj>0?Math.ceil(M/mpj):0,E,D1,D2,D2B:G.length>1?D2B:0,NA:g0.n,NB:g1.n,NC:Math.max(1,G.length),LF:g0.LF+g1.LF,LC:2*g0.L,LCB:2*g1.L,T,JR:+quote.jr||0,JL:+quote.jl||0,JF:(mpj>0?Math.ceil(M/mpj):0)+(+quote.jl||0),JS:2*(mpj>0?Math.ceil(M/mpj):0)+(+quote.jr||0)+2*(+quote.jl||0),ZO:quote.zone==='orange'?1:0,DF:Math.max(g0.DF,g1.DF),G:G.length?G:[{...Z}],src}}
 /* Glycol : ancienne règle forfaitaire (M+L)/25*20 remplacée par le volume réel du réseau */
 function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String(i.rule||'').replace(/\s/g,'')==='(M+L)/25*20')i.rule='GLY'});if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='decl')){const k=items.findIndex(i=>i.id==='trt');items.splice(k,0,{id:'decl',sec:'loc',grp:'Administratif',name:'Déclarations (BRGM, DICT, rapport de fin de travaux)',unit:'forfait',price:0,qty:1,rule:'',kind:'frais'})}
   if(Array.isArray(items)&&items.some(i=>i&&i.id==='trt')&&!items.some(i=>i&&i.id==='zo')){const k=items.findIndex(i=>i.id==='trt');items.splice(k+1,0,{id:'zo',sec:'loc',grp:'Sous-traitance',name:'Déclaration zone orange (avis d’expert agréé)',unit:'forfait',price:0,rule:'ZO',kind:'st',poste:'zoneorange'})}
   (items||[]).forEach(i=>{if(i&&i.id==='zo'&&!i.poste)i.poste='zoneorange'});
   /* achats divers = imprévus : un pourcentage des achats (ACH × taux) au lieu d'un forfait par jour de forage */
   (items||[]).forEach(i=>{if(i&&/achats?\s+divers/i.test(i.name||'')&&String(i.rule||'').replace(/\s/g,'')==='J'){i.rule='ACH';i.unit='€ d’achats';i.price=.03}});
+  /* logistique (chargement, transfert des machines, approvisionnement) : binôme + camion par jour JL */
+  if(Array.isArray(items)&&items.some(i=>i&&i.sec==='loc')&&!items.some(i=>i&&i.id==='logi_mo')){const mo=items.find(i=>i&&i.id==='mo_f'),k0=items.findIndex(i=>i&&i.id==='heb');const k=k0>=0?k0:items.reduce((a,i,j)=>i&&i.sec==='loc'?j+1:a,items.length);
+    items.splice(k,0,{id:'logi_mo',sec:'loc',grp:'Logistique',name:'Main-d’œuvre logistique (binôme, par personne)',unit:'jour',price:mo?+mo.price||450:450,rule:'2*JL',kind:'mo'},{id:'logi_cam',sec:'loc',grp:'Logistique',name:'Camion / porte-engin (logistique)',unit:'jour',price:0,rule:'JL',kind:'loc'})}
   /* paniers repas : un par jour travaillé par salarié (JS) */
   if(Array.isArray(items)){const pn=items.filter(i=>i&&/panier/i.test((i.grp||'')+' '+(i.name||'')));
     pn.forEach(i=>{if(!String(i.rule||'').trim()&&!(+i.qty>0))i.rule='JS'});
@@ -542,7 +545,7 @@ function autoD2(v,gi=0){
   for(const f of pass){const x=rs.find(f);if(x)return {D:x.D}}
   return {D:D2_LIST[D2_LIST.length-1]}}
 const KINDS=[['mat','Matière'],['loc','Location / engin'],['mo','Main-d’œuvre'],['dep','Déplacement / hébergement'],['st','Sous-traitance'],['frais','Frais divers']];
-const KIND_ID={mo_r:'mo',cim:'mo',mo_f:'mo',mp_c:'loc',manu:'loc',heb:'dep',dep:'dep',tpl:'dep',tvl:'dep',trt:'st',ach:'frais',l_grav:'frais'};
+const KIND_ID={logi_mo:'mo',logi_cam:'loc',mo_r:'mo',cim:'mo',mo_f:'mo',mp_c:'loc',manu:'loc',heb:'dep',dep:'dep',tpl:'dep',tvl:'dep',trt:'st',ach:'frais',l_grav:'frais'};
 function kindOf(l){if(l.kind)return l.kind;if(KIND_ID[l.id])return KIND_ID[l.id];const c=catalog.find(i=>i.id===l.id);if(c?.kind)return c.kind;
   if(/^l_/.test(l.id)||/location/i.test(l.grp||''))return 'loc';if(/main-d|hébergement|trajet/i.test(l.grp||''))return 'mo';return 'mat'}
 function lines(){
@@ -2072,8 +2075,8 @@ function updateSummary(t){
   const po=pObj, so=$('#s-obj');
   so.textContent=po?eur(po):'–';
   const sp=$('#s-objpct');sp.textContent=po?(t.tp<po?`Calcul ${nf(100*(po-t.tp)/po)} % sous l'objectif`:`Calcul ${nf(100*(t.tp-po)/po)} % au-dessus`):'';sp.className=po&&t.tp<po?'bad':'good';
-  const com=pr*(+quote.com||0)/100, ff=ffDay()*t.v.J, net=mg-com-ff;
-  const ffn=$('#s-ffnote');if(ffn)ffn.textContent=`${nf(ffDay())} € × ${t.v.J} j de forage = ${eur(ff)}${t.v.M?' · '+nf(ff/t.v.M)+' €/m':''}${quote.ffj!=null&&quote.ffj!==''?' (saisi à la main, videz pour revenir à l’onglet Entreprise)':' (onglet Entreprise)'}`;
+  const com=pr*(+quote.com||0)/100, ff=ffDay()*t.v.JF, net=mg-com-ff;
+  const ffn=$('#s-ffnote');if(ffn)ffn.textContent=`${nf(ffDay())} € × ${t.v.JF} j (${t.v.J} de forage${t.v.JL?' + '+t.v.JL+' de logistique':''}) = ${eur(ff)}${t.v.M?' · '+nf(ff/t.v.M)+' €/m':''}${quote.ffj!=null&&quote.ffj!==''?' (saisi à la main, videz pour revenir à l’onglet Entreprise)':' (onglet Entreprise)'}`;
   $('#s-ded').textContent='− '+eur(com+ff);
   const ne=$('#s-net');ne.textContent=`${eur(net)} · ${pr?nf(100*net/pr):0} %`;ne.className='v strong '+(net>=0?'good':'bad');
   const d=vars();$('#d-M').textContent=nf(d.M)+' m';$('#d-J').textContent=d.J+' j';$('#d-ML').textContent=nf(d.M+d.L)+' m';$('#d-T').textContent=nf(d.T)+' m';$('#d-LF').textContent=`${nf(d.LF)} m Ø${d.D1}${d.D1auto?' (auto)':''}`;$('#d-LC').textContent=`${nf(d.LC)} m Ø${d.D2}${d.D2auto?' (auto)':''}`+(d.NC>1?` + ${nf(d.LCB)} m Ø${d.D2B}${d.D2Bauto?' (auto)':''}`:'');
@@ -2119,7 +2122,7 @@ function renderDevis(){
       <div class="f" style="grid-column:1/-1"><label for="q-notes">Notes</label><textarea id="q-notes" data-k="notes" rows="2">${esc(quote.notes)}</textarea></div>
     </div></div></div>
     <div class="card" style="margin-top:18px"><div class="card-h"><h2>Dimensionnement</h2></div><div class="card-b"><div class="params">
-      <div><div class="pgrid">${pfield('N','Nombre de forages','u')}${pfield('P','Profondeur par forage','m')}${pfield('E','Espacement entre forages','m')}${sfield('D1','Ø forages → collecteur',[0,...peDiams()],'Auto (selon profondeur)')}${colFields()}${pfield('mpj','Avancement forage','m/jour')}${pfield('jr','Temps de raccordement','jours')}</div>
+      <div><div class="pgrid">${pfield('N','Nombre de forages','u')}${pfield('P','Profondeur par forage','m')}${pfield('E','Espacement entre forages','m')}${sfield('D1','Ø forages → collecteur',[0,...peDiams()],'Auto (selon profondeur)')}${colFields()}${pfield('mpj','Avancement forage','m/jour')}${pfield('jr','Temps de raccordement','jours')}${pfield('jl','Jours de logistique','jours')}</div>
         <div class="derived"><span>Mètres forés <b id="d-M"></b></span><span>Jours de forage <b id="d-J"></b></span><span>Tranchée <b id="d-T"></b></span><span>PE forages → collecteur <b id="d-LF"></b></span><span>PE collecteur → chaufferie <b id="d-LC"></b></span><span>Forage + liaison <b id="d-ML"></b></span></div></div>
       <div class="coupe"><div id="coupe"></div><div class="cap">Coupe schématique — les quantités <span class="chip auto">auto</span> suivent ces valeurs.</div></div>
     </div></div></div>
@@ -2845,7 +2848,7 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
         rows.push([(l.name||'—')+(isST(l)?' (sous-traitance)':''),`${nf(q)} ${l.unit||''}`,eur(pa),eur(ta),eur(pv),eur(tv),eur(m),pct(m,tv)])}
       rows.push({c:[`Total ${s.label}`,'','',eur(sa),'',eur(sv),eur(sv-sa),pct(sv-sa,sv)],b:true,fill:SOFT});
       table(ac,rows)}
-    const stv=stVente(t),com=pe*(+quote.com||0)/100,ff=ffDay()*v.J,mg=pe-t.tc,net=mg-com-ff;
+    const stv=stVente(t),com=pe*(+quote.com||0)/100,ff=ffDay()*v.JF,mg=pe-t.tc,net=mg-com-ff;
     const pm=x=>v.M?eur(x/v.M):'',pc=x=>pe?nf(Math.round(1000*x/pe)/10)+' %':'';
     ensure(230);h2('Synthèse');
     table([{t:'',w:315},{t:'Montant HT',w:110,a:'right'},{t:'Par mètre foré',w:90.28,a:'right'}],[
@@ -2940,7 +2943,7 @@ function renderTarifs(){
     <button class="btn primary" id="t-save" ${catDraft&&db&&canWrite?'':'disabled'}>Enregistrer les tarifs</button></div>
   <div class="card" style="margin-bottom:18px"><div class="card-b help">
     Les prix sont en € HT. Chaque catégorie a son bouton <b>+ Article</b> ; renommez une catégorie en cliquant sur son titre, ou créez-en une avec <b>+ Nouvelle catégorie</b>. <b>Qté défaut</b> est reprise dans chaque nouveau chiffrage ; la <b>Règle</b>, si elle est remplie, la calcule à la place. Dans le chiffrage, toute quantité reste modifiable ligne par ligne.
-    Variables : <code>N</code> nombre de forages · <code>P</code> profondeur par forage · <code>M</code> mètres forés (N×P) · <code>J</code> jours de forage · <code>E</code> espacement entre forages · <code>LF</code> PE forages → collecteur, aller-retour (E×N×(N+1)) · <code>D1</code> son diamètre · <code>L</code> distance collecteur → chaufferie · <code>LC</code> PE collecteur → chaufferie, aller-retour (2×L) · <code>D2</code> son diamètre · avec 2 collecteurs : <code>NA</code> / <code>NB</code> forages sur le collecteur 1 / 2, <code>LCB</code> PE collecteur 2 → chaufferie (aller-retour), <code>D2B</code> son diamètre, <code>NC</code> nombre de collecteurs · <code>T</code> longueur de tranchée (E×N + L, ou mesurée sur le plan) · <code>JR</code> temps de raccordement en jours (saisi dans le chiffrage) · <code>JS</code> jours travaillés par les salariés (binôme de forage 2×J + manœuvre JR) · <code>ACH</code> coût des achats du chantier en € (matière + location) : « Achats divers » = ACH × taux (ex. prix 0,03 pour 3 %) · <code>VR</code> volume total du réseau en litres (sondes + liaisons + chaufferie, selon les Ø) · <code>GLY</code> litres de glycol pur pour ce volume, à la dilution choisie dans « Perte de charge ».
+    Variables : <code>N</code> nombre de forages · <code>P</code> profondeur par forage · <code>M</code> mètres forés (N×P) · <code>J</code> jours de forage · <code>E</code> espacement entre forages · <code>LF</code> PE forages → collecteur, aller-retour (E×N×(N+1)) · <code>D1</code> son diamètre · <code>L</code> distance collecteur → chaufferie · <code>LC</code> PE collecteur → chaufferie, aller-retour (2×L) · <code>D2</code> son diamètre · avec 2 collecteurs : <code>NA</code> / <code>NB</code> forages sur le collecteur 1 / 2, <code>LCB</code> PE collecteur 2 → chaufferie (aller-retour), <code>D2B</code> son diamètre, <code>NC</code> nombre de collecteurs · <code>T</code> longueur de tranchée (E×N + L, ou mesurée sur le plan) · <code>JR</code> temps de raccordement en jours (saisi dans le chiffrage) · <code>JL</code> jours de logistique (saisis dans le chiffrage) · <code>JS</code> jours travaillés par les salariés (binôme de forage 2×J + manœuvre JR + binôme logistique 2×JL) · <code>ACH</code> coût des achats du chantier en € (matière + location) : « Achats divers » = ACH × taux (ex. prix 0,03 pour 3 %) · <code>VR</code> volume total du réseau en litres (sondes + liaisons + chaufferie, selon les Ø) · <code>GLY</code> litres de glycol pur pour ce volume, à la dilution choisie dans « Perte de charge ».
     Exemples : <code>2*N</code>, <code>ceil(M/100)</code>, <code>P&gt;130&amp;&amp;P&lt;=140?N:0</code>, <code>(D1==40?LF:0)+(D2==40?LC:0)+(D2B==40?LCB:0)</code>, <code>(NA==6?1:0)+(NB==6?1:0)</code> pour un collecteur 6 sorties. La colonne « Test » montre le résultat pour le chiffrage en cours (${v.N} × ${nf(v.P)} m).
     ${!db?'<br><b>Enregistrement indisponible sur cette vue : tarifs par défaut affichés.</b>':''}
   </div></div>
