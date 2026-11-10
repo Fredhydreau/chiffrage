@@ -3003,10 +3003,10 @@ function dmdDates(t){const n=dmdNorm(t),out=[];let m;
   return out.filter(o=>o.iso).sort((a,b)=>a.i-b.i)}
 function dmdParse(raw){const t=String(raw||'').replace(/\r/g,''),n=dmdNorm(t),d={type:'devis'};
   const hd=k=>{const m=new RegExp('^\\s*(?:'+k+')\\s*:\\s*(.+)$','mi').exec(t);return m?m[1].trim():''};
-  d.objet=hd('Subject|Objet|Sujet').replace(/^((TR|Fwd?|RE|Réf)\s*:\s*)+/i,'').trim();
+  d.objet=hd('Subject|Objet|Sujet|Objet\\s+d[eu]\\s+(?:la\\s+)?(?:consultation|march[ée])|Intitul[ée]\\s+(?:du\\s+march[ée]|de\\s+la\\s+consultation)').replace(/^((TR|Fwd?|RE|Réf)\s*:\s*)+/i,'').trim();
   const from=hd('From|De|Expéditeur');const em=/[\w.+-]+@[\w-]+\.[\w.-]+/.exec(from)||/[\w.+-]+@[\w-]+\.[\w.-]+/.exec(t.slice(0,1500));
   d.mail=em?em[0]:'';d.client=from.replace(/<[^>]*>/g,'').replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g,'').replace(/["\[\]]/g,'').trim();
-  if(!d.client&&d.mail)d.client=d.mail.split('@')[0].replace(/[._-]+/g,' ');
+  if(!d.client)d.client=hd('Ma[îi]tre\\s+d.ouvrage|Pouvoir\\s+adjudicateur|Acheteur|Nom\\s+de\\s+l.acheteur|Client').slice(0,80);if(!d.client&&d.mail)d.client=d.mail.split('@')[0].replace(/[._-]+/g,' ');
   const tel=/(?:\+33\s?|0)[1-9](?:[ .-]?\d{2}){4}/.exec(t);d.tel=tel?tel[0]:'';
   const D=dmdDates(t);const dh=hd('Date|Envoyé|Sent|Reçu');if(dh){const o=dmdDates(dh)[0];if(o)d.recu=o.iso;else{const x=new Date(dh);if(!isNaN(x))d.recu=x.toISOString().slice(0,10)}}
   if(!d.recu)d.recu=new Date().toISOString().slice(0,10);
@@ -3014,7 +3014,7 @@ function dmdParse(raw){const t=String(raw||'').replace(/\r/g,''),n=dmdNorm(t),d=
   while((k=kw.exec(n))&&!best){best=D.find(o=>o.i>=k.index&&o.i-k.index<160&&o.iso!==d.recu)||null}
   if(best){d.butoir=best.iso;d.heure=best.h||''}
   if(/appel\s+d.offres?|\bdce\b|\bao\b|marche\s+public|boamp|consultation|reglement\s+de\s+(la\s+)?consultation|acheteur\s+public|dematerialis|profil\s+acheteur|marches-?publics|achatpublic|maximilien|megalis/.test(n))d.type='ao';
-  const lieu=/(?:commune\s+d[e']|ville\s+d[e']|chantier\s+(?:de|[àa]|situ[ée]e?\s+[àa])|situ[ée]e?\s+[àa]|adresse\s+du\s+chantier\s*:?|travaux\s+[àa])\s*([A-ZÀ-Ý][\wÀ-ÿ'-]+(?:[ -](?:sur|sous|en|le|la|les|de|du|[A-ZÀ-Ý][\wÀ-ÿ'-]+))*)/.exec(t);d.lieu=lieu?lieu[1].trim().replace(/[ -](sur|sous|en|le|la|les|de|du)$/i,''):'';
+  const lieu=/(?:[Cc]ommune\s+d[e']|COMMUNE\s+D[E']|[Vv]ille\s+d[e']|VILLE\s+D[E']|chantier\s+(?:de|[àa]|situ[ée]e?\s+[àa])|situ[ée]e?\s+[àa]|adresse\s+du\s+chantier\s*:?|travaux\s+[àa])\s*([A-ZÀ-Ý][\wÀ-ÿ'-]+(?:[ -](?:sur|sous|en|le|la|les|de|du|[A-ZÀ-Ý][\wÀ-ÿ'-]+))*)/.exec(t);d.lieu=lieu?lieu[1].trim().replace(/[ -](sur|sous|en|le|la|les|de|du)$/i,''):'';if(d.lieu&&d.lieu===d.lieu.toUpperCase())d.lieu=d.lieu.toLowerCase().replace(/(^|[ '-])(\p{L})/gu,(m,a,b)=>a+b.toUpperCase());
   d.texte=t.trim().slice(0,6000);return d}
 function dmdQP(s){return s.replace(/=\r?\n/g,'').replace(/(=[0-9A-F]{2})+/gi,m=>{try{return new TextDecoder().decode(new Uint8Array(m.split('=').slice(1).map(h=>parseInt(h,16))))}catch(e){return m}})}
 function dmdDecode(bytes,cs){try{return new TextDecoder(cs||'utf-8').decode(bytes)}catch(e){return new TextDecoder().decode(bytes)}}
@@ -3037,11 +3037,24 @@ function dmdMsg(buf){const u=new Uint8Array(buf),runs=[];let cur='';for(let i=0;
   const em=uniq.find(r=>/^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(r))||'';const subj=uniq.find(r=>r.length>=6&&r.length<160&&!/[@\\\/]|^IPM\.|^[A-Z0-9_.:-]+$/.test(r)&&/\s/.test(r)&&r!==body)||'';
   const name=uniq.find(r=>r.length<60&&/^[A-ZÀ-Ý][\wÀ-ÿ'-]+(\s[A-ZÀ-Ýa-zà-ÿ][\wÀ-ÿ'-]+){1,3}$/.test(r)&&r!==subj)||'';
   return `De : ${name} <${em}>\nObjet : ${subj}\n\n${body}`}
+async function dmdPdfText(f){const L=await getPdfJs();const doc=await L.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;let out='';
+  for(let p=1;p<=Math.min(doc.numPages,40);p++){const tc=await (await doc.getPage(p)).getTextContent();let ly=null,line='';
+    tc.items.forEach(it=>{const y=Math.round(it.transform[5]);if(ly!=null&&Math.abs(y-ly)>2){out+=line.trim()+'\n';line=''}line+=(line&&!/\s$/.test(line)&&!/^\s/.test(it.str)?' ':'')+it.str;ly=y;if(it.hasEOL){out+=line.trim()+'\n';line='';ly=null}});
+    out+=line.trim()+'\n\n';if(out.length>60000)break}
+  return out.replace(/[ \t]+/g,' ').replace(/\n{3,}/g,'\n\n').trim()}
+function dmdMerge(cur,nw,name){['objet','client','mail','tel','lieu','butoir','heure'].forEach(k=>{if(!cur[k]&&nw[k])cur[k]=nw[k]});if(nw.type==='ao')cur.type='ao';
+  cur.pj=[...(cur.pj||[]),name];cur.texte=((cur.texte||'')+`\n\n----- ${name} -----\n`+nw.texte).trim().slice(0,6000);return cur}
 async function dmdFile(f){try{const nm=f.name.toLowerCase();let raw;
   if(nm.endsWith('.msg'))raw=dmdMsg(await f.arrayBuffer());else if(nm.endsWith('.eml'))raw=dmdEml(new TextDecoder('latin1').decode(await f.arrayBuffer()));
+  else if(nm.endsWith('.pdf')||f.type==='application/pdf'){toast('Lecture du PDF…');raw=await dmdPdfText(f);
+    if(raw.replace(/\s/g,'').length<40){toast('PDF scanné (image) : pas de texte lisible, complétez les champs à la main');raw=''}
+    const nw=Object.assign(dmdBlank(),dmdParse(raw));if(!raw)nw.objet=f.name.replace(/\.pdf$/i,'');
+    if(dmdCur){syncDmd();dmdMerge(dmdCur,nw,f.name)}else{dmdCur=nw;dmdCur.pj=[f.name];dmdCur.texte=raw?`----- ${f.name} -----\n`+nw.texte:'';dmdCur.fichier=f.name}
+    renderDmd();if(raw)toast(dmdCur.butoir?'PDF lu : date limite trouvée, vérifiez les champs':'PDF lu : pas de date limite trouvée, indiquez-la');return}
   else if(/\.(txt|text)$/.test(nm)||/^text\//.test(f.type))raw=await f.text();else if(/\.html?$/.test(nm))raw=dmdHtml(await f.text());
   else{toast('Format non lu : glissez un mail (.eml, .msg) ou collez son texte');return}
-  dmdCur=Object.assign(dmdBlank(),dmdParse(raw));dmdCur.fichier=f.name;renderDmd();toast('Mail lu : vérifiez les champs puis enregistrez')}catch(e){console.error(e);toast('Lecture du mail impossible')}}
+  const nw=Object.assign(dmdBlank(),dmdParse(raw));if(dmdCur){syncDmd();dmdMerge(dmdCur,nw,f.name)}else{dmdCur=nw;dmdCur.fichier=f.name}renderDmd();toast('Mail lu : vérifiez les champs puis enregistrez')}catch(e){console.error(e);toast('Lecture du mail impossible')}}
+function syncDmd(){if(dmdCur)$$('#v-dmd [data-dk]').forEach(i=>{dmdCur[i.dataset.dk]=i.value})}
 function dmdBlank(){return {id:null,type:'devis',objet:'',client:'',mail:'',tel:'',lieu:'',recu:new Date().toISOString().slice(0,10),butoir:'',heure:'',statut:'afaire',notes:'',texte:''}}
 /* rappel agenda (.ics) : événement à la date butoir + alarme la veille */
 async function dmdIcs(d){if(!d.butoir){toast('Indiquez d’abord une date butoir');return}if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}
@@ -3052,7 +3065,7 @@ async function dmdIcs(d){if(!d.butoir){toast('Indiquez d’abord une date butoir
     'BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:Chiffrage à rendre','TRIGGER:-P1D','END:VALARM','BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:Chiffrage à rendre','TRIGGER:-P3D','END:VALARM','END:VEVENT','END:VCALENDAR'].join('\r\n');
   try{await dlApi.save({filename:`butoir-${slug(d.objet||d.client||'chiffrage')}.ics`,data:new Blob([ics],{type:'text/calendar'})})}catch(e){if(e&&(e.code==='cancelled'||e.code==='declined'))return;toast('Export impossible')}}
 function dmdFormHTML(d){const f=(k,l,t='text',x='')=>`<label>${l}<input data-dk="${k}" type="${t}" value="${esc(d[k]||'')}" ${x}></label>`;
-  return `<div class="card" style="margin-bottom:14px"><div class="card-b"><div class="toolbar" style="margin:0 0 10px"><div class="title" style="font-size:17px">${d.id?'Modifier la demande':'Nouvelle demande'}${d.fichier?` <small class="status">(${esc(d.fichier)})</small>`:''}</div></div>
+  return `<div class="card dmd-drop" id="dmd-formcard" style="margin-bottom:14px;border-style:solid"><div class="card-b"><div class="toolbar" style="margin:0 0 10px"><div class="title" style="font-size:17px">${d.id?'Modifier la demande':'Nouvelle demande'}</div></div>${(d.pj&&d.pj.length)||d.fichier?`<p class="status" style="margin:-4px 0 10px">Lu : ${esc([...new Set([...(d.pj||[]),d.fichier].filter(Boolean))].join(', '))}</p>`:''}
   <div class="dmd-form">
     <label>Type<select data-dk="type"><option value="devis" ${d.type!=='ao'?'selected':''}>Demande de devis</option><option value="ao" ${d.type==='ao'?'selected':''}>Appel d’offres</option></select></label>
     ${f('objet','Objet / chantier','text','class="wide"')}${f('client','Client / maître d’ouvrage')}${f('lieu','Lieu')}${f('mail','E-mail','email')}${f('tel','Téléphone','tel')}
@@ -3062,7 +3075,7 @@ function dmdFormHTML(d){const f=(k,l,t='text',x='')=>`<label>${l}<input data-dk=
     <details class="wide" ${d.id?'':'open'}><summary class="status">Texte du mail</summary><textarea data-dk="texte" style="min-height:140px">${esc(d.texte||'')}</textarea></details>
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn primary" id="dmd-ok" ${db&&canWrite?'':'disabled'}>Enregistrer</button><button class="btn ghost" id="dmd-cancel">Annuler</button>
-  ${d.butoir?'<button class="btn ghost" id="dmd-ics1">Ajouter à mon agenda</button>':''}${d.id?'<button class="btn ghost danger" id="dmd-del1">Supprimer</button>':''}</div></div></div>`}
+  <label class="btn ghost">Ajouter un PDF / un mail<input type="file" id="dmd-file2" accept=".pdf,.eml,.msg,.txt,application/pdf" multiple hidden></label>${d.butoir?'<button class="btn ghost" id="dmd-ics1">Ajouter à mon agenda</button>':''}${d.id?'<button class="btn ghost danger" id="dmd-del1">Supprimer</button>':''}</div></div></div>`}
 function renderDmd(){const el=$('#v-dmd');if(!el)return;
   const L=dmdItems.filter(d=>dmdFilter==='all'||dmdOpen(d)).sort((a,b)=>(dmdOpen(b)-dmdOpen(a))||((a.butoir||'9999')<(b.butoir||'9999')?-1:(a.butoir||'9999')>(b.butoir||'9999')?1:0));
   const nOpen=dmdItems.filter(dmdOpen).length,nHot=dmdItems.filter(d=>dmdUrg(d)).length;
@@ -3070,16 +3083,16 @@ function renderDmd(){const el=$('#v-dmd');if(!el)return;
     <label class="status"><select id="dmd-filter"><option value="open" ${dmdFilter==='open'?'selected':''}>À faire et en cours (${nOpen})</option><option value="all" ${dmdFilter==='all'?'selected':''}>Toutes (${dmdItems.length})</option></select></label></div>
   ${nHot?`<div class="banner bad">${nHot} chiffrage${nHot>1?'s':''} à rendre sous 3 jours ou en retard.</div>`:''}
   ${dmdCur?dmdFormHTML(dmdCur):`<div class="card" style="margin-bottom:14px"><div class="card-b"><div class="dmd-drop" id="dmd-drop">
-    <div><b>Ajouter une demande reçue par mail</b> <span class="status">— glissez le mail ici depuis Outlook / Thunderbird (fichier .msg ou .eml), ou copiez tout le mail (Ctrl+A, Ctrl+C) et collez-le ci-dessous. L’objet, l’expéditeur, la date de réception, la date limite et le type (devis ou appel d’offres) sont repérés automatiquement.</span></div>
+    <div><b>Ajouter une demande reçue par mail</b> <span class="status">— glissez ici le mail depuis Outlook / Thunderbird (.msg, .eml) et/ou un <b>PDF</b> (règlement de consultation, lettre de consultation, demande de prix…), ou copiez tout le mail (Ctrl+A, Ctrl+C) et collez-le ci-dessous. L’objet, l’expéditeur, la date de réception, la date limite et le type (devis ou appel d’offres) sont repérés automatiquement.</span></div>
     <textarea id="dmd-paste" placeholder="Collez ici le mail (avec De :, Objet :, Date : si possible)…"></textarea>
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="dmd-parse">Analyser le mail</button><label class="btn ghost">Choisir un fichier mail<input type="file" id="dmd-file" accept=".eml,.msg,.txt,.html,message/rfc822" hidden></label></div></div></div></div>`}
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="dmd-parse">Analyser le mail</button><label class="btn ghost">Choisir un mail ou un PDF<input type="file" id="dmd-file" accept=".eml,.msg,.pdf,.txt,.html,message/rfc822,application/pdf" multiple hidden></label></div></div></div></div>`}
   <div class="card tbl-wrap">${!db?'<div class="empty">La liste des demandes n’est pas disponible sur cette vue.</div>':L.length?`<table class="list"><thead><tr><th>Date limite</th><th>Type</th><th>Objet / chantier</th><th>Client</th><th>Reçu</th><th>Statut</th><th></th></tr></thead><tbody>
   ${L.map(d=>{const q=savedList.find(x=>x.dmd===d.id);return `<tr class="row ${dmdUrg(d)?'dmd-'+dmdUrg(d):''}" data-dmdopen="${esc(d.id)}"><td class="dmd-due">${d.butoir?dmdFmt(d.butoir)+(d.heure?' '+esc(d.heure):''):'–'}${dmdOpen(d)?`<small>${dmdLeft(d)}</small>`:''}</td>
-    <td>${d.type==='ao'?'<span class="chip ao">AO</span>':'<span class="chip man">Devis</span>'}</td><td><b>${esc(d.objet||'Sans objet')}</b>${d.lieu?`<br><small class="status">${esc(d.lieu)}</small>`:''}</td><td>${esc(d.client)}</td><td class="status">${dmdFmt(d.recu)}</td>
+    <td>${d.type==='ao'?'<span class="chip ao">AO</span>':'<span class="chip man">Devis</span>'}</td><td><b>${esc(d.objet||'Sans objet')}</b>${d.lieu||(d.pj&&d.pj.length)?`<br><small class="status">${esc([d.lieu,d.pj&&d.pj.length?'📎 '+d.pj.join(', '):''].filter(Boolean).join(' · '))}</small>`:''}</td><td>${esc(d.client)}</td><td class="status">${dmdFmt(d.recu)}</td>
     <td data-dmdcell="1"><select data-dmdst="${esc(d.id)}">${DMD_ST.map(([k,l])=>`<option value="${k}" ${d.statut===k?'selected':''}>${l}</option>`).join('')}</select></td>
     <td class="r" data-dmdcell="1" style="white-space:nowrap">${q?`<button class="btn sm" data-dmdq="${esc(q.id)}">Ouvrir le chiffrage</button>`:`<button class="btn sm primary" data-dmdgo="${esc(d.id)}">Chiffrer</button>`} ${d.butoir?`<button class="btn sm ghost" data-dmdics="${esc(d.id)}" title="Rappel dans l’agenda (la veille et 3 jours avant)">Agenda</button>`:''}</td></tr>`}).join('')}</tbody></table>`:`<div class="empty">${dmdItems.length?'Aucune demande en attente.':'Aucune demande enregistrée. Glissez ou collez un mail ci-dessus.'}</div>`}</div>`}
 async function dmdCommit(){const d=dmdCur;if(!d)return;$$('#v-dmd [data-dk]').forEach(i=>{d[i.dataset.dk]=i.value});if(!d.objet.trim()&&!d.client.trim()){toast('Indiquez au moins l’objet ou le client');return}
-  const list=dmdItems.slice();if(!d.id){d.id='d'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);d.cree=Date.now();delete d.fichier;list.push(d)}else{const i=list.findIndex(x=>x.id===d.id);if(i>=0)list[i]=d;else list.push(d)}
+  const list=dmdItems.slice();if(!d.id){d.id='d'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);d.cree=Date.now();list.push(d)}else{const i=list.findIndex(x=>x.id===d.id);if(i>=0)list[i]=d;else list.push(d)}
   if(await dmdSave(list,'Demande enregistrée')){dmdCur=null;renderDmd()}}
 async function dmdChiffrer(id){const d=dmdItems.find(x=>x.id===id);if(!d)return;if(dirty&&quote.nom&&!confirm('Le chiffrage en cours n’est pas enregistré. Le remplacer par un nouveau chiffrage ?'))return;
   quote=blankQuote();quote.nom=d.objet||'';quote.client=d.client||'';quote.lieu=d.lieu||'';quote.mail=d.mail||'';quote.tel=d.tel||'';quote.dmd=d.id;
@@ -3100,13 +3113,12 @@ function dmdBind(){const v=$('#v-dmd');if(!v)return;
     if(b.dataset.dmdics){const d=dmdItems.find(x=>x.id===b.dataset.dmdics);if(d)dmdIcs(d);return}});
   v.addEventListener('change',async e=>{const t=e.target;
     if(t.id==='dmd-filter'){dmdFilter=t.value;renderDmd();return}
-    if(t.id==='dmd-file'&&t.files[0]){dmdFile(t.files[0]);t.value='';return}
+    if((t.id==='dmd-file'||t.id==='dmd-file2')&&t.files.length){const fs=[...t.files];t.value='';for(const x of fs)await dmdFile(x);return}
     if(t.dataset.dmdst){await dmdSave(dmdItems.map(x=>x.id===t.dataset.dmdst?{...x,statut:t.value}:x),'Statut mis à jour');renderDmd();return}
     if(t.dataset.dk==='type'&&dmdCur){$$('#v-dmd [data-dk]').forEach(i=>{dmdCur[i.dataset.dk]=i.value});renderDmd()}});
-  v.addEventListener('dragover',e=>{if(dmdCur)return;e.preventDefault();$('#dmd-drop')?.classList.add('over')});
-  v.addEventListener('dragleave',e=>{if(!v.contains(e.relatedTarget))$('#dmd-drop')?.classList.remove('over')});
-  v.addEventListener('drop',e=>{if(dmdCur)return;e.preventDefault();$('#dmd-drop')?.classList.remove('over');const f=e.dataTransfer.files&&e.dataTransfer.files[0];
-    if(f){dmdFile(f);return}const t=e.dataTransfer.getData('text/plain');if(t){dmdCur=Object.assign(dmdBlank(),dmdParse(t));renderDmd()}})}
+  v.addEventListener('dragover',e=>{e.preventDefault();($('#dmd-drop')||$('#dmd-formcard'))?.classList.add('over')});
+  v.addEventListener('dragleave',e=>{if(!v.contains(e.relatedTarget))($('#dmd-drop')||$('#dmd-formcard'))?.classList.remove('over')});
+  v.addEventListener('drop',e=>{e.preventDefault();($('#dmd-drop')||$('#dmd-formcard'))?.classList.remove('over');    const fs=[...(e.dataTransfer.files||[])];if(fs.length){(async()=>{for(const x of fs)await dmdFile(x)})();return}const t=e.dataTransfer.getData('text/plain');if(t){const nw=Object.assign(dmdBlank(),dmdParse(t));if(dmdCur){syncDmd();dmdMerge(dmdCur,nw,'texte glissé')}else dmdCur=nw;renderDmd()}})}
 /* ---------- view: tarifs ---------- */
 function renderTarifs(){
   const el=$('#v-tarifs');const items=catDraft||catalog;const v=quote?vars():{N:1,P:100,L:20,M:100,J:1};
