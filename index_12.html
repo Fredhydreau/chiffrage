@@ -1,4 +1,17 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}
+.dmd-drop{border:2px dashed var(--line);border-radius:10px;padding:14px;display:grid;gap:10px}
+.dmd-drop.over{border-color:var(--accent);background:var(--panel2)}
+.dmd-drop textarea{width:100%;min-height:90px;font:inherit;font-size:13px}
+table.list tr.dmd-late td{background:color-mix(in srgb,#C0392B 12%,var(--panel))}
+table.list tr.dmd-soon td{background:color-mix(in srgb,#E67E22 13%,var(--panel))}
+.dmd-due{font-weight:700;white-space:nowrap}.dmd-due small{display:block;font-weight:500;color:var(--ink3)}
+tr.dmd-late .dmd-due small{color:#C0392B;font-weight:700}tr.dmd-soon .dmd-due small{color:#B9600F;font-weight:700}
+.chip.ao{color:#7B3FA0;background:color-mix(in srgb,#7B3FA0 13%,transparent)}
+.dmd-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px 14px}
+.dmd-form label{display:grid;gap:3px;font-size:12px;color:var(--ink3)}.dmd-form input,.dmd-form select{font:inherit;font-size:14px}
+.dmd-form .wide{grid-column:1/-1}.dmd-form textarea{font:inherit;font-size:13px;min-height:70px;width:100%}
+.tab .cnt.hot{color:#fff;background:#C0392B;border-radius:9px;padding:0 6px}
+</style></head><body>
 <title>Chiffrage Géothermie</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -275,6 +288,7 @@ table.list tr.row:hover td{background:var(--panel2)}
   </div>
   <nav class="tabs" role="tablist">
     <button class="tab" role="tab" id="tab-devis" data-v="devis">Chiffrage en cours</button>
+    <button class="tab" role="tab" id="tab-dmd" data-v="dmd">À chiffrer<span class="cnt" id="cnt-dmd"></span></button>
     <button class="tab" role="tab" id="tab-liste" data-v="liste">Mes chiffrages<span class="cnt" id="cnt"></span></button>
     <button class="tab" role="tab" id="tab-deb" data-v="deb">Déboursés<span class="cnt" id="cnt-deb"></span></button>
     <button class="tab" role="tab" id="tab-tarifs" data-v="tarifs">Tarifs</button>
@@ -284,6 +298,7 @@ table.list tr.row:hover td{background:var(--panel2)}
 
 <main class="wrap">
   <section class="view" id="v-devis"></section>
+  <section class="view" id="v-dmd" hidden></section>
   <section class="view" id="v-liste" hidden></section>
   <section class="view" id="v-deb" hidden></section>
   <section class="view" id="v-tarifs" hidden></section>
@@ -2948,7 +2963,7 @@ function renderListe(){
   el.innerHTML=`<div class="toolbar"><div class="title">Mes chiffrages</div><button class="btn primary" id="l-new">Nouveau chiffrage</button></div>
   <div class="list-tools"><input id="l-filter" type="search" placeholder="Rechercher un chantier, un lieu, un client…" value="${esc(listFilter)}"></div>
   <div class="card tbl-wrap">${!db?'<div class="empty">La liste des chiffrages enregistrés n’est pas disponible sur cette vue.</div>':items.length?`<table class="list"><thead><tr><th>Chantier</th><th>Lieu</th><th>Client</th><th class="r">Forages</th><th class="r">Calculé HT</th><th class="r">Retenu HT</th><th>Modifié</th><th></th></tr></thead><tbody>
-  ${items.map(q=>`<tr class="row" data-open="${esc(q.id)}"><td><b>${esc(q.nom||'Sans nom')}</b></td><td>${esc(q.lieu)}</td><td>${esc(q.client)}</td><td class="r num">${q.N} × ${nf(q.P)} m</td><td class="r num">${q.totalHT!=null?eur0(q.totalHT):'–'}</td><td class="r num">${q.prixRetenu!=null?eur0(q.prixRetenu):'–'}</td><td class="status">${q.updated?new Date(q.updated).toLocaleDateString('fr-FR'):''}</td>
+  ${items.map(q=>`<tr class="row" data-open="${esc(q.id)}"><td><b>${esc(q.nom||'Sans nom')}</b>${(()=>{const d=q.dmd&&dmdItems.find(x=>x.id===q.dmd);return d&&d.butoir?`<br><small class="status">à rendre le ${dmdFmt(d.butoir)}${d.heure?' '+esc(d.heure):''}</small>`:''})()}</td><td>${esc(q.lieu)}</td><td>${esc(q.client)}</td><td class="r num">${q.N} × ${nf(q.P)} m</td><td class="r num">${q.totalHT!=null?eur0(q.totalHT):'–'}</td><td class="r num">${q.prixRetenu!=null?eur0(q.prixRetenu):'–'}</td><td class="status">${q.updated?new Date(q.updated).toLocaleDateString('fr-FR'):''}</td>
   <td class="r" data-del-cell="${esc(q.id)}"><button class="btn sm ghost danger" data-del="${esc(q.id)}">Supprimer</button></td></tr>`).join('')}</tbody></table>`:'<div class="empty">Aucun chiffrage enregistré pour le moment.</div>'}</div>`;
 }
 function onListeClick(e){
@@ -2960,6 +2975,138 @@ function onListeClick(e){
   const tr=e.target.closest('tr[data-open]');if(tr&&!e.target.closest('[data-del-cell]')){const q=savedList.find(x=>x.id===tr.dataset.open);if(q)openQuote(q)}
 }
 
+
+/* ---------- demandes à chiffrer (mails, appels d'offres, dates butoirs) ---------- */
+let dmdItems=[],dmdLoaded=false,dmdCur=null,dmdFilter='open',dmdReminded=false;
+const DMD_ST=[['afaire','À chiffrer'],['encours','En cours'],['envoye','Envoyé'],['gagne','Gagné'],['perdu','Perdu / abandonné']];
+const dmdOpen=d=>d.statut==='afaire'||d.statut==='encours';
+const dmdToday=()=>{const t=new Date();return new Date(t.getFullYear(),t.getMonth(),t.getDate())};
+function dmdDays(iso){if(!iso)return null;const [y,m,d]=iso.split('-').map(Number);return Math.round((new Date(y,m-1,d)-dmdToday())/864e5)}
+function dmdFmt(iso){if(!iso)return '';const [y,m,d]=iso.split('-');return `${d}/${m}/${y}`}
+function dmdLeft(d){const n=dmdDays(d.butoir);if(n==null)return 'sans date';if(n<0)return `dépassée de ${-n} j`;if(n===0)return 'aujourd’hui';if(n===1)return 'demain';return `dans ${n} j`}
+function dmdUrg(d){if(!dmdOpen(d))return '';const n=dmdDays(d.butoir);return n==null?'':n<0?'late':n<=3?'soon':''}
+function dmdBadge(){const el=$('#cnt-dmd');if(!el)return;const o=dmdItems.filter(dmdOpen),h=o.filter(d=>dmdUrg(d));el.textContent=o.length?String(o.length):'';el.classList.toggle('hot',h.length>0);el.title=h.length?`${h.length} à rendre sous 3 jours ou en retard`:''}
+function dmdRemind(){if(dmdReminded||!dmdLoaded)return;dmdReminded=true;const h=dmdItems.filter(d=>dmdUrg(d));if(!h.length)return;const l=h.filter(d=>dmdUrg(d)==='late').length;
+  toast(`${h.length} chiffrage${h.length>1?'s':''} à rendre sous 3 jours${l?` (dont ${l} en retard)`:''} : onglet « À chiffrer »`)}
+async function dmdSave(list,msg){if(!db){toast('Enregistrement indisponible sur cette vue');return false}
+  try{await db.doc('config/demandes').set({items:list,updated:Date.now()});dmdItems=list;dmdBadge();if(msg)toast(msg);return true}
+  catch(e){toast(e&&e.code==='too_big'?'Trop de demandes enregistrées : supprimez les plus anciennes':e&&e.code==='invalid_argument'?'Vous n’avez pas le droit d’enregistrer ici':'Échec de l’enregistrement, réessayez');return false}}
+/* --- lecture d'un mail : texte collé, .eml ou .msg (Outlook) --- */
+const DMD_MOIS=['janvier','fevrier','mars','avril','mai','juin','juillet','aout','septembre','octobre','novembre','decembre'];
+function dmdNorm(t){return t.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase()}
+function dmdIso(y,m,d){y=+y;if(y<100)y+=2000;m=+m;d=+d;if(!(m>=1&&m<=12&&d>=1&&d<=31&&y>2000&&y<2100))return null;return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`}
+/* toutes les dates d'un texte, avec leur position et l'heure éventuelle qui suit */
+function dmdDates(t){const n=dmdNorm(t),out=[];let m;
+  const r1=/\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})\b/g;while((m=r1.exec(n)))out.push({i:m.index,e:m.index+m[0].length,iso:dmdIso(m[3],m[2],m[1])});
+  const r2=new RegExp('\\b(\\d{1,2})(?:er)?\\s+('+DMD_MOIS.join('|')+')\\s+(\\d{4})','g');while((m=r2.exec(n)))out.push({i:m.index,e:m.index+m[0].length,iso:dmdIso(m[3],DMD_MOIS.indexOf(m[2])+1,m[1])});
+  out.forEach(o=>{const h=/^\s*(?:a|,)?\s*(\d{1,2})\s*(?:h|:)\s*(\d{2})?/.exec(n.slice(o.e,o.e+14));if(h&&+h[1]<24)o.h=String(h[1]).padStart(2,'0')+':'+(h[2]||'00')});
+  return out.filter(o=>o.iso).sort((a,b)=>a.i-b.i)}
+function dmdParse(raw){const t=String(raw||'').replace(/\r/g,''),n=dmdNorm(t),d={type:'devis'};
+  const hd=k=>{const m=new RegExp('^\\s*(?:'+k+')\\s*:\\s*(.+)$','mi').exec(t);return m?m[1].trim():''};
+  d.objet=hd('Subject|Objet|Sujet').replace(/^((TR|Fwd?|RE|Réf)\s*:\s*)+/i,'').trim();
+  const from=hd('From|De|Expéditeur');const em=/[\w.+-]+@[\w-]+\.[\w.-]+/.exec(from)||/[\w.+-]+@[\w-]+\.[\w.-]+/.exec(t.slice(0,1500));
+  d.mail=em?em[0]:'';d.client=from.replace(/<[^>]*>/g,'').replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g,'').replace(/["\[\]]/g,'').trim();
+  if(!d.client&&d.mail)d.client=d.mail.split('@')[0].replace(/[._-]+/g,' ');
+  const tel=/(?:\+33\s?|0)[1-9](?:[ .-]?\d{2}){4}/.exec(t);d.tel=tel?tel[0]:'';
+  const D=dmdDates(t);const dh=hd('Date|Envoyé|Sent|Reçu');if(dh){const o=dmdDates(dh)[0];if(o)d.recu=o.iso;else{const x=new Date(dh);if(!isNaN(x))d.recu=x.toISOString().slice(0,10)}}
+  if(!d.recu)d.recu=new Date().toISOString().slice(0,10);
+  const kw=/(date\s+(et\s+heure\s+)?limite|remise\s+des\s+(offres|plis|propositions)|reception\s+des\s+(offres|plis)|depot\s+des\s+(offres|plis)|date\s+butoir|au\s+plus\s+tard|avant\s+le|pour\s+le|d'ici\s+le|delai\s+de\s+(reponse|remise)|echeance|retour\s+(souhaite|attendu)?\s*(pour|avant)?\s*le)/g;let k,best=null;
+  while((k=kw.exec(n))&&!best){best=D.find(o=>o.i>=k.index&&o.i-k.index<160&&o.iso!==d.recu)||null}
+  if(best){d.butoir=best.iso;d.heure=best.h||''}
+  if(/appel\s+d.offres?|\bdce\b|\bao\b|marche\s+public|boamp|consultation|reglement\s+de\s+(la\s+)?consultation|acheteur\s+public|dematerialis|profil\s+acheteur|marches-?publics|achatpublic|maximilien|megalis/.test(n))d.type='ao';
+  const lieu=/(?:commune\s+d[e']|ville\s+d[e']|chantier\s+(?:de|[àa]|situ[ée]e?\s+[àa])|situ[ée]e?\s+[àa]|adresse\s+du\s+chantier\s*:?|travaux\s+[àa])\s*([A-ZÀ-Ý][\wÀ-ÿ'-]+(?:[ -](?:sur|sous|en|le|la|les|de|du|[A-ZÀ-Ý][\wÀ-ÿ'-]+))*)/.exec(t);d.lieu=lieu?lieu[1].trim().replace(/[ -](sur|sous|en|le|la|les|de|du)$/i,''):'';
+  d.texte=t.trim().slice(0,6000);return d}
+function dmdQP(s){return s.replace(/=\r?\n/g,'').replace(/(=[0-9A-F]{2})+/gi,m=>{try{return new TextDecoder().decode(new Uint8Array(m.split('=').slice(1).map(h=>parseInt(h,16))))}catch(e){return m}})}
+function dmdDecode(bytes,cs){try{return new TextDecoder(cs||'utf-8').decode(bytes)}catch(e){return new TextDecoder().decode(bytes)}}
+function dmdB64(s){const b=atob(s.replace(/\s+/g,''));return Uint8Array.from(b,c=>c.charCodeAt(0))}
+function dmdWords(s){return s.replace(/=\?([^?]+)\?([BQ])\?([^?]*)\?=/gi,(m,cs,enc,txt)=>{try{return enc.toUpperCase()==='B'?dmdDecode(dmdB64(txt),cs):dmdDecode(Uint8Array.from(txt.replace(/_/g,' ').replace(/=([0-9A-F]{2})/gi,(m,h)=>String.fromCharCode(parseInt(h,16))),c=>c.charCodeAt(0)&255),cs)}catch(e){return txt}}).replace(/\?=\s+=\?/g,'')}
+function dmdHtml(h){const d=new DOMParser().parseFromString(h.replace(/<br\s*\/?>/gi,'\n').replace(/<\/(p|div|tr|li|h\d)>/gi,'\n'),'text/html');return (d.body&&d.body.textContent||'').replace(/\n{3,}/g,'\n\n')}
+function dmdEml(raw){const i=raw.search(/\r?\n\r?\n/);const head=(i<0?raw:raw.slice(0,i)).replace(/\r?\n[ \t]+/g,' '),body=i<0?'':raw.slice(i).replace(/^\r?\n\r?\n/,'');
+  const H={};head.split(/\r?\n/).forEach(l=>{const m=/^([\w-]+):\s*(.*)$/.exec(l);if(m)H[m[1].toLowerCase()]=m[2]});
+  const part=(hs,b)=>{const ct=hs['content-type']||'text/plain',te=(hs['content-transfer-encoding']||'').toLowerCase(),cs=(/charset="?([\w-]+)/i.exec(ct)||[])[1];
+    const bd=/boundary="?([^";]+)"?/i.exec(ct);if(/multipart/i.test(ct)&&bd){const ps=b.split('--'+bd[1]).slice(1).filter(p=>!/^--/.test(p));let html='';
+      for(const p of ps){const j=p.search(/\r?\n\r?\n/);if(j<0)continue;const ph={};p.slice(0,j).replace(/\r?\n[ \t]+/g,' ').split(/\r?\n/).forEach(l=>{const m=/^([\w-]+):\s*(.*)$/.exec(l);if(m)ph[m[1].toLowerCase()]=m[2]});
+        if(/attachment/i.test(ph['content-disposition']||''))continue;const r=part(ph,p.slice(j).replace(/^\r?\n\r?\n/,''));if(r.plain)return r;if(r.html&&!html)html=r.html}return {html}}
+    let bytes;if(te==='base64'){try{bytes=dmdB64(b)}catch(e){bytes=new TextEncoder().encode(b)}}else if(te==='quoted-printable')bytes=Uint8Array.from(b.replace(/=\r?\n/g,'').replace(/=([0-9A-F]{2})/gi,(m,h)=>String.fromCharCode(parseInt(h,16))),c=>c.charCodeAt(0)&255);else bytes=Uint8Array.from(b,c=>c.charCodeAt(0)&255);
+    const txt=dmdDecode(bytes,cs);return /html/i.test(ct)?{html:txt}:{plain:txt}};
+  const r=part(H,body);const txt=r.plain||(r.html?dmdHtml(r.html):'');
+  return `De : ${dmdWords(H.from||'')}\nDate : ${H.date||''}\nObjet : ${dmdWords(H.subject||'')}\n\n${txt}`}
+/* .msg Outlook : on récupère les textes (UTF-16) du fichier ; l'objet est la 1re chaîne courte qui ressemble à un titre */
+function dmdMsg(buf){const u=new Uint8Array(buf),runs=[];let cur='';for(let i=0;i+1<u.length;i+=2){const c=u[i]|(u[i+1]<<8);if((c>=32&&c<0xD800)||c===10||c===13||c===9)cur+=String.fromCharCode(c);else{if(cur.trim().length>=4)runs.push(cur);cur=''}}if(cur.trim().length>=4)runs.push(cur);
+  const uniq=[...new Set(runs.map(r=>r.replace(/\r/g,'').trim()))];const body=uniq.reduce((a,b)=>b.length>a.length?b:a,'');
+  const em=uniq.find(r=>/^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(r))||'';const subj=uniq.find(r=>r.length>=6&&r.length<160&&!/[@\\\/]|^IPM\.|^[A-Z0-9_.:-]+$/.test(r)&&/\s/.test(r)&&r!==body)||'';
+  const name=uniq.find(r=>r.length<60&&/^[A-ZÀ-Ý][\wÀ-ÿ'-]+(\s[A-ZÀ-Ýa-zà-ÿ][\wÀ-ÿ'-]+){1,3}$/.test(r)&&r!==subj)||'';
+  return `De : ${name} <${em}>\nObjet : ${subj}\n\n${body}`}
+async function dmdFile(f){try{const nm=f.name.toLowerCase();let raw;
+  if(nm.endsWith('.msg'))raw=dmdMsg(await f.arrayBuffer());else if(nm.endsWith('.eml'))raw=dmdEml(new TextDecoder('latin1').decode(await f.arrayBuffer()));
+  else if(/\.(txt|text)$/.test(nm)||/^text\//.test(f.type))raw=await f.text();else if(/\.html?$/.test(nm))raw=dmdHtml(await f.text());
+  else{toast('Format non lu : glissez un mail (.eml, .msg) ou collez son texte');return}
+  dmdCur=Object.assign(dmdBlank(),dmdParse(raw));dmdCur.fichier=f.name;renderDmd();toast('Mail lu : vérifiez les champs puis enregistrez')}catch(e){console.error(e);toast('Lecture du mail impossible')}}
+function dmdBlank(){return {id:null,type:'devis',objet:'',client:'',mail:'',tel:'',lieu:'',recu:new Date().toISOString().slice(0,10),butoir:'',heure:'',statut:'afaire',notes:'',texte:''}}
+/* rappel agenda (.ics) : événement à la date butoir + alarme la veille */
+async function dmdIcs(d){if(!d.butoir){toast('Indiquez d’abord une date butoir');return}if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}
+  const ymd=d.butoir.replace(/-/g,''),hm=(d.heure||'').replace(':','');const st=hm?`DTSTART;TZID=Europe/Paris:${ymd}T${hm}00`:`DTSTART;VALUE=DATE:${ymd}`;
+  const ex=s=>String(s||'').replace(/\\/g,'\\\\').replace(/[,;]/g,m=>'\\'+m).replace(/\n/g,'\\n');
+  const ics=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Chiffrage geothermie//FR','BEGIN:VEVENT',`UID:${d.id||Date.now()}@chiffrage`,`DTSTAMP:${new Date().toISOString().replace(/[-:]/g,'').slice(0,15)}Z`,st,
+    `SUMMARY:${ex((d.type==='ao'?'Remise AO : ':'Devis à rendre : ')+(d.objet||d.client||'chiffrage'))}`,`DESCRIPTION:${ex([d.client,d.mail,d.tel,d.lieu,d.notes].filter(Boolean).join('\n'))}`,
+    'BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:Chiffrage à rendre','TRIGGER:-P1D','END:VALARM','BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:Chiffrage à rendre','TRIGGER:-P3D','END:VALARM','END:VEVENT','END:VCALENDAR'].join('\r\n');
+  try{await dlApi.save({filename:`butoir-${slug(d.objet||d.client||'chiffrage')}.ics`,data:new Blob([ics],{type:'text/calendar'})})}catch(e){if(e&&(e.code==='cancelled'||e.code==='declined'))return;toast('Export impossible')}}
+function dmdFormHTML(d){const f=(k,l,t='text',x='')=>`<label>${l}<input data-dk="${k}" type="${t}" value="${esc(d[k]||'')}" ${x}></label>`;
+  return `<div class="card" style="margin-bottom:14px"><div class="card-b"><div class="toolbar" style="margin:0 0 10px"><div class="title" style="font-size:17px">${d.id?'Modifier la demande':'Nouvelle demande'}${d.fichier?` <small class="status">(${esc(d.fichier)})</small>`:''}</div></div>
+  <div class="dmd-form">
+    <label>Type<select data-dk="type"><option value="devis" ${d.type!=='ao'?'selected':''}>Demande de devis</option><option value="ao" ${d.type==='ao'?'selected':''}>Appel d’offres</option></select></label>
+    ${f('objet','Objet / chantier','text','class="wide"')}${f('client','Client / maître d’ouvrage')}${f('lieu','Lieu')}${f('mail','E-mail','email')}${f('tel','Téléphone','tel')}
+    ${f('recu','Reçu le','date')}${f('butoir',d.type==='ao'?'Date limite de remise':'Date butoir','date')}${f('heure','Heure limite','time')}
+    <label>Statut<select data-dk="statut">${DMD_ST.map(([k,l])=>`<option value="${k}" ${d.statut===k?'selected':''}>${l}</option>`).join('')}</select></label>
+    <label class="wide">Notes<textarea data-dk="notes" placeholder="ex. 6 forages de 100 m, accès foreuse à vérifier, visite le…">${esc(d.notes||'')}</textarea></label>
+    <details class="wide" ${d.id?'':'open'}><summary class="status">Texte du mail</summary><textarea data-dk="texte" style="min-height:140px">${esc(d.texte||'')}</textarea></details>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn primary" id="dmd-ok" ${db&&canWrite?'':'disabled'}>Enregistrer</button><button class="btn ghost" id="dmd-cancel">Annuler</button>
+  ${d.butoir?'<button class="btn ghost" id="dmd-ics1">Ajouter à mon agenda</button>':''}${d.id?'<button class="btn ghost danger" id="dmd-del1">Supprimer</button>':''}</div></div></div>`}
+function renderDmd(){const el=$('#v-dmd');if(!el)return;
+  const L=dmdItems.filter(d=>dmdFilter==='all'||dmdOpen(d)).sort((a,b)=>(dmdOpen(b)-dmdOpen(a))||((a.butoir||'9999')<(b.butoir||'9999')?-1:(a.butoir||'9999')>(b.butoir||'9999')?1:0));
+  const nOpen=dmdItems.filter(dmdOpen).length,nHot=dmdItems.filter(d=>dmdUrg(d)).length;
+  el.innerHTML=`<div class="toolbar"><div class="title">À chiffrer</div><button class="btn" id="dmd-new">Saisie manuelle</button>
+    <label class="status"><select id="dmd-filter"><option value="open" ${dmdFilter==='open'?'selected':''}>À faire et en cours (${nOpen})</option><option value="all" ${dmdFilter==='all'?'selected':''}>Toutes (${dmdItems.length})</option></select></label></div>
+  ${nHot?`<div class="banner bad">${nHot} chiffrage${nHot>1?'s':''} à rendre sous 3 jours ou en retard.</div>`:''}
+  ${dmdCur?dmdFormHTML(dmdCur):`<div class="card" style="margin-bottom:14px"><div class="card-b"><div class="dmd-drop" id="dmd-drop">
+    <div><b>Ajouter une demande reçue par mail</b> <span class="status">— glissez le mail ici depuis Outlook / Thunderbird (fichier .msg ou .eml), ou copiez tout le mail (Ctrl+A, Ctrl+C) et collez-le ci-dessous. L’objet, l’expéditeur, la date de réception, la date limite et le type (devis ou appel d’offres) sont repérés automatiquement.</span></div>
+    <textarea id="dmd-paste" placeholder="Collez ici le mail (avec De :, Objet :, Date : si possible)…"></textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="dmd-parse">Analyser le mail</button><label class="btn ghost">Choisir un fichier mail<input type="file" id="dmd-file" accept=".eml,.msg,.txt,.html,message/rfc822" hidden></label></div></div></div></div>`}
+  <div class="card tbl-wrap">${!db?'<div class="empty">La liste des demandes n’est pas disponible sur cette vue.</div>':L.length?`<table class="list"><thead><tr><th>Date limite</th><th>Type</th><th>Objet / chantier</th><th>Client</th><th>Reçu</th><th>Statut</th><th></th></tr></thead><tbody>
+  ${L.map(d=>{const q=savedList.find(x=>x.dmd===d.id);return `<tr class="row ${dmdUrg(d)?'dmd-'+dmdUrg(d):''}" data-dmdopen="${esc(d.id)}"><td class="dmd-due">${d.butoir?dmdFmt(d.butoir)+(d.heure?' '+esc(d.heure):''):'–'}${dmdOpen(d)?`<small>${dmdLeft(d)}</small>`:''}</td>
+    <td>${d.type==='ao'?'<span class="chip ao">AO</span>':'<span class="chip man">Devis</span>'}</td><td><b>${esc(d.objet||'Sans objet')}</b>${d.lieu?`<br><small class="status">${esc(d.lieu)}</small>`:''}</td><td>${esc(d.client)}</td><td class="status">${dmdFmt(d.recu)}</td>
+    <td data-dmdcell="1"><select data-dmdst="${esc(d.id)}">${DMD_ST.map(([k,l])=>`<option value="${k}" ${d.statut===k?'selected':''}>${l}</option>`).join('')}</select></td>
+    <td class="r" data-dmdcell="1" style="white-space:nowrap">${q?`<button class="btn sm" data-dmdq="${esc(q.id)}">Ouvrir le chiffrage</button>`:`<button class="btn sm primary" data-dmdgo="${esc(d.id)}">Chiffrer</button>`} ${d.butoir?`<button class="btn sm ghost" data-dmdics="${esc(d.id)}" title="Rappel dans l’agenda (la veille et 3 jours avant)">Agenda</button>`:''}</td></tr>`}).join('')}</tbody></table>`:`<div class="empty">${dmdItems.length?'Aucune demande en attente.':'Aucune demande enregistrée. Glissez ou collez un mail ci-dessus.'}</div>`}</div>`}
+async function dmdCommit(){const d=dmdCur;if(!d)return;$$('#v-dmd [data-dk]').forEach(i=>{d[i.dataset.dk]=i.value});if(!d.objet.trim()&&!d.client.trim()){toast('Indiquez au moins l’objet ou le client');return}
+  const list=dmdItems.slice();if(!d.id){d.id='d'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);d.cree=Date.now();delete d.fichier;list.push(d)}else{const i=list.findIndex(x=>x.id===d.id);if(i>=0)list[i]=d;else list.push(d)}
+  if(await dmdSave(list,'Demande enregistrée')){dmdCur=null;renderDmd()}}
+async function dmdChiffrer(id){const d=dmdItems.find(x=>x.id===id);if(!d)return;if(dirty&&quote.nom&&!confirm('Le chiffrage en cours n’est pas enregistré. Le remplacer par un nouveau chiffrage ?'))return;
+  quote=blankQuote();quote.nom=d.objet||'';quote.client=d.client||'';quote.lieu=d.lieu||'';quote.mail=d.mail||'';quote.tel=d.tel||'';quote.dmd=d.id;
+  quote.notes=[(d.type==='ao'?'Appel d’offres':'Demande')+` reçue le ${dmdFmt(d.recu)}`+(d.butoir?`, à rendre le ${dmdFmt(d.butoir)}${d.heure?' à '+d.heure:''}`:''),d.notes].filter(Boolean).join('\n');dirty=true;
+  if(d.statut==='afaire')await dmdSave(dmdItems.map(x=>x.id===id?{...x,statut:'encours'}:x));go('devis');toast('Nouveau chiffrage rempli depuis la demande : pensez à l’enregistrer')}
+function dmdBind(){const v=$('#v-dmd');if(!v)return;
+  v.addEventListener('click',async e=>{const b=e.target.closest('button');
+    if(!b){const tr=e.target.closest('tr[data-dmdopen]');if(tr&&!e.target.closest('[data-dmdcell]')){const d=dmdItems.find(x=>x.id===tr.dataset.dmdopen);if(d){dmdCur=clone(d);renderDmd();window.scrollTo(0,0)}}return}
+    const id=b.id;
+    if(id==='dmd-new'){dmdCur=dmdBlank();renderDmd();return}
+    if(id==='dmd-parse'){const t=$('#dmd-paste').value;if(!t.trim()){toast('Collez d’abord le texte du mail');return}dmdCur=Object.assign(dmdBlank(),dmdParse(t));renderDmd();toast('Vérifiez les champs puis enregistrez');return}
+    if(id==='dmd-cancel'){dmdCur=null;renderDmd();return}
+    if(id==='dmd-ok'){dmdCommit();return}
+    if(id==='dmd-ics1'){$$('#v-dmd [data-dk]').forEach(i=>{dmdCur[i.dataset.dk]=i.value});dmdIcs(dmdCur);return}
+    if(id==='dmd-del1'){if(!confirm('Supprimer cette demande ?'))return;if(await dmdSave(dmdItems.filter(x=>x.id!==dmdCur.id),'Demande supprimée')){dmdCur=null;renderDmd()}return}
+    if(b.dataset.dmdgo){dmdChiffrer(b.dataset.dmdgo);return}
+    if(b.dataset.dmdq){const q=savedList.find(x=>x.id===b.dataset.dmdq);if(q)openQuote(q);return}
+    if(b.dataset.dmdics){const d=dmdItems.find(x=>x.id===b.dataset.dmdics);if(d)dmdIcs(d);return}});
+  v.addEventListener('change',async e=>{const t=e.target;
+    if(t.id==='dmd-filter'){dmdFilter=t.value;renderDmd();return}
+    if(t.id==='dmd-file'&&t.files[0]){dmdFile(t.files[0]);t.value='';return}
+    if(t.dataset.dmdst){await dmdSave(dmdItems.map(x=>x.id===t.dataset.dmdst?{...x,statut:t.value}:x),'Statut mis à jour');renderDmd();return}
+    if(t.dataset.dk==='type'&&dmdCur){$$('#v-dmd [data-dk]').forEach(i=>{dmdCur[i.dataset.dk]=i.value});renderDmd()}});
+  v.addEventListener('dragover',e=>{if(dmdCur)return;e.preventDefault();$('#dmd-drop')?.classList.add('over')});
+  v.addEventListener('dragleave',e=>{if(!v.contains(e.relatedTarget))$('#dmd-drop')?.classList.remove('over')});
+  v.addEventListener('drop',e=>{if(dmdCur)return;e.preventDefault();$('#dmd-drop')?.classList.remove('over');const f=e.dataTransfer.files&&e.dataTransfer.files[0];
+    if(f){dmdFile(f);return}const t=e.dataTransfer.getData('text/plain');if(t){dmdCur=Object.assign(dmdBlank(),dmdParse(t));renderDmd()}})}
 /* ---------- view: tarifs ---------- */
 function renderTarifs(){
   const el=$('#v-tarifs');const items=catDraft||catalog;const v=quote?vars():{N:1,P:100,L:20,M:100,J:1};
@@ -3018,11 +3165,11 @@ async function onTarifsClick(e){
 
 /* ---------- nav ---------- */
 function go(v){view=v;store.set('view',v);
-  for(const n of ['devis','liste','deb','tarifs','soc']){$('#v-'+n).hidden=n!==v;$('#tab-'+n).setAttribute('aria-selected',n===v)}
-  if(v==='devis')renderDevis();if(v==='liste')renderListe();if(v==='deb')renderDeb();if(v==='tarifs')renderTarifs();if(v==='dvp'){dvpConfirm=false;renderDvp()}if(v==='soc')renderSoc();window.scrollTo(0,0)}
+  for(const n of ['devis','dmd','liste','deb','tarifs','soc']){$('#v-'+n).hidden=n!==v;$('#tab-'+n).setAttribute('aria-selected',n===v)}
+  if(v==='devis')renderDevis();if(v==='liste')renderListe();if(v==='dmd')renderDmd();if(v==='deb')renderDeb();if(v==='tarifs')renderTarifs();if(v==='dvp'){dvpConfirm=false;renderDvp()}if(v==='soc')renderSoc();window.scrollTo(0,0)}
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>go(t.dataset.v)));
 const vd=$('#v-devis');vd.addEventListener('input',onDevisInput);vd.addEventListener('change',onDevisChange);vd.addEventListener('click',onDevisClick);
-$('#v-liste').addEventListener('click',onListeClick);
+$('#v-liste').addEventListener('click',onListeClick);dmdBind();
 {const vb=$('#v-deb');vb.addEventListener('input',onDebInput);vb.addEventListener('change',onDebChange);vb.addEventListener('click',onDebClick)}$('#v-liste').addEventListener('input',e=>{if(e.target.id==='l-filter'){listFilter=e.target.value;const p=e.target.selectionStart;renderListe();const i=$('#l-filter');i.focus();i.setSelectionRange(p,p)}});
 $('#v-tarifs').addEventListener('input',onTarifsInput);$('#v-tarifs').addEventListener('change',e=>{if(e.target.id==='t-import'&&e.target.files[0]){importTarifs(e.target.files[0]);e.target.value=''}});$('#v-tarifs').addEventListener('click',onTarifsClick);
 $('#v-dvp').addEventListener('input',onDvpInput);$('#v-dvp').addEventListener('change',onDvpInput);$('#v-dvp').addEventListener('click',onDvpClick);
@@ -3230,7 +3377,7 @@ async function chPdf(c){if(!dlApi){toast('Téléchargement indisponible sur cett
 (function boot(){
   let d=store.get('draft');if(d&&d.id==='plumergat')d=null;quote=d?normQuote(d):blankQuote();dirty=!!(d&&d.updated===0&&d.nom);
   {const u=store.get('usedOnly');usedOnly=u==null?true:!!u;}const v=store.get('view');
-  go(['devis','liste','deb','tarifs','soc'].includes(v)?v:'devis');
+  go(['devis','dmd','liste','deb','tarifs','soc'].includes(v)?v:'devis');
 })();
 (async()=>{
   if(!window.claude?.use){dlApi=fbDownloads;db=await fbStart().catch(e=>{console.error(e);fbLoginBox('Erreur Firebase : '+(e.message||e));return null});}
@@ -3247,6 +3394,7 @@ async function chPdf(c){if(!dlApi){toast('Téléchargement indisponible sur cett
       if(view==='devis'&&!document.activeElement?.closest('#v-devis input,#v-devis textarea'))renderDevisKeepScroll();
       if(view==='tarifs'&&!catDraft)renderTarifs();}
   },()=>{});
+  db.doc('config/demandes').onSnapshot(s=>{dmdItems=s.exists&&Array.isArray(s.data().items)?s.data().items:[];dmdLoaded=true;dmdBadge();if(view==='dmd'&&!document.activeElement?.closest('#v-dmd'))renderDmd();if(view==='liste')renderListe();dmdRemind()},()=>{});
   db.doc('config/debours').onSnapshot(s=>{debCfg=s.exists?s.data():{tauxH:0};if(view==='deb'&&!chCur&&!document.activeElement?.closest('#v-deb'))renderDeb()},()=>{});
   db.collection('chantiers').orderBy('updated','desc').limit(1000).onSnapshot(s=>{chList=s.docs.map(d=>d.data());chErr='';$('#cnt-deb').textContent=chList.length?String(chList.length):'';
     if(view==='deb'&&!chCur&&!document.activeElement?.closest('#v-deb'))renderDeb()},e=>{chErr='Lecture des chantiers refusée : réessayez plus tard.';if(view==='deb'&&!chCur)renderDeb()});
