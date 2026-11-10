@@ -439,7 +439,7 @@ function plId(i){if(!i.id)i.id=Math.random().toString(36).slice(2,9);return i.id
 function routeKey(a){return a.k==='f'?'f:'+plId(a):'c:'+(a.i||0)}
 function routeWps(a){const r=quote.plan&&quote.plan.routes;const w=r&&r[routeKey(a)];return Array.isArray(w)?w:[]}
 /* ---------- tranchées dessinées : les liaisons suivent le réseau (plus court chemin) ---------- */
-function plNoLink(a){const n=quote.plan&&quote.plan.noLink;return !!(n&&n[routeKey(a)])}
+function plNoLink(a){const p=quote.plan,n=p&&p.noLink,k=routeKey(a);if(n&&n[k])return true;if(p&&p.manLink){if(a.k==='f'&&p.via&&p.via[plId(a)])return false;return !(p.linked&&p.linked[k])}return false}
 function trActive(){const t=quote.plan&&quote.plan.trenches;return Array.isArray(t)&&t.some(x=>x&&x.length>1)}
 let _net={key:null};
 function trProj(q,a,b){const dx=b.x-a.x,dy=b.y-a.y,L=dx*dx+dy*dy;let t=L?((q.x-a.x)*dx+(q.y-a.y)*dy)/L:0;t=Math.max(0,Math.min(1,t));const pt={x:a.x+t*dx,y:a.y+t*dy};return {t,pt,d:Math.hypot(q.x-pt.x,q.y-pt.y)}}
@@ -586,7 +586,16 @@ function totals(){
 }
 
 /* ---------- persistence ---------- */
-function markDirty(){dirty=true;store.set('draft',quote);const st=$('#st');if(st){st.textContent='Modifications non enregistrées';st.className='status dirty'}histSchedule()}
+function markDirty(){dirty=true;store.set('draft',quote);const st=$('#st');if(st){st.textContent=quote.nom&&quote.nom.trim()&&db&&canWrite?'Enregistrement automatique…':'Modifications non enregistrées';st.className='status dirty'}histSchedule();autoSchedule()}
+/* enregistrement automatique : 4 s après la dernière modification, dès que le chantier a un nom */
+let _asT=null,_asBusy=false,_asErr=false;
+function autoSchedule(){clearTimeout(_asT);_asT=setTimeout(autoSave,4000)}
+async function autoSave(){clearTimeout(_asT);if(!dirty||!db||!canWrite||!quote||!(quote.nom||'').trim())return;if(_asBusy){autoSchedule();return}
+  _asBusy=true;try{await saveQuote(true)}finally{_asBusy=false}}
+function _asDirtyAfter(sent){try{const a={...quote,snap:0,updated:0,totalHT:0,coutHT:0},b={...sent,snap:0,updated:0,totalHT:0,coutHT:0};return JSON.stringify(a)!==JSON.stringify(b)}catch(e){return true}}
+function stMark(txt,cls){['#st','#st2'].forEach(k=>{const e=$(k);if(e){e.textContent=txt;e.className='status'+(cls?' '+cls:'')}})}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'){if(dirty)autoSave();if(typeof chDirty!=='undefined'&&chDirty)chAutoSave()}});
+window.addEventListener('pagehide',()=>{if(dirty)autoSave()});
 /* ---------- annuler / rétablir (historique du chiffrage en cours) ---------- */
 const H={st:[],i:-1,t:null,obj:null},H_MAX=80,H_BG=[];
 function snapQ(){const b=quote&&quote.plan&&quote.plan.bg;if(!b||!b.src)return JSON.stringify(quote);const src=b.src;let k=H_BG.indexOf(src);if(k<0){H_BG.push(src);k=H_BG.length-1}b.src='§bg'+k;try{return JSON.stringify(quote)}finally{b.src=src}}
@@ -604,16 +613,19 @@ document.addEventListener('keydown',e=>{if(!(e.ctrlKey||e.metaKey)||view!=='devi
   e.preventDefault();if(k==='y'||e.shiftKey)histRedo();else histUndo()});
 function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2400)}
 function slug(s){return (s||'chiffrage').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'chiffrage'}
-async function saveQuote(){
-  if(!db){toast('Enregistrement indisponible sur cette vue');return}
+async function saveQuote(auto){
+  if(!db){if(!auto)toast('Enregistrement indisponible sur cette vue');return}const ver=JSON.stringify([quote.nom,quote.updated]);
   const v=vars();const snap={};
   for(const l of lines()){if(l.src==='extra')continue;if(qtyOf(l,v)>0)snap[l.id]={sec:l.sec,grp:l.grp,name:l.name,unit:l.unit,price:+l.price,kind:kindOf(l)}}
   quote.snap=snap;
   if(!quote.id)quote.id=slug(quote.nom)+'-'+Math.random().toString(36).slice(2,7);
   quote.updated=Date.now();
   const t=totals();quote.totalHT=Math.round(t.tp*100)/100;quote.coutHT=Math.round(t.tc*100)/100;
-  try{await db.doc('devis/'+quote.id).set(clone(quote));dirty=false;store.set('draft',quote);toast('Chiffrage enregistré');renderDevis()}
-  catch(e){if(e&&e.code==='invalid_argument'){canWrite=false;toast('Vous n’avez pas le droit d’enregistrer ici')}else if(e&&e.code==='quota_exceeded'){toast('Espace plein : supprimez d’anciens chiffrages')}else toast('Échec de l’enregistrement, réessayez')}
+  const sent=clone(quote);
+  try{await db.doc('devis/'+sent.id).set(sent);_asErr=false;
+    if(auto){if(!_asDirtyAfter(sent))dirty=false;store.set('draft',quote);stMark(dirty?'Enregistrement automatique…':'Enregistré automatiquement à '+new Date(sent.updated).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),dirty?'dirty':'');if(dirty)autoSchedule();return}
+    dirty=false;store.set('draft',quote);toast('Chiffrage enregistré');renderDevis()}
+  catch(e){if(auto){stMark('Échec de l’enregistrement automatique : cliquez Enregistrer','dirty');if(!_asErr)toast('Enregistrement automatique impossible'+(e&&e.code==='too_big'?' : chiffrage trop lourd (fond de plan ?)':e&&e.code==='invalid_argument'?' : droits insuffisants':', réessayez avec Enregistrer'));_asErr=true;return}if(e&&e.code==='invalid_argument'){canWrite=false;toast('Vous n’avez pas le droit d’enregistrer ici')}else if(e&&e.code==='quota_exceeded'){toast('Espace plein : supprimez d’anciens chiffrages')}else toast('Échec de l’enregistrement, réessayez')}
 }
 async function deleteQuote(id){
   if(!db)return;try{await db.doc('devis/'+id).delete();toast('Chiffrage supprimé');if(quote.id===id){quote.id=null;markDirty()}}catch(e){toast('Suppression impossible')}
@@ -895,7 +907,7 @@ function planHTML(){const p=quote.plan||{w:60,trace:'droit',on:false};const tool
   return `<div class="card ${plFull?'pl-full':''}" id="plan-card" style="margin-top:18px"><div class="card-h"><h2>Plan d’implantation</h2><span class="status">facultatif</span><label class="status" style="margin-left:auto;display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="pl-on" ${p.on?'checked':''}> Utiliser le plan pour les longueurs</label></div><div class="card-b">
   <div class="pl-bar"><div class="pl-tools" role="group" aria-label="Outil">${tools.map(([k,t])=>`<button class="btn sm ${plTool===k?'primary':''}" data-pltool="${k}"><i class="pl-ic pl-ic-${k}"></i>${t}</button>`).join('')}<button class="btn sm ${p.lock?'primary':''}" id="pl-lock" aria-pressed="${p.lock?'true':'false'}" title="Verrouille forages, collecteurs, chaufferie, liaisons, tranchées, zone et emprise sur le fond de plan">${LOCK_SVG(!!p.lock)}${p.lock?'Verrouillé':'Verrouiller'}</button><button class="btn sm" id="pl-undo" title="Annuler la dernière modification (Ctrl+Z / ⌘Z)" ${H.i>0||H.t?'':'disabled'}>↶ Annuler</button><button class="btn sm" id="pl-redo" title="Rétablir (Ctrl+Maj+Z / ⌘⇧Z)" ${H.i<H.st.length-1?'':'disabled'}>↷ Rétablir</button></div>
   <div class="pl-opts"><span class="pl-zoom"><button class="btn sm" id="pl-zout" title="Dézoomer (ou molette / pincer à l’endroit voulu, ou outil Loupe)">−</button><button class="btn sm" id="pl-zin" title="Zoomer (ou molette / pincer à l’endroit voulu, ou outil Loupe)">+</button></span><label class="status">Vue <select id="pl-w">${(PL_W.includes(+p.w||60)?PL_W:[...PL_W,+p.w].sort((a,b)=>a-b)).map(w=>`<option value="${w}" ${(+p.w||60)===w?'selected':''}>${nf(Math.round(w))} m</option>`).join('')}</select></label><button class="btn sm" id="pl-zfit" title="Ajuste la vue sur le fond de plan (ou sur les forages s’il n’y a pas de fond)">Plein cadre</button><button class="btn sm" id="pl-full">${plFull?'Quitter le plein écran':'Plein écran'}</button>
-  <label class="status" title="Taille des forages, collecteurs et chaufferie sur le plan">Symboles <input type="range" id="pl-symk" min="30" max="300" step="10" value="${Math.round((+p.symK||1)*100)}" style="vertical-align:middle;width:90px"></label><label class="status" title="Distances entre forages voisins, à l’écran et dans le PDF"><input type="checkbox" id="pl-cotes" ${p.cotes!==false?'checked':''}> cotes</label><label class="status" title="Cercle autour de chaque forage, à l’écran, dans les PDF, le PNG et le DXF"><input type="checkbox" id="pl-r5" ${p.r5?'checked':''}> rayons</label><span class="unit-in" style="display:inline-block;width:64px;margin-left:-4px;vertical-align:middle" title="Rayon autour des forages, au mètre près"><input id="pl-rad" type="number" min="1" max="200" step="1" inputmode="numeric" value="${planRad()}" style="width:100%;background:var(--ground);border:1px solid var(--line);border-radius:5px;padding:3px 22px 3px 6px;color:var(--ink);font-family:var(--mono)"><span>m</span></span><label class="status" title="Longueurs de PEHD et raccords nécessaires dans le cartouche du PDF"><input type="checkbox" id="pl-mat" ${p.matPdf===true?'checked':''}> matériel dans le PDF</label><label class="status" title="Afficher la bande de tranchée sur le plan et dans les exports"><input type="checkbox" id="pl-tr" ${p.noTr?'':'checked'}> tranchées</label><label class="status">Tracé <select id="pl-trace"><option value="droit" ${p.trace!=='equerre'?'selected':''}>en ligne droite</option><option value="equerre" ${p.trace==='equerre'?'selected':''}>en équerre</option></select></label>
+  <label class="status" title="Taille des forages, collecteurs et chaufferie sur le plan">Symboles <input type="range" id="pl-symk" min="30" max="300" step="10" value="${Math.round((+p.symK||1)*100)}" style="vertical-align:middle;width:90px"></label><label class="status" title="Distances entre forages voisins, à l’écran et dans le PDF"><input type="checkbox" id="pl-cotes" ${p.cotes!==false?'checked':''}> cotes</label><label class="status" title="Cercle autour de chaque forage, à l’écran, dans les PDF, le PNG et le DXF"><input type="checkbox" id="pl-r5" ${p.r5?'checked':''}> rayons</label><span class="unit-in" style="display:inline-block;width:64px;margin-left:-4px;vertical-align:middle" title="Rayon autour des forages, au mètre près"><input id="pl-rad" type="number" min="1" max="200" step="1" inputmode="numeric" value="${planRad()}" style="width:100%;background:var(--ground);border:1px solid var(--line);border-radius:5px;padding:3px 22px 3px 6px;color:var(--ink);font-family:var(--mono)"><span>m</span></span><label class="status" title="Longueurs de PEHD et raccords nécessaires dans le cartouche du PDF"><input type="checkbox" id="pl-mat" ${p.matPdf===true?'checked':''}> matériel dans le PDF</label><label class="status" title="Décoché : poser collecteurs et chaufferie sans que les liaisons se tracent ; on relie ensuite chaque forage avec l’outil « Tracé des liaisons »"><input type="checkbox" id="pl-autolink" ${p.manLink?'':'checked'}> liaisons auto</label><label class="status" title="Afficher la bande de tranchée sur le plan et dans les exports"><input type="checkbox" id="pl-tr" ${p.noTr?'':'checked'}> tranchées</label><label class="status">Tracé <select id="pl-trace"><option value="droit" ${p.trace!=='equerre'?'selected':''}>en ligne droite</option><option value="equerre" ${p.trace==='equerre'?'selected':''}>en équerre</option></select></label>
   ${p.zone&&p.zone.closed?`<button class="btn sm primary" id="pl-gen" title="Implante les forages du dimensionnement (nombre et espacement) dans la zone de forage">Implanter dans la zone (${+quote.N||0} × ${nf(+quote.E||0)} m)</button>`:'<button class="btn sm" id="pl-gen" title="Place les forages en ligne avec les valeurs du dimensionnement">Placer depuis le dimensionnement</button>'}${p.routes&&Object.keys(p.routes).length?'<button class="btn sm" id="pl-straight" title="Supprime tous les points de passage">Redresser les liaisons</button>':''}<button class="btn sm" id="pl-trauto2" title="Trace les tranchées qui relient les forages aux collecteurs avec le moins de tranchée et de tuyau (réglage dans l’outil Tranchée)">Tranchées auto</button><button class="btn sm ghost danger" id="pl-clear">Tout effacer</button></div></div>
   <div id="pl-bgbar-w">${planBgBar()}</div>
   <p class="pl-hint" id="pl-hint" ${plHint()?'':'hidden'}>${plHint()}</p>
@@ -916,6 +928,7 @@ function planInfo(){const it=planItems();if(!it.length)return 'Plan vide : place
   const pg=planGeo();const parts=[`<b>${pg.N}</b> forage${pl(pg.N)}`];
   pg.groups.forEach((g,k)=>parts.push(g.direct?`raccordé directement à la chaufferie, sans collecteur (2 Y) : ${nf(g.LF/2)} m, PE ${nf(g.LF)} m`:`collecteur ${(g.c.i||0)+1} : ${g.n} forage${pl(g.n)}, PE ${nf(g.LF)} m, plus éloigné ${nf(g.DF)} m, chaufferie ${nf(g.L)} m`));
   if(pg.C.length&&pg.F.length)parts.push(`tranchée estimée ${nf(pg.T)} m`);
+  if(quote.plan&&quote.plan.manLink){const it2=planItems(),nf2=it2.filter(i=>i.k==='f'&&plNoLink(i)).length,nc2=pg.ch&&!pg.groups.some(g=>g.direct)?it2.filter(i=>i.k==='c'&&plNoLink(i)).length:0;parts.push(nf2||nc2?`<b class="bad">liaisons manuelles : ${[nf2?nf2+' forage'+pl(nf2):'',nc2?nc2+' collecteur'+pl(nc2)+' → chaufferie':''].filter(Boolean).join(' et ')} à relier avec « Tracé des liaisons » (non compté${pl(nf2+nc2)} dans les longueurs)</b>`:'liaisons manuelles : tout est relié')}
   {const cp=fClosePairs(),NUM=plNum();if(cp.length)parts.push(`<b class="bad">forages à moins de ${F_MIN} m : ${cp.slice(0,4).map(([a,b,d])=>`F${NUM.get(a)}–F${NUM.get(b)} ${nf(r1(d))} m`).join(', ')}${cp.length>4?'…':''}</b>`)}
   const miss=[];if(!pg.C.length)miss.push(pg.N===1?'un collecteur (ou la chaufferie pour un raccordement direct)':'un collecteur');if(!pg.ch)miss.push('la chaufferie');
   const on=quote.plan&&quote.plan.on;
@@ -1353,10 +1366,10 @@ function trAuto(){const p=planObj();const F=planItems().filter(i=>i.k==='f'),C=p
   toast(`Tranchées tracées (${TR_MODES.find(m=>m[2]===a)[1]}) : ${nf(r1(v.T))} m de tranchée, ${nf(r1(v.LF))} m de PE forages`)}
 function linkFinish(hit){const p=planObj();
   if(hit.k==='f'){const a=plLink.from;let x=hit,n=0;while(x&&n<60){if(x===a){toast('Impossible : ce forage est déjà raccordé en passant par celui-ci');return}const v2=p.via&&p.via[plId(x)];x=v2?planItems().find(i=>i.k==='f'&&i.id===v2):null;n++}
-    p.via=p.via||{};p.via[plId(a)]=plId(hit);if(p.noLink)delete p.noLink[routeKey(a)];if(p.assign)delete p.assign[a.id];p.routes=p.routes||{};const pts=plLink.pts.map(q=>({x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100}));if(pts.length)p.routes[routeKey(a)]=pts;else delete p.routes[routeKey(a)];
+    p.via=p.via||{};p.via[plId(a)]=plId(hit);if(p.noLink)delete p.noLink[routeKey(a)];p.linked=p.linked||{};p.linked[routeKey(a)]=true;if(p.assign)delete p.assign[a.id];p.routes=p.routes||{};const pts=plLink.pts.map(q=>({x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100}));if(pts.length)p.routes[routeKey(a)]=pts;else delete p.routes[routeKey(a)];
     if(trActive())p.trenches.push([{x:a.x,y:a.y},...pts,{x:hit.x,y:hit.y}]);
     const NUM=plNum();plLink=null;plLinkHover=null;planChanged();toast(`Forage F${NUM.get(a)||''} raccordé en passant par le forage F${NUM.get(hit)||''}`);return}
-  if(plLink.from.k==='f'&&p.via)delete p.via[plId(plLink.from)];if(p.noLink)delete p.noLink[routeKey(plLink.from)];p.routes=p.routes||{};p.routes[routeKey(plLink.from)]=plLink.pts.map(q=>({x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100}));
+  if(plLink.from.k==='f'&&p.via)delete p.via[plId(plLink.from)];if(p.noLink)delete p.noLink[routeKey(plLink.from)];p.linked=p.linked||{};p.linked[routeKey(plLink.from)]=true;p.routes=p.routes||{};p.routes[routeKey(plLink.from)]=plLink.pts.map(q=>({x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100}));
   if(plLink.from.k==='f'){p.assign=p.assign||{};p.assign[plId(plLink.from)]=hit.i||0}
   const L=plLink;plLink=null;plLinkHover=null;planChanged();toast(`Liaison ${L.from.k==='f'?'du forage → C'+((hit.i||0)+1):'du collecteur → chaufferie'} tracée`)}
 /* simplification de Douglas-Peucker (garde le dessin, enlève les points inutiles) */
@@ -1739,7 +1752,7 @@ async function addGeoObjects(files){const d=await readGeo(files);if(!d.lines.len
   const isF=n=>/^\s*(f|s)\s*\d+|forage|sonde/i.test(n),isC=n=>/^\s*c\s*\d+|collect/i.test(n),isCh=n=>/chauff|pac\b|local technique/i.test(n);
   let nF=0,nC=0,nCh=0;
   if(d.pts.length){const named=d.pts.some(q=>isF(q.name||'')||isC(q.name||'')||isCh(q.name||''));
-    if(p.items.some(i=>i.k==='f')&&confirm('Remplacer les forages déjà placés par ceux du fichier ?\n(Annuler = les ajouter aux forages existants)')){p.items=p.items.filter(i=>i.k!=='f');p.routes={};p.assign={};p.noLink={};p.via={}}
+    if(p.items.some(i=>i.k==='f')&&confirm('Remplacer les forages déjà placés par ceux du fichier ?\n(Annuler = les ajouter aux forages existants)')){p.items=p.items.filter(i=>i.k!=='f');p.routes={};p.assign={};p.noLink={};p.via={};p.linked={}}
     d.pts.forEach(q=>{const nm=q.name||'',pt=toPlan(q.lon,q.lat);
       if(isCh(nm)){p.items=p.items.filter(i=>i.k!=='ch');p.items.push({k:'ch',...pt});nCh++}
       else if(isC(nm)){const m=/(\d+)/.exec(nm);const i=m?Math.min(1,Math.max(0,+m[1]-1)):0;p.items=p.items.filter(x=>!(x.k==='c'&&(x.i||0)===i));p.items.push({k:'c',i,...pt});nC++}
@@ -1764,7 +1777,7 @@ function kmlPlacePoints(){const p=planObj(),b=p.bg;if(!b||!b.geo||!b.kpts||!b.kp
     if(isCh(nm)){if(!items.some(i=>i.k==='ch'))items.push({k:'ch',...pt})}
     else if(isC(nm)){const m=/(\d+)/.exec(nm);const i=m?Math.min(1,Math.max(0,+m[1]-1)):ci;if(ci<2&&!items.some(x=>x.k==='c'&&x.i===i)){items.push({k:'c',i,...pt});ci++}}
     else if(isF(nm)||!named)items.push({k:'f',...pt})});
-  p.items=items;p.routes={};p.assign={};p.noLink={};p.via={};const nF=items.filter(i=>i.k==='f').length;planChanged();
+  p.items=items;p.routes={};p.assign={};p.noLink={};p.via={};p.linked={};const nF=items.filter(i=>i.k==='f').length;planChanged();
   toast(`${nF} forage${pl(nF)}${items.some(i=>i.k==='c')?', collecteur(s)':''}${items.some(i=>i.k==='ch')?', chaufferie':''} placés depuis le KML`)}
 /* export KML : positions réelles, à ouvrir dans Google Earth */
 async function planKml(){if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}if(!planGeoOn()){toast('Caler d’abord le plan avec l’outil « Point GPS », ou importer un fond KML / SHP');return}
@@ -1810,7 +1823,7 @@ function routeHit(pt){const w=planView().w;const r=w/45,u=planSymU(w);let best=n
     if(wn)rt.slice(1,1+wn).forEach((q,k)=>{const d=Math.hypot(q.x-pt.x,q.y-pt.y);if(d<=bd){bd=d;best={key,idx:k,L}}});
     routeHandles(L,u).H.forEach(hh=>{const d=Math.hypot(hh.x-pt.x,hh.y-pt.y);if(d<bd){bd=d;best={key,ins:hh.ins,L,rt}}})});
   return best}
-function routeClean(){const p=planObj();if(p.via){const ids=new Set(planItems().filter(i=>i.k==='f').map(i=>i.id));Object.keys(p.via).forEach(k=>{if(!ids.has(k)||!ids.has(p.via[k]))delete p.via[k]})}if(p.noLink){const ks=new Set(planItems().filter(i=>i.k!=='ch').map(routeKey));Object.keys(p.noLink).forEach(k=>{if(!ks.has(k))delete p.noLink[k]})}if(p.assign){const ids=new Set(planItems().filter(i=>i.k==='f').map(i=>i.id));Object.keys(p.assign).forEach(k=>{if(!ids.has(k))delete p.assign[k]})}if(!p.routes)return;const keys=new Set(planLinks().map(L=>routeKey(L.a)));Object.keys(p.routes).forEach(k=>{if(!keys.has(k)||!(p.routes[k]||[]).length)delete p.routes[k]})}
+function routeClean(){const p=planObj();if(p.via){const ids=new Set(planItems().filter(i=>i.k==='f').map(i=>i.id));Object.keys(p.via).forEach(k=>{if(!ids.has(k)||!ids.has(p.via[k]))delete p.via[k]})}if(p.noLink){const ks=new Set(planItems().filter(i=>i.k!=='ch').map(routeKey));Object.keys(p.noLink).forEach(k=>{if(!ks.has(k))delete p.noLink[k]})}if(p.linked){const ks=new Set(planItems().filter(i=>i.k!=='ch').map(routeKey));Object.keys(p.linked).forEach(k=>{if(!ks.has(k))delete p.linked[k]})}if(p.assign){const ids=new Set(planItems().filter(i=>i.k==='f').map(i=>i.id));Object.keys(p.assign).forEach(k=>{if(!ids.has(k))delete p.assign[k]})}if(!p.routes)return;const keys=new Set(planLinks().map(L=>routeKey(L.a)));Object.keys(p.routes).forEach(k=>{if(!keys.has(k)||!(p.routes[k]||[]).length)delete p.routes[k]})}
 function planHit(pt){const w=planView().w;const r=w/40;let best=null,bd=r;planItems().forEach(i=>{const d=Math.hypot(i.x-pt.x,i.y-pt.y);if(d<=bd){bd=d;best=i}});return best}
 function planChanged(){routeClean();const p=planObj();if(!p.on&&!p.userOff&&planItems().some(i=>i.k==='f')&&planItems().some(i=>i.k==='c'))p.on=true;planSync();markDirty();renderDevisKeepScroll()}
 function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.preventDefault();const p=planObj();
@@ -1874,7 +1887,7 @@ function onPlanDown(e){const svg=e.target.closest('#pl-svg');if(!svg)return;e.pr
   if(plTool==='del'){if(hit){p.items=p.items.filter(i=>i!==hit);planChanged();return}
     {const q=planRaw(e),tol=planView().w/70;let bo=null,bd=tol;dimList().forEach(o=>{const d=segDist(q.x,q.y,o.A,o.B);if(d<bd){bd=d;bo=o}});if(bo){p.dims.splice(p.dims.indexOf(bo.d),1);markDirty();renderDevisKeepScroll();toast('Cote supprimée');return}}
     const delLink=()=>{const tol=planView().w/60;let best=null,bd=tol;planLinks().forEach(L=>{legs(routeFor(L.a,L.b)).forEach(([a,b2])=>{const d=segDist(pt.x,pt.y,a,b2);if(d<bd){bd=d;best=L}})});
-      if(!best)return false;const key=routeKey(best.a);p.noLink=p.noLink||{};p.noLink[key]=true;if(p.routes)delete p.routes[key];if(best.a.k==='f'&&p.assign)delete p.assign[best.a.id];if(best.a.k==='f'&&p.via)delete p.via[best.a.id];
+      if(!best)return false;const key=routeKey(best.a);p.noLink=p.noLink||{};p.noLink[key]=true;if(p.linked)delete p.linked[key];if(p.routes)delete p.routes[key];if(best.a.k==='f'&&p.assign)delete p.assign[best.a.id];if(best.a.k==='f'&&p.via)delete p.via[best.a.id];
       const nm=best.a.k==='f'?'du forage F'+(plNum().get(best.a)||''):'du collecteur C'+((best.a.i||0)+1)+' → chaufferie';planChanged();
       toast(`Liaison ${nm} supprimée — la retracer avec l’outil Liaisons (partir ${best.a.k==='f'?'du forage':'du collecteur'})`);return true};
     if(!e.shiftKey&&delLink())return;
@@ -1976,7 +1989,7 @@ function zoneImplant(){const p=planObj(),Z=p.zone;if(!Z||!Z.closed||Z.pts.length
         const md=geoMedian(g),cand=[];g.forEach(f=>{for(let a2=0;a2<36;a2++){const t=a2*Math.PI/18,q={x:f.x+(COLL_MIN+.01)*Math.cos(t),y:f.y+(COLL_MIN+.01)*Math.sin(t)};if(F.every(o=>Math.hypot(o.x-q.x,o.y-q.y)>=COLL_MIN-1e-6))cand.push(q)}});
         const cost=q=>g.reduce((t,f)=>t+Math.hypot(f.x-q.x,f.y-q.y),0)+.3*Math.hypot(q.x-anchor.x,q.y-anchor.y);const m=cand.length?cand.reduce((bst,q)=>cost(q)<cost(bst)?q:bst,cand[0]):md;
         return {k:'c',i,x:Math.round(m.x*100)/100,y:Math.round(m.y*100)/100}})}
-    p.items=[...(ch?[ch]:[]),...F,...C];p.routes={};p.assign={};p.noLink={};p.via={};p.on=true;p.userOff=false;plTool='f';
+    p.items=[...(ch?[ch]:[]),...F,...C];p.routes={};p.assign={};p.noLink={};p.via={};p.linked={};p.on=true;p.userOff=false;plTool='f';
     planChanged();{const V=planView();if(F.some(i=>i.x<V.x||i.x>V.x+V.w||i.y<V.y||i.y>V.y+V.h)){planFit(false);planDraw()}}
     const pat=best.pat==='carre'?'en carré':'en quinconce';
     const esp=Math.round(Eg*10)/10;toast(inZ<N?`${N} forages implantés ${pat} à ${nf(E)} m : ${inZ} dans la zone, ${N-inZ} juste autour (à déplacer si besoin)`:`${N} forages implantés ${pat}, espacement ${nf(esp)} m${esp>E+.05?` (mini demandé ${nf(E)} m)`:''}, orientation ${best.ad}°${keepC?' (collecteur conservé)':''}`)},30)}
@@ -1995,7 +2008,7 @@ function planGen(){const p=planObj();const N=+quote.N||0;if(!N){toast('Indiquer 
   else{const xs=items.map(i=>i.x),ys=items.map(i=>i.y),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
     const b=p.bg,V=planView();const c=bgOn()?{x:b.x+b.iw*b.mpp/2,y:b.y+b.ih*b.mpp/2}:{x:V.x+V.w/2,y:V.y+V.h/2};ox=c.x-(x0+x1)/2;oy=c.y-(y0+y1)/2}
   items.forEach(i=>{i.x=Math.round((i.x+ox)*10)/10;i.y=Math.round((i.y+oy)*10)/10});
-  p.items=items;p.routes={};p.assign={};p.noLink={};p.via={};p.on=true;p.userOff=false;{const V=planView();if(items.some(i=>i.x<V.x||i.x>V.x+V.w||i.y<V.y||i.y>V.y+V.h))planFit(false)}if(bgOn()&&!p.bg.cal)setTimeout(()=>toast('Attention : l’échelle du fond n’est pas calée, les forages (en mètres réels) ne correspondent pas encore à la photo'),2600);planSync();markDirty();renderDevisKeepScroll();toast('Plan placé : déplacer les points pour coller au terrain')}
+  p.items=items;p.routes={};p.assign={};p.noLink={};p.via={};p.linked={};p.on=true;p.userOff=false;{const V=planView();if(items.some(i=>i.x<V.x||i.x>V.x+V.w||i.y<V.y||i.y>V.y+V.h))planFit(false)}if(bgOn()&&!p.bg.cal)setTimeout(()=>toast('Attention : l’échelle du fond n’est pas calée, les forages (en mètres réels) ne correspondent pas encore à la photo'),2600);planSync();markDirty();renderDevisKeepScroll();toast('Plan placé : déplacer les points pour coller au terrain')}
 document.addEventListener('dblclick',e=>{if(plTool!=='res'||!plRes||!(e.target.closest&&e.target.closest('#pl-svg')))return;const P=plRes.pts;while(P.length>1&&Math.hypot(P[P.length-1].x-P[P.length-2].x,P[P.length-1].y-P[P.length-2].y)<planView().w/80)P.pop();resFinish()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&plRes)resFinish()});
 /* pincer à deux doigts (tablette, téléphone) : zoom à l'endroit des doigts */
@@ -2215,6 +2228,7 @@ function onDevisChange(e){
   if(tg.id==='pl-bgshow'){const b=quote.plan&&quote.plan.bg;if(b){b.show=tg.checked;markDirty();planBgUpdate()}return}
   if(tg.id==='pl-bgpdf'){planObj().bgPdf=tg.checked;markDirty();return}
   if(tg.id==='pl-grid'){planObj().pdfGrid=tg.checked;markDirty();return}
+  if(tg.id==='pl-autolink'){const p=planObj();if(!tg.checked){const L=planLinks();p.linked={};if(L.length&&confirm(`Garder les ${L.length} liaison${pl(L.length)} déjà tracée${pl(L.length)} ?\n(OK = les garder, Annuler = les enlever et tout relier à la main)`))L.forEach(x=>{p.linked[routeKey(x.a)]=true});p.manLink=true;toast('Liaisons manuelles : reliez chaque forage avec l’outil « Tracé des liaisons »')}else{p.manLink=false;toast('Liaisons automatiques rétablies')}planChanged();return}
   if(tg.id==='pl-tr'){planObj().noTr=!tg.checked;markDirty();renderDevisKeepScroll();return}
   if(tg.id==='pl-cotes'){planObj().cotes=tg.checked;markDirty();planDraw();return}
   if(tg.id==='pl-mat'){planObj().matPdf=tg.checked;markDirty();return}
@@ -2259,7 +2273,7 @@ function onDevisClick(e){
   if(b.id==='pl-pdf'){planPdf();return}
   if(b.id==='pl-dimdel'){if(confirm('Effacer toutes les cotes du plan ?')){planObj().dims=[];plCote=null;markDirty();renderDevisKeepScroll()}return}
   if(b.id==='pl-empdel'){if(confirm('Effacer l’emprise du chantier ?')){planObj().emp={pts:[],closed:false};plEmpHover=null;markDirty();renderDevisKeepScroll()}return}
-  if(b.id==='pl-relink'){planObj().noLink={};planChanged();toast('Toutes les liaisons sont rétablies');return}
+  if(b.id==='pl-relink'){planObj().noLink={};planObj().manLink=false;planChanged();toast('Toutes les liaisons sont rétablies');return}
   if(b.id==='pl-trauto'||b.id==='pl-trauto2'){const sel=$('#pl-trmode');if(sel)planObj().trMode=sel.value;trAuto();return}
   if(b.id==='pl-resallt'){const R=quote.plan.res||[],l=R[plResSel];if(l){R.forEach(x=>{if(x.t===plResSelT0)x.t=l.t});plResSelT0=l.t;markDirty();renderDevisKeepScroll()}return}
   if(b.id==='pl-res1del'){const R=quote.plan.res||[];if(R[plResSel]){R.splice(plResSel,1);markDirty()}plResSel=-1;renderDevisKeepScroll();return}
@@ -2291,7 +2305,7 @@ function onDevisClick(e){
   if(b.id==='pl-png'){planPng();return}
   if(b.id==='pl-dxf'){planDxf();return}
   if(b.id==='pl-gen'){const Z=quote.plan&&quote.plan.zone;if(Z&&Z.closed&&Z.pts.length>2){const ac=$('#pl-zautoc');if(ac)Z.autoC=ac.checked;zoneImplant();return}if(planItems().length&&!confirm('Remplacer le plan actuel par une implantation en ligne ?'))return;planGen();return}
-  if(b.id==='pl-clear'){if(!planItems().length||confirm('Effacer tout le plan ?')){const p=planObj();p.items=[];p.routes={};p.assign={};p.noLink={};p.via={};p.on=false;markDirty();renderDevisKeepScroll()}return}
+  if(b.id==='pl-clear'){if(!planItems().length||confirm('Effacer tout le plan ?')){const p=planObj();p.items=[];p.routes={};p.assign={};p.noLink={};p.via={};p.linked={};p.on=false;markDirty();renderDevisKeepScroll()}return}
   if(b.dataset.reset){delete quote.q[b.dataset.reset];markDirty();renderDevisKeepScroll();return}
   if(b.dataset.addx){quote.extra.push({id:'x_'+Math.random().toString(36).slice(2,8),sec:b.dataset.addx,grp:'Lignes libres',name:'',unit:'u',price:0,qty:1});markDirty();renderDevisKeepScroll();
     const rows=document.querySelectorAll(`[data-sec="${b.dataset.addx}"] tr.line`);const last=[...rows].pop();last?.querySelector('input')?.focus();return}
@@ -3096,7 +3110,7 @@ async function dmdCommit(){const d=dmdCur;if(!d)return;$$('#v-dmd [data-dk]').fo
   if(await dmdSave(list,'Demande enregistrée')){dmdCur=null;renderDmd()}}
 async function dmdChiffrer(id){const d=dmdItems.find(x=>x.id===id);if(!d)return;if(dirty&&quote.nom&&!confirm('Le chiffrage en cours n’est pas enregistré. Le remplacer par un nouveau chiffrage ?'))return;
   quote=blankQuote();quote.nom=d.objet||'';quote.client=d.client||'';quote.lieu=d.lieu||'';quote.mail=d.mail||'';quote.tel=d.tel||'';quote.dmd=d.id;
-  quote.notes=[(d.type==='ao'?'Appel d’offres':'Demande')+` reçue le ${dmdFmt(d.recu)}`+(d.butoir?`, à rendre le ${dmdFmt(d.butoir)}${d.heure?' à '+d.heure:''}`:''),d.notes].filter(Boolean).join('\n');dirty=true;
+  quote.notes=[(d.type==='ao'?'Appel d’offres':'Demande')+` reçue le ${dmdFmt(d.recu)}`+(d.butoir?`, à rendre le ${dmdFmt(d.butoir)}${d.heure?' à '+d.heure:''}`:''),d.notes].filter(Boolean).join('\n');markDirty();
   if(d.statut==='afaire')await dmdSave(dmdItems.map(x=>x.id===id?{...x,statut:'encours'}:x));go('devis');toast('Nouveau chiffrage rempli depuis la demande : pensez à l’enregistrer')}
 function dmdBind(){const v=$('#v-dmd');if(!v)return;
   v.addEventListener('click',async e=>{const b=e.target.closest('button');
@@ -3206,7 +3220,9 @@ function chPrevu(q){const save=quote;try{quote=normQuote(q);const v=vars();const
     const t=totals();return {by,h,cout:t.tc,vente:q.prixRetenu!=null?+q.prixRetenu:t.tp,nom:q.nom||'',le:Date.now()}}
   catch(e){console.error(e);return null}finally{quote=save}}
 function chFromQuote(q){const c=chBlank();c.nom=q.nom||'';c.client=q.client||'';c.lieu=q.lieu||'';c.devisId=q.id;c.prevu=chPrevu(q);if(c.prevu)c.facture=r2(c.prevu.vente);return c}
-function chMark(){chDirty=true;store.set('chDraft',chCur);const s=$('#ch-st');if(s){s.textContent='Modifications non enregistrées';s.className='status dirty'}}
+function chMark(){chDirty=true;store.set('chDraft',chCur);const s=$('#ch-st');if(s){s.textContent=chCur&&(chCur.nom||'').trim()&&db&&canWrite?'Enregistrement automatique…':'Modifications non enregistrées';s.className='status dirty'}clearTimeout(_chAsT);_chAsT=setTimeout(chAutoSave,4000)}
+let _chAsT=null;
+async function chAutoSave(){clearTimeout(_chAsT);if(!chDirty||!db||!canWrite||!chCur||!(chCur.nom||'').trim())return;await chSave(true)}
 const chYearOf=c=>String(c.debut||'').slice(0,4)||(c.updated?String(new Date(c.updated).getFullYear()):'');
 const pctF=v=>v==null?'–':nf(r1(v))+' %';
 function renderDeb(){const el=$('#v-deb');if(!el)return;if(chCur){renderChantier();return}
@@ -3293,10 +3309,12 @@ function onDebChange(e){const tg=e.target;
   if(tg.id==='ch-devisId'&&chCur){const q=savedList.find(x=>x.id===tg.value);chCur.devisId=tg.value;chCur.prevu=q?chPrevu(q):null;if(q&&pnum(chCur.facture)==null&&chCur.prevu)chCur.facture=r2(chCur.prevu.vente);
     if(q){['client','lieu'].forEach(k=>{if(!chCur[k])chCur[k]=q[k]||''});if(!chCur.nom)chCur.nom=q.nom||''}chMark();renderChantier();return}
   if(tg.tagName==='SELECT'&&(tg.dataset.c||tg.dataset.h||tg.dataset.d))onDebInput(e)}
-async function chSave(){if(!db||!chCur)return;const c=chCur;if(!c.nom.trim()){toast('Donnez un nom au chantier');$('#ch-nom')?.focus();return}
+async function chSave(auto){if(!db||!chCur)return;const c=chCur;if(!c.nom.trim()){if(!auto){toast('Donnez un nom au chantier');$('#ch-nom')?.focus()}return}
   if(!c.id)c.id='ch-'+slug(c.nom)+'-'+Math.random().toString(36).slice(2,7);c.updated=Date.now();
-  try{await db.doc('chantiers/'+c.id).set(clone(c));chDirty=false;store.set('chDraft',null);toast('Chantier enregistré');renderDeb()}
-  catch(e){console.error(e);toast(e&&e.code==='invalid_argument'?'Vous n’avez pas le droit d’enregistrer les chantiers (règles Firestore : collection « chantiers »)':e&&e.code==='too_big'?'Chantier trop lourd (plus de 1 Mo)':'Échec de l’enregistrement, réessayez'+(e&&e.message?' ('+String(e.message).slice(0,90)+')':''))}}
+  const snapC=JSON.stringify(c);
+  try{await db.doc('chantiers/'+c.id).set(clone(c));if(auto){if(chCur===c&&JSON.stringify(c)===snapC){chDirty=false;store.set('chDraft',null)}const st=$('#ch-st');if(st){st.textContent=chDirty?'Enregistrement automatique…':'Enregistré automatiquement à '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});st.className='status'+(chDirty?' dirty':'')}if(chDirty){clearTimeout(_chAsT);_chAsT=setTimeout(chAutoSave,4000)}return}
+    chDirty=false;store.set('chDraft',null);toast('Chantier enregistré');renderDeb()}
+  catch(e){if(auto){const st=$('#ch-st');if(st){st.textContent='Échec de l’enregistrement automatique : cliquez Enregistrer';st.className='status dirty'}return}console.error(e);toast(e&&e.code==='invalid_argument'?'Vous n’avez pas le droit d’enregistrer les chantiers (règles Firestore : collection « chantiers »)':e&&e.code==='too_big'?'Chantier trop lourd (plus de 1 Mo)':'Échec de l’enregistrement, réessayez'+(e&&e.message?' ('+String(e.message).slice(0,90)+')':''))}}
 async function onDebClick(e){const b=e.target.closest('button');
   if(!b){const tr=e.target.closest('tr[data-chopen]');if(tr&&!e.target.closest('[data-chdelcell]')){const c=chList.find(x=>x.id===tr.dataset.chopen);if(c){chCur=chNorm(c);chDirty=false;chConfirmDel=false;renderDeb();window.scrollTo(0,0)}}return}
   const id=b.id;
