@@ -3082,7 +3082,7 @@ function renderTarifs(){
   const el=$('#v-tarifs');const items=catDraft||catalog;const v=quote?vars():{N:1,P:100,L:20,M:100,J:1};
   el.innerHTML=`<div class="toolbar"><div class="title">Tarifs & règles de quantité</div>
     ${catDraft?'<span class="status dirty">Modifications non enregistrées</span><button class="btn ghost" id="t-cancel">Annuler</button>':''}
-    <button class="btn ghost" id="t-export">Exporter</button><label class="btn ghost" for="t-import">Importer</label><input type="file" id="t-import" accept=".json,application/json" hidden>
+    <button class="btn ghost" id="t-pdf" title="Liste de tous les articles avec leur prix d’achat HT, à imprimer">PDF prix d’achat</button><button class="btn ghost" id="t-export">Exporter</button><label class="btn ghost" for="t-import">Importer</label><input type="file" id="t-import" accept=".json,application/json" hidden>
     <button class="btn primary" id="t-save" ${catDraft&&db&&canWrite?'':'disabled'}>Enregistrer les tarifs</button></div>
   <div class="card" style="margin-bottom:18px"><div class="card-b help">
     Les prix sont en € HT. Chaque catégorie a son bouton <b>+ Article</b> ; renommez une catégorie en cliquant sur son titre, ou créez-en une avec <b>+ Nouvelle catégorie</b>. <b>Qté défaut</b> est reprise dans chaque nouveau chiffrage ; la <b>Règle</b>, si elle est remplie, la calcule à la place. Dans le chiffrage, toute quantité reste modifiable ligne par ligne.
@@ -3109,8 +3109,34 @@ function onTarifsInput(e){
   if(tg.dataset.t==='rule'){const v=vars();const r=evalRule(it.rule,v);const bad=it.rule&&!isFinite(r);tg.classList.toggle('err',!!bad);tg.closest('tr').querySelector('.ev').textContent=it.rule?(bad?'erreur':nf(r)):''}
   if(fresh)markTarDirty();
 }
-function markTarDirty(){{const tb=$('#v-tarifs .toolbar');tb.innerHTML=`<div class="title">Tarifs & règles de quantité</div><span class="status dirty">Modifications non enregistrées</span><button class="btn ghost" id="t-cancel">Annuler</button><button class="btn ghost" id="t-export">Exporter</button><label class="btn ghost" for="t-import">Importer</label><input type="file" id="t-import" accept=".json,application/json" hidden><button class="btn primary" id="t-save" ${db&&canWrite?'':'disabled'}>Enregistrer les tarifs</button>`}
+function markTarDirty(){{const tb=$('#v-tarifs .toolbar');tb.innerHTML=`<div class="title">Tarifs & règles de quantité</div><span class="status dirty">Modifications non enregistrées</span><button class="btn ghost" id="t-cancel">Annuler</button><button class="btn ghost" id="t-pdf" title="Liste de tous les articles avec leur prix d’achat HT, à imprimer">PDF prix d’achat</button><button class="btn ghost" id="t-export">Exporter</button><label class="btn ghost" for="t-import">Importer</label><input type="file" id="t-import" accept=".json,application/json" hidden><button class="btn primary" id="t-save" ${db&&canWrite?'':'disabled'}>Enregistrer les tarifs</button>`}
 }
+/* PDF de tous les prix d'achat : la grille tarifaire complète, par section et catégorie */
+async function tarifsPdf(){if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}
+  toast('Préparation du PDF…');
+  try{const L=await getPdfLib();const {PDFDocument,StandardFonts,rgb}=L;const doc=await PDFDocument.create();const F=await doc.embedFont(StandardFonts.Helvetica),B=await doc.embedFont(StandardFonts.HelveticaBold);
+    const K=72/25.4,PW=210*K,PH=297*K,mg=14*K,CW=PW-2*mg;const INK=rgb(.09,.13,.12),GR=rgb(.4,.45,.44),LN=rgb(.83,.86,.85),ACC=rgb(14/255,94/255,120/255),BG=rgb(.93,.95,.94);
+    const items=(catDraft||catalog||[]).filter(i=>i);const day=new Date().toLocaleDateString('fr-FR');let page,y;
+    const T=(t,x,yy,o={})=>{t=pt(t);const f=o.f||F,s=o.s||8.5;let xx=x;if(o.r)xx=x-f.widthOfTextAtSize(t,s);page.drawText(t,{x:xx,y:yy,size:s,font:f,color:o.col||INK})};
+    const fit=(t,f,s,w)=>{t=pt(t);while(t.length>2&&f.widthOfTextAtSize(t,s)>w)t=t.slice(0,-2)+'…';return t};
+    const xU=mg+CW*.56,xK=mg+CW*.66,xP=mg+CW;
+    const cols=()=>{T('Désignation',mg+4,y-8,{s:6.5,col:GR});T('Unité',xU,y-8,{s:6.5,col:GR});T('Type',xK,y-8,{s:6.5,col:GR});T('Prix d’achat HT',xP-4,y-8,{s:6.5,col:GR,r:1});y-=11;page.drawLine({start:{x:mg,y},end:{x:mg+CW,y},thickness:.6,color:LN})};
+    const newPage=()=>{page=doc.addPage([PW,PH]);y=PH-mg};
+    const need=h=>{if(y-h<mg+14){newPage();cols();return true}return false};
+    newPage();
+    try{const img=await doc.embedPng(b64u8(LOGO_SRC));const lh=16*K,lw=lh*img.width/img.height;page.drawImage(img,{x:mg,y:y-lh,width:lw,height:lh});T('Prix d’achat',mg+lw+10,y-18,{s:17,f:B});T(`Grille tarifaire complète, prix HT · ${items.length} articles · éditée le ${day}`,mg+lw+10,y-31,{s:8.5,col:GR});y-=lh+10}
+    catch(e){T('HYDREAU FORAGE',mg,y-12,{s:11,f:B,col:ACC});T('Prix d’achat',mg,y-30,{s:17,f:B});T(`Grille tarifaire complète, prix HT · ${items.length} articles · éditée le ${day}`,mg,y-43,{s:8.5,col:GR});y-=54}
+    T('Document interne : ne pas transmettre au client.',mg,y-6,{s:7.5,col:GR});y-=16;cols();
+    for(const s of SECS){const its=items.filter(i=>i.sec===s.id);if(!its.length)continue;
+      need(60);y-=10;T(s.label,mg,y-11,{s:12,f:B,col:ACC});y-=17;
+      const grps=[];its.forEach(i=>{const g=i.grp||'Divers';let o=grps.find(x=>x.g===g);if(!o){o={g,l:[]};grps.push(o)}o.l.push(i)});
+      for(const g of grps){need(13+12.5);page.drawRectangle({x:mg,y:y-13,width:CW,height:13,color:BG});T(g.g,mg+4,y-9.5,{s:8,f:B});y-=13;
+        for(const i of g.l){need(12.5);const k=(KINDS.find(x=>x[0]===kindOf(i))||[])[1]||'';
+          T(fit(i.name||'',F,8.5,xU-mg-12),mg+4,y-9,{s:8.5});T(fit(i.unit||'',F,8,xK-xU-6),xU,y-9,{s:8,col:GR});T(fit(k,F,7.5,CW*.2),xK,y-9,{s:7.5,col:GR});
+          T(+i.price>0?new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR',minimumFractionDigits:2,maximumFractionDigits:3}).format(+i.price):'à renseigner',xP-4,y-9,{s:8.5,f:+i.price>0?B:F,col:+i.price>0?INK:GR,r:1});y-=12.5;page.drawLine({start:{x:mg,y},end:{x:mg+CW,y},thickness:.3,color:LN})}}}
+    const pages=doc.getPages();pages.forEach((p,n)=>{page=p;T(`Hydreau Forage — prix d’achat au ${day}`,mg,mg/2,{s:7,col:GR});T(`${n+1} / ${pages.length}`,PW-mg,mg/2,{s:7,col:GR,r:1})});
+    const bytes=await doc.save();await dlApi.save({filename:`prix-achat-hydreau-${new Date().toISOString().slice(0,10)}.pdf`,data:new Blob([bytes],{type:'application/pdf'})})}
+  catch(e){if(e&&(e.code==='cancelled'||e.code==='declined'))return;console.error(e);toast(e?.message==='pdf-lib indisponible'?'Impossible de charger le module PDF':'Échec de la création du PDF')}}
 async function exportTarifs(){const data=JSON.stringify({type:'hydreau-tarifs',version:1,date:new Date().toISOString(),items:catDraft||catalog},null,1);
   if(!dlApi){toast('Téléchargement indisponible');return}try{await dlApi.save({filename:`tarifs-hydreau-${new Date().toISOString().slice(0,10)}.json`,data})}catch(e){}}
 async function importTarifs(file){try{const o=JSON.parse(await file.text());const items=Array.isArray(o)?o:o.items;
@@ -3128,6 +3154,7 @@ async function onTarifsClick(e){
     const row=$(`#v-tarifs tr[data-i="${idx+1}"]`);if(b.dataset.tnewgrp){row?.previousElementSibling?.querySelector('.gname')?.select()}else row?.querySelector('[data-t="name"]')?.focus();return}
   if(b.dataset.tdel){ensureDraft();catDraft.splice(+b.dataset.tdel,1);const y=window.scrollY;renderTarifs();window.scrollTo(0,y);return}
   if(b.id==='t-cancel'){catDraft=null;renderTarifs();return}
+  if(b.id==='t-pdf'){tarifsPdf();return}
   if(b.id==='t-export'){exportTarifs();return}
   if(b.id==='t-save'&&db){catDraft.forEach(it=>{if(!it.name.trim())it.name='Article sans nom';if(!it.grp.trim())it.grp='Divers'});try{await db.doc('config/catalogue').set({items:clone(catDraft),updated:Date.now()});catalog=catDraft;catDraft=null;ruleCache.clear();renderTarifs();toast('Tarifs enregistrés')}
     catch(e){toast(e?.code==='invalid_argument'?'Vous n’avez pas le droit de modifier les tarifs':'Échec de l’enregistrement, réessayez')}}
@@ -3354,7 +3381,8 @@ async function chPdf(c){if(!dlApi){toast('Téléchargement indisponible sur cett
   go(['devis','dmd','liste','deb','tarifs','soc'].includes(v)?v:'devis');
 })();
 (async()=>{
-  if(!window.claude?.use)return;
+  /* fichier ouvert hors de claude.ai (sur l'ordinateur) : téléchargement direct par le navigateur */
+  if(!window.claude?.use){dlApi={save:async({filename,data})=>{const u=URL.createObjectURL(data instanceof Blob?data:new Blob([data]));const a=document.createElement('a');a.href=u;a.download=filename||'export';a.style.display='none';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),10000)}};return}
   claude.use('downloads').then(d=>{dlApi=d}).catch(()=>{});
   claude.use('user').then(async u=>{if(!u)return;try{const c=await u.can('data.write');if(c===false){canWrite=false;if(view==='devis')renderDevis();if(view==='tarifs')renderTarifs()}}catch(e){}}).catch(()=>{});
   db=await claude.use('db').catch(()=>null);
