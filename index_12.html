@@ -2179,7 +2179,8 @@ function renderDevis(){
     <button class="btn" id="b-csv">CSV</button>
     <button class="btn" id="b-pdf1">PDF avec prix</button>
     <button class="btn" id="b-pdf0">PDF sans prix</button>
-    <button class="btn" id="b-pdfm">PDF matériel</button>
+    <button class="btn" id="b-pdfm" title="Matières et locations, sans main-d’œuvre ni hébergement">PDF matériel + locations</button>
+    <button class="btn" id="b-pdfmf" title="Matériel seul : sans main-d’œuvre, fioul, logistique ni locations">PDF liste de matériel</button>
     <button class="btn" id="b-pdfa" title="Usage interne : prix d’achat, marges et résultat">PDF prix d’achat</button>
     <button class="btn primary" id="b-save" ${db&&canWrite?'':'disabled'} title="${db?'':'Enregistrement indisponible sur cette vue'}">Enregistrer</button></div>
   <div id="sz-banner" class="banner" hidden></div>
@@ -2340,6 +2341,7 @@ function onDevisClick(e){
     case 'b-pdf0':exportPDF('descriptif');break;
     case 'b-pdfh':exportPDF('hydro');break;
     case 'b-pdfm':exportPDF('materiel');break;
+    case 'b-pdfmf':exportPDF('fourn');break;
     case 'b-pdfa':exportPDF('achat');break;
   }
 }
@@ -2833,13 +2835,13 @@ const LOGO_SRC='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASAAAADNCAYAAAAYLq
 const WIN_EXTRA='€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ';
 function pt(s){s=String(s??'').replace(/[   ]/g,' ').replace(/→/g,'->').replace(/″/g,'"').replace(/≈/g,'env.').replace(/≤/g,'<=').replace(/≥/g,'>=').replace(/−/g,'-').replace(/³/g,'3').replace(/²/g,'2').replace(/\n/g,' ');
   let o='';for(const ch of s){const c=ch.codePointAt(0);o+=((c>=32&&c<127)||(c>=160&&c<256)||WIN_EXTRA.includes(ch))?ch:'?'}return o}
-const PDF_MODES={devis:{title:'Devis',file:'devis'},descriptif:{title:'Descriptif technique',file:'descriptif'},hydro:{title:'Note de calcul hydraulique',file:'perte-de-charge'},materiel:{title:'Liste matériel et locations',file:'materiel'},achat:{title:'Fiche prix d’achat',file:'prix-achat'}};
+const PDF_MODES={devis:{title:'Devis',file:'devis'},descriptif:{title:'Descriptif technique',file:'descriptif'},hydro:{title:'Note de calcul hydraulique',file:'perte-de-charge'},materiel:{title:'Liste matériel et locations',file:'materiel'},fourn:{title:'Liste de matériel',file:'liste-materiel'},achat:{title:'Fiche prix d’achat',file:'prix-achat'}};
 function concGly(){const c=quote.h&&quote.h.conc;return (c==null||c==='')?30:(+c||0)}
 function volumeReseau(v,hr){const A=(D)=>{const di=(D-2*(PE_E[D]||D/11))/1000;return Math.PI*di*di/4*1000};/* L/m */
   const Ds=v.P>150?40:32,sdr=sdrPN(pnSonde(v.P));const As=D=>{const di=(D-2*wallPE(D,sdr))/1000;return Math.PI*di*di/4*1000};
   const vs=4*v.P*v.N*As(Ds),vl=v.LF*A(v.D1||40),vc=v.LC*A(v.D2||63)+(v.LCB>0?v.LCB*A(v.D2B||63):0);const tot=vs+vl+vc;
   return {vs,vl,vc,tot,gly:tot*concGly()/100}}
-async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='hydro',matOnly=mode==='materiel',achat=mode==='achat';
+async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='hydro',fourn=mode==='fourn',matOnly=mode==='materiel'||fourn,achat=mode==='achat';
   const {PDFDocument,StandardFonts,rgb}=await getPdfLib();
   const doc=await PDFDocument.create();const F=await doc.embedFont(StandardFonts.Helvetica),B=await doc.embedFont(StandardFonts.HelveticaBold);
   const W=595.28,H=841.89,M=40,CW=W-2*M;
@@ -2871,7 +2873,7 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
   catch(e){text('HYDREAU FORAGE',M,y-10,{size:10,f:B,color:ACC})}
   text(`Date : ${dstr}`,W-M-200,y-10,{size:9,align:'right',w:200});if(quote.chiffreur)text(`Établi par : ${quote.chiffreur}`,W-M-200,y-22,{size:8,color:GR,align:'right',w:200});
   y-=74;text(PDF_MODES[mode].title,M,y,{size:22,f:B});y-=16;
-  text(`${achat?'Document interne – ne pas transmettre au client':hydroOnly?'Perte de charge du réseau de captage':matOnly?'Matières et locations prévues, hors main-d’œuvre et hébergement':'Géothermie sur sondes verticales'}${quote.nom?' — '+quote.nom:''}`,M,y,{size:11,color:GR});y-=16;
+  text(`${achat?'Document interne – ne pas transmettre au client':hydroOnly?'Perte de charge du réseau de captage':fourn?'Matériel à prévoir, hors main-d’œuvre, fioul, logistique et locations':matOnly?'Matières et locations prévues, hors main-d’œuvre et hébergement':'Géothermie sur sondes verticales'}${quote.nom?' — '+quote.nom:''}`,M,y,{size:11,color:GR});y-=16;
   page.drawRectangle({x:M,y:y-4,width:60,height:3,color:ACC});y-=14;
   h2('Chantier');
   kv([['Chantier',quote.nom],['Lieu',quote.lieu],['Client',quote.client],['Téléphone',quote.tel],['E-mail',quote.mail],['Architecte / BE',quote.archi],['Interlocuteur',quote.interlocuteur]].filter(p=>p[1]));
@@ -2911,7 +2913,9 @@ async function buildPdf(mode){const withPrices=mode==='devis',hydroOnly=mode==='
                        :[{t:'Désignation',w:335},{t:'Unité',w:70},{t:'Quantité',w:110.28,a:'right'}];
   let totHT=0;
   if(matOnly){const all=lines().filter(l=>qtyOf(l,v)>0);const mc=[{t:'Désignation',w:335},{t:'Unité',w:70},{t:'Quantité',w:110.28,a:'right'}];
-    for(const [kd,ttl] of [['mat','Matières et fournitures'],['loc','Locations et engins']]){const ls=all.filter(l=>(l.src==='extra'?(l.kind||'mat'):kindOf(l))===kd);if(!ls.length)continue;
+    /* liste de matériel seule : ni locations, ni carburant */
+    const isFuel=l=>/fioul|fuel|gnr|gas-?oil|gazole|carburant/i.test((l.grp||'')+' '+(l.name||''));
+    for(const [kd,ttl] of (fourn?[['mat','Matériel']]:[['mat','Matières et fournitures'],['loc','Locations et engins']])){const ls=all.filter(l=>(l.src==='extra'?(l.kind||'mat'):kindOf(l))===kd&&!(fourn&&isFuel(l)));if(!ls.length)continue;
       h2(ttl);const rows=[];let g=null;for(const l of ls){const gg=l.src==='extra'?'Autres':l.grp;if(gg!==g){g=gg;rows.push({c:[g,'',''],b:true,fill:SOFT2,span:true})}rows.push([l.name||'—',l.unit,nf(qtyOf(l,v))])}
       table(mc,rows)}}
   if(achat){const ac=[{t:'Désignation',w:135.28},{t:'Quantité',w:55,a:'right'},{t:'PU achat',w:55,a:'right'},{t:'Total achat',w:62,a:'right'},{t:'PU vente',w:58,a:'right'},{t:'Total vente',w:65,a:'right'},{t:'Marge',w:55,a:'right'},{t:'%',w:30,a:'right'}];
