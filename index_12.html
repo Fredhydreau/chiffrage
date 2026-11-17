@@ -1042,8 +1042,17 @@ function chFlame(q){const k=1.25*q,P=[[0,-1.3],[.9,-.4,1,.3,.75,.75],[.55,1.15,.
 function planPaper(){const p=quote.plan||{};const f=p.fmt||'A4',A3=f.startsWith('A3'),port=f.endsWith('P');
   if(port){const PW=A3?297:210,PH=A3?420:297;let ch=A3?100:90;const mt=p.matPdf===true?planMat():null;const mh=mt&&mt.n?8+(Math.ceil(mt.S.reduce((a,x)=>a+x.rows.length+1,0)/2)+1)*3.3:0;ch+=mh;return {A3,port,PW,PH,ch,mh,ay:10+ch+6,aw:PW-20,ah:PH-20-ch-6}}
   const cw=p.matPdf===true?92:80;return {A3,port,cw,PW:A3?420:297,PH:A3?297:210,ay:10,aw:(A3?420:297)-20-cw-6,ah:(A3?297:210)-20}}
-function planFitScale(){const P=planPaper();const bb=planBBox(3);return PL_SC.find(n=>bb.w*1000/n<=P.aw&&bb.h*1000/n<=P.ah)||PL_SC[PL_SC.length-1]}
-function planExactScale(){const P=planPaper();const bb=planBBox(3);return Math.max(10,Math.ceil(Math.max(bb.w*1000/P.aw,bb.h*1000/P.ah)/10)*10)}
+/* PDF à l'échelle avec un fond de plan : la feuille est cadrée sur le fond. Les rayons autour des forages ne comptent que sur leur partie située sur le fond (le reste est coupé au cadre) ; les forages, liaisons, cotes… restent toujours dans le cadre. */
+function bgExt(){const b=quote.plan.bg,w=b.iw*b.mpp,h=b.ih*b.mpp,cx=b.x+w/2,cy=b.y+h/2,a=(+b.vrot||0)*Math.PI/180,c=Math.abs(Math.cos(a)),sn=Math.abs(Math.sin(a)),hw=(w*c+h*sn)/2,hh=(w*sn+h*c)/2;return {x0:cx-hw,y0:cy-hh,x1:cx+hw,y1:cy+hh}}
+function planPdfBg(){const p=quote.plan||{};return bgOn()&&p.bgPdf!==false&&p.bg.iw>0&&p.bg.mpp>0}
+function planPdfBBox(pad){const full=planBBox(pad);if(!planPdfBg())return full;const p=quote.plan,r5=p.r5;let e;p.r5=false;try{e=planBBox(pad)}finally{p.r5=r5}const g=bgExt();
+  const x0=Math.min(e.x0,Math.max(full.x0,g.x0)),y0=Math.min(e.y0,Math.max(full.y0,g.y0)),x1=Math.max(e.x0+e.w,Math.min(full.x0+full.w,g.x1)),y1=Math.max(e.y0+e.h,Math.min(full.y0+full.h,g.y1));
+  return {x0,y0,w:x1-x0,h:y1-y0,bg:g}}
+/* centre de la feuille : le fond remplit le cadre autant que possible (ou y est centré s'il est plus petit), sans jamais sortir le contenu du cadre */
+function planPdfCenter(bb,W,H){const ax=(c,S,k0,k1,b0,b1)=>{let t=b1-b0>=S?Math.min(Math.max(c,b0+S/2),b1-S/2):(b0+b1)/2;const lo=k1-S/2,hi=k0+S/2;return lo<=hi?Math.min(Math.max(t,lo),hi):(k0+k1)/2};
+  const cx=bb.x0+bb.w/2,cy=bb.y0+bb.h/2;if(!bb.bg)return {cx,cy};return {cx:ax(cx,W,bb.x0,bb.x0+bb.w,bb.bg.x0,bb.bg.x1),cy:ax(cy,H,bb.y0,bb.y0+bb.h,bb.bg.y0,bb.bg.y1)}}
+function planFitScale(){const P=planPaper();const bb=planPdfBBox(3);return PL_SC.find(n=>bb.w*1000/n<=P.aw&&bb.h*1000/n<=P.ah)||PL_SC[PL_SC.length-1]}
+function planExactScale(){const P=planPaper();const bb=planPdfBBox(3);return Math.max(10,Math.ceil(Math.max(bb.w*1000/P.aw,bb.h*1000/P.ah)/10)*10)}
 function planExpHTML(){const p=quote.plan||{};const fit=planFitScale();
   return `<div class="pl-exp"><span class="pl-exp-t">Exporter à l’échelle</span>
   <label class="status">Format <select id="pl-fmt">${[['A4','A4 paysage'],['A4P','A4 portrait'],['A3','A3 paysage'],['A3P','A3 portrait']].map(([v,t])=>`<option value="${v}" ${(p.fmt||'A4')===v?'selected':''}>${t}</option>`).join('')}</select></label>
@@ -1081,7 +1090,7 @@ async function planPdf(){
   const doc=await PDFDocument.create();const F=await doc.embedFont(StandardFonts.Helvetica),B=await doc.embedFont(StandardFonts.HelveticaBold);
   const p=planObj(),P=planPaper(),K=72/25.4;const page=doc.addPage([P.PW*K,P.PH*K]);
   const fit=planExactScale();let N=+p.ech>0?+p.ech:fit;if(N<fit){toast(`1/${N} ne tient pas sur la feuille : 1/${fit} retenue`);N=fit}
-  const mm=1000/N,mg=10,ax=mg,ay=P.ay,aw=P.aw,ah=P.ah,bb=planBBox(3),cx=bb.x0+bb.w/2,cy=bb.y0+bb.h/2;
+  const mm=1000/N,mg=10,ax=mg,ay=P.ay,aw=P.aw,ah=P.ah,bb=planPdfBBox(3),{cx,cy}=planPdfCenter(bb,aw/mm,ah/mm);
   const X=x=>(ax+aw/2+(x-cx)*mm)*K,Y=y=>(ay+ah/2-(y-cy)*mm)*K;
   const INK=rgb(.09,.13,.12),GR=rgb(.4,.45,.44),LN=rgb(.83,.86,.85),GRID=rgb(.91,.93,.92),ACC=rgb(14/255,94/255,120/255),FOR=rgb(224/255,24/255,45/255),LOC=rgb(79/255,107/255,58/255),SAND=rgb(.96,.91,.85),WH=rgb(1,1,1);
   const T=(t,x,y,o={})=>{t=pt(t);const f=o.f||F,sz=o.s||7;let xx=x;if(o.c)xx=x-f.widthOfTextAtSize(t,sz)/2;if(o.r)xx=x-f.widthOfTextAtSize(t,sz);page.drawText(t,{x:xx,y,size:sz,font:f,color:o.col||INK})};
@@ -1090,6 +1099,8 @@ async function planPdf(){
   page.drawRectangle({x:5*K,y:5*K,width:(P.PW-10)*K,height:(P.PH-10)*K,borderColor:INK,borderWidth:.8});
   page.drawRectangle({x:ax*K,y:ay*K,width:aw*K,height:ah*K,borderColor:LN,borderWidth:.5});
   if(bgOn()&&p.bgPdf!==false)await bgDrawPdf(doc,page,cx-aw/2/mm,cy-ah/2/mm,cx+aw/2/mm,cy+ah/2/mm,X,Y);
+  /* tout le dessin est coupé au cadre (rayons qui dépassent du fond) */
+  page.pushOperators(L.pushGraphicsState(),L.rectangle(ax*K,ay*K,aw*K,ah*K),L.clip(),L.endPath());
   /* quadrillage */
   const gm=[1,2,5,10,20,50,100,200,500].find(g=>g*mm>=8)||500;
   const xa=cx-aw/2/mm,xb=cx+aw/2/mm,ya=cy-ah/2/mm,yb=cy+ah/2/mm;
@@ -1134,6 +1145,7 @@ async function planPdf(){
     const L=annLines(n.t);if(!L.length)return;const sz=7,lh=8.6,tw=Math.max(...L.map(l=>F.widthOfTextAtSize(pt(l),sz)))+7,th=L.length*lh+4,right=Bq.x>=A.x;let x0=right?Bq.x:Bq.x-tw,y0=Bq.y-th/2;
     /* le texte reste dans le cadre du dessin */x0=Math.max(ax*K+3,Math.min(x0,(ax+aw)*K-tw-3));y0=Math.max(ay*K+3,Math.min(y0,(ay+ah)*K-th-3));
     page.drawRectangle({x:x0,y:y0,width:tw,height:th,color:WH,borderColor:INK,borderWidth:.6});L.forEach((l,k)=>T(l,x0+3.5,y0+th-2-(k+1)*lh+2.2,{s:sz}))});
+  page.pushOperators(L.popGraphicsState());
   /* nord, dans la zone de dessin */
   const nd=(+p.nord||0)*Math.PI/180,nx=(ax+aw-12)*K,ny=(ay+ah-14)*K,R=(qx,qy)=>[qx*Math.cos(nd)-qy*Math.sin(nd),qx*Math.sin(nd)+qy*Math.cos(nd)];
   page.drawCircle({x:nx,y:ny,size:7*K,color:WH,borderColor:LN,borderWidth:.5});
