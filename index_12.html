@@ -504,6 +504,16 @@ function migrateCat(items){(items||[]).forEach(i=>{if(i&&i.id==='glycol'&&String
   /* tube d'injection du coulis : autant de mètres que de mètres forés (M), 1,13 €/m */
   if(Array.isArray(items)&&items.some(i=>i&&i.sec==='forage')&&!items.some(i=>i&&(i.id==='tinj'||/tubes?\s+d.injection/i.test(i.name||'')))){const k0=items.findIndex(i=>i&&i.id==='coulis');const r=items[k0]||{};const k=k0>=0?k0+1:items.reduce((a,i,j)=>i&&i.sec==='forage'?j+1:a,items.length);
     items.splice(k,0,{id:'tinj',sec:'forage',grp:r.grp||'Cimentation',name:'Tube d’injection',unit:'ml',price:1.13,rule:'M',kind:'mat'})}
+  /* entrée en chaufferie et barres de PE (règles Fred, 17/11/2026) : par liaison arrivant en chaufferie (une par collecteur, ou le forage direct), 4 coudes 90°, 2 collets et 2 vannes au Ø de la liaison ; au-dessus du Ø63 (PE en barres de 6 m), 1 manchon tous les 6 m sur chaque tube (aller et retour) */
+  if(Array.isArray(items)){const dia=i=>{const m=/[øØ]\s*(\d+)/.exec(i.name||'');return m?+m[1]:0};
+    const fam=i=>{const t=(i.grp||'')+' '+(i.name||'');return /coude\s*90/i.test(i.name||'')?'c90':/manchon/i.test(i.name||'')?'man':/collet/i.test(t)?'col':/vanne/i.test(t)?'van':''};
+    /* diamètres manquants, sans prix (à renseigner dans Tarifs) */
+    const addD=(f,d,ref,mk)=>{const k=items.findIndex(i=>i&&i.id===ref);if(k<0||items.some(i=>i&&i.sec==='racc'&&fam(i)===f&&dia(i)===d))return;const r=items[k];items.splice(k,0,{...mk,sec:r.sec||'racc',grp:r.grp,unit:r.unit||'u',price:0,rule:'',kind:'mat'})};
+    addD('man',110,'m125',{id:'m110',name:'Manchon ø110'});addD('c90',110,'c90_125',{id:'c90_110',name:'Coude 90° ø110'});addD('col',110,'cl125',{id:'cl110',name:'Ø110'});addD('van',75,'v90',{id:'v75',name:'F/F ø75'});addD('van',110,'v125',{id:'v110',name:'F/F ø110'});
+    items.forEach(i=>{if(!i||i.sec!=='racc'||i.chm)return;const f=fam(i),d=dia(i);if(!f||!d)return;
+      const ent=n=>`(DIR?(D1==${d}?${n}:0):(D2==${d}?${n}:0)+(D2B==${d}?${n}:0))`;
+      const add=f==='c90'?ent(4):f==='col'||f==='van'?ent(2):d>63?`(D2==${d}?2*ceil(LC/12):0)+(D2B==${d}?2*ceil(LCB/12):0)`:'';if(!add)return;
+      const r=String(i.rule||'').trim();i.chm=1;if(/D2\s*==/.test(r))return;if(r)i.rule=`(${r})+${add}`;else if(!(+i.qty>0))i.rule=add})}
   /* section Forage : les quantités suivent les forages à forer (NF), pas les forages existants seulement raccordés */
   (items||[]).forEach(i=>{if(i&&i.sec==='forage'&&!i.nfm){if(i.rule)i.rule=String(i.rule).replace(/\bN\b/g,'NF');i.nfm=1}});
   return items}
