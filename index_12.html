@@ -429,7 +429,30 @@ function trSegs(){const N=trNet(),out=[];N.T.forEach(l=>{for(let k=1;k<l.length;
 /* forage raccordé « en passant » par un autre forage : son tracé rejoint ce forage puis suit le tracé de celui-ci */
 function plVia(a,dep){if(!a||a.k!=='f'||!a.id)return null;const v=quote.plan&&quote.plan.via&&quote.plan.via[a.id];if(!v)return null;const t=planItems().find(i=>i.k==='f'&&i.id===v);if(!t||t===a)return null;
   let x=t,n=0;while(x&&n<60){if(x===a)return null;const v2=quote.plan.via[x.id];x=v2?planItems().find(i=>i.k==='f'&&i.id===v2):null;n++}return t}
-function routeFor(a,b,dep){const w=routeWps(a);const t=(dep||0)<60&&plVia(a);if(t){const r=routeFor(t,b,(dep||0)+1);return [a,...w,...r]}if(w.length)return [a,...w,b];if(trActive()&&!quote.plan.trFollow){const r=netPath(a,b);if(r&&r.length>1)return r}if(quote.plan&&quote.plan.trace==='equerre'&&a.x!==b.x&&a.y!==b.y)return [a,{x:b.x,y:a.y},b];return [a,b]}
+/* tracé en équerre d'un forage, contraint à la zone de forage : si l'équerre sort de la zone, la liaison s'arrête au bord, longe le bord de la zone (par le plus court) puis rejoint le collecteur. Renvoie null si l'équerre normale reste dans la zone (ou sans zone fermée, ou forage hors zone). */
+function zoneEq(a,b){const Z=quote.plan&&quote.plan.zone;if(!Z||!Z.closed||!Z.pts||Z.pts.length<3||!a||a.k!=='f'||!b)return null;const P=Z.pts,n=P.length;if(!inPoly(a.x,a.y,P))return null;
+  const near=q=>{let best=null;for(let i=0;i<n;i++){const u=P[i],w=P[(i+1)%n],dx=w.x-u.x,dy=w.y-u.y,L=dx*dx+dy*dy;let t=L?((q.x-u.x)*dx+(q.y-u.y)*dy)/L:0;t=Math.max(0,Math.min(1,t));const x=u.x+t*dx,y=u.y+t*dy,d=Math.hypot(q.x-x,q.y-y);if(!best||d<best.d)best={x,y,i,t,d}}return best};
+  /* collecteur hors zone : on vise le point du bord le plus proche, puis on le rejoint */
+  const nb=near(b),bin=inPoly(b.x,b.y,P)&&nb.d>.02,bz=bin?{x:b.x,y:b.y}:{x:nb.x,y:nb.y};
+  /* croisements de p → q avec le bord, dans l'ordre, avec l'état (dans la zone ou non) juste après */
+  const cross=(p,q)=>{const dx=q.x-p.x,dy=q.y-p.y,L=Math.hypot(dx,dy);if(L<1e-6)return [];const hits=[];
+    for(let i=0;i<n;i++){const u=P[i],w=P[(i+1)%n],ex=w.x-u.x,ey=w.y-u.y,den=dx*ey-dy*ex;if(Math.abs(den)<1e-12)continue;const s2=((u.x-p.x)*ey-(u.y-p.y)*ex)/den,t=((u.x-p.x)*dy-(u.y-p.y)*dx)/den;if(s2>1e-7&&s2<1-1e-7&&t>=-1e-9&&t<=1+1e-9)hits.push({s:s2,i,t:Math.max(0,Math.min(1,t)),x:p.x+dx*s2,y:p.y+dy*s2})}
+    hits.sort((h1,h2)=>h1.s-h2.s);hits.forEach((h,k)=>{const nx=k+1<hits.length?hits[k+1].s:1,s3=h.s+Math.min(.05/L,(nx-h.s)/2);h.in=inPoly(p.x+dx*s3,p.y+dy*s3,P)});return hits};
+  /* chemin le long du bord, de Q à B, par le plus court */
+  const along=(Q,B)=>{const fw=[{x:Q.x,y:Q.y}],bw=[{x:Q.x,y:Q.y}];
+    if(!(Q.i===B.i&&B.t>=Q.t)){let k=(Q.i+1)%n,g=0;while(g++<=n){fw.push({x:P[k].x,y:P[k].y});if(k===B.i)break;k=(k+1)%n}}fw.push({x:B.x,y:B.y});
+    if(!(Q.i===B.i&&B.t<=Q.t)){let k=Q.i,g=0;while(g++<=n){bw.push({x:P[k].x,y:P[k].y});if(k===(B.i+1)%n)break;k=(k-1+n)%n}}bw.push({x:B.x,y:B.y});
+    return polyLen(fw)<=polyLen(bw)?fw:bw};
+  const vis=(u,w)=>{for(let k=1;k<12;k++){const x=u.x+(w.x-u.x)*k/12,y=u.y+(w.y-u.y)*k/12;if(!inPoly(x,y,P)&&edgeDist(x,y,P)>.03)return false}return true};
+  const cutAt=pts=>{for(let k=0;k<pts.length-1;k++){const u=pts[k],w=pts[k+1],dx=w.x-u.x,dy=w.y-u.y,L=dx*dx+dy*dy;let t=L?((bz.x-u.x)*dx+(bz.y-u.y)*dy)/L:0;t=Math.max(0,Math.min(1,t));const f={x:u.x+t*dx,y:u.y+t*dy};if(vis(f,bz))return [...pts.slice(0,k+1),f]}return pts};
+  /* on suit l'équerre normale ; à chaque sortie de la zone on longe le bord jusqu'à l'endroit où l'équerre y rentre */
+  const K={x:bz.x,y:a.y},T=Math.abs(a.x-bz.x)<1e-6||Math.abs(a.y-bz.y)<1e-6?[a,bz]:[a,K,bz];const out=[a];let ins=true,pend=null,cut=false;
+  for(let k=1;k<T.length;k++){for(const h of cross(T[k-1],T[k])){if(ins&&!h.in){out.push({x:h.x,y:h.y});pend=h;ins=false;cut=true}else if(!ins&&h.in){out.push(...along(pend,h).slice(1));ins=true;pend=null}}if(ins)out.push(T[k])}
+  if(!cut)return null;
+  if(!ins){const B=bin?near(bz):nb;out.push(...cutAt(along(pend,B)).slice(1));out.push(bz)}
+  if(!bin)out.push(b);
+  const r=out.filter((q,i)=>i===0||Math.hypot(q.x-out[i-1].x,q.y-out[i-1].y)>.005);r.zq=true;return r}
+function routeFor(a,b,dep){const w=routeWps(a);const t=(dep||0)<60&&plVia(a);if(t){const r=routeFor(t,b,(dep||0)+1);return [a,...w,...r]}if(w.length)return [a,...w,b];if(trActive()&&!quote.plan.trFollow){const r=netPath(a,b);if(r&&r.length>1)return r}if(quote.plan&&quote.plan.trace==='equerre'&&a.x!==b.x&&a.y!==b.y){const z=zoneEq(a,b);return z||[a,{x:b.x,y:a.y},b]}return [a,b]}
 function polyLen(p){let t=0;for(let k=1;k<p.length;k++)t+=Math.hypot(p[k].x-p[k-1].x,p[k].y-p[k-1].y);return t}
 function polyMid(p){let best=0,bk=1;for(let k=1;k<p.length;k++){const d=Math.hypot(p[k].x-p[k-1].x,p[k].y-p[k-1].y);if(d>best){best=d;bk=k}}const a=p[bk-1]||p[0],b=p[bk]||p[0];return {x:(a.x+b.x)/2,y:(a.y+b.y)/2}}
 /* poignées « + » : sur le 1er tronçon d'une liaison de forage, près du forage (les liaisons alignées ne se superposent pas) ; ailleurs au tiers du tronçon */
@@ -1420,7 +1443,7 @@ function plHint(){if(plLocked()&&!PL_LOCK_OK.has(plTool))return '<b>Plan verroui
   if(plTool==='zone'){const Z=quote.plan&&quote.plan.zone,N=+quote.N||0,E=eImpl();
     const warn=bgOn()&&!quote.plan.bg.cal?' <b class="bad">L’échelle du fond n’est pas calée : la zone et les espacements ne correspondront pas à la photo.</b>':'';
     if(!Z||!Z.closed)return `Zone de forage : cliquer les coins de la zone autorisée (à l’échelle du plan), puis cliquer le 1er point (ou double-clic) pour la fermer. <button class="btn sm ghost danger" id="pl-zdel" ${Z&&Z.pts.length?'':'disabled'}>Effacer</button>${warn}`;
-    return `Zone de ${nf(Math.round(polyArea(Z.pts)))} m². Les sommets se déplacent. Retrait des bords <span class="unit-in pl-calw" style="width:80px"><input id="pl-zmarg" inputmode="decimal" value="${Z.marg??1}"><span>m</span></span> <label class="status" title="Emplacements réservés en plus, sur le même quadrillage, au plus près des forages. Ils ne sont ni raccordés ni comptés dans le chiffrage.">+ secours <span class="unit-in pl-calw" style="width:64px"><input id="pl-zsec" inputmode="numeric" value="${+Z.sec||0}"></span></label> <button class="btn sm primary" id="pl-zimpl">Implanter ${N} forage${pl(N)}${+Z.sec>0?' + '+(+Z.sec)+' de secours':''} à ${nf(E)} m</button> <label class="status">Disposition <select id="pl-zmode"><option value="grille" ${(Z.mode||'grille')==='grille'?'selected':''}>quadrillage régulier</option><option value="groupe" ${Z.mode==='groupe'?'selected':''}>groupée près du collecteur (espacement mini)</option></select></label> <label class="status">Maille <select id="pl-zpat"><option value="carre" ${(Z.pat||'carre')==='carre'?'selected':''}>carrée</option><option value="quinconce" ${Z.pat==='quinconce'?'selected':''}>quinconce</option><option value="auto" ${Z.pat==='auto'?'selected':''}>la meilleure</option></select></label> <label class="status" title="Décoché : le collecteur et la chaufferie placés à la main restent où ils sont"><input type="checkbox" id="pl-zautoc" ${Z.autoC?'checked':''}> replacer le collecteur au mieux</label> <button class="btn sm ghost danger" id="pl-zdel">Effacer la zone</button><span class="status" style="display:block;margin-top:4px">Nombre et espacement : ceux du dimensionnement. Quadrillage régulier : le logiciel écarte les forages au maximum (jamais moins que l’espacement demandé) pour remplir la zone. Groupée : espacement demandé, au plus près du collecteur.</span>${warn}`}
+    return `Zone de ${nf(Math.round(polyArea(Z.pts)))} m². Les sommets se déplacent. Retrait des bords <span class="unit-in pl-calw" style="width:80px"><input id="pl-zmarg" inputmode="decimal" value="${Z.marg??1}"><span>m</span></span> <label class="status" title="Emplacements réservés en plus, sur le même quadrillage, au plus près des forages. Ils ne sont ni raccordés ni comptés dans le chiffrage.">+ secours <span class="unit-in pl-calw" style="width:64px"><input id="pl-zsec" inputmode="numeric" value="${+Z.sec||0}"></span></label> <button class="btn sm primary" id="pl-zimpl">Implanter ${N} forage${pl(N)}${+Z.sec>0?' + '+(+Z.sec)+' de secours':''} à ${nf(E)} m</button> <label class="status">Disposition <select id="pl-zmode"><option value="groupe" ${(Z.mode||'groupe')==='groupe'?'selected':''}>au plus près du collecteur (espacement mini)</option><option value="grille" ${Z.mode==='grille'?'selected':''}>quadrillage régulier, centré sur la zone</option></select></label> <label class="status">Maille <select id="pl-zpat"><option value="carre" ${(Z.pat||((Z.mode||'groupe')==='groupe'?'auto':'carre'))==='carre'?'selected':''}>carrée</option><option value="quinconce" ${Z.pat==='quinconce'?'selected':''}>quinconce</option><option value="auto" ${(Z.pat||((Z.mode||'groupe')==='groupe'?'auto':'carre'))==='auto'?'selected':''}>la meilleure</option></select></label> <label class="status" title="Décoché : le collecteur et la chaufferie placés à la main restent où ils sont"><input type="checkbox" id="pl-zautoc" ${Z.autoC?'checked':''}> replacer le collecteur au mieux</label> <button class="btn sm ghost danger" id="pl-zdel">Effacer la zone</button><span class="status" style="display:block;margin-top:4px">Nombre et espacement : ceux du dimensionnement. Quadrillage régulier : le logiciel écarte les forages au maximum (jamais moins que l’espacement demandé) pour remplir la zone. Groupée : espacement demandé, au plus près du collecteur.</span>${warn}`}
   if(plTool==='ref'){const R=refList(),l=R[plRefSel];
     return `Trait de repère : <b>appuyer et glisser</b> pour tracer un trait (prolongement d’un mur de bâtiment, limite de propriété, axe de voie…). <b>Maj</b> = trait horizontal ou vertical ; les bouts s’accrochent aux forages et aux angles déjà placés. Ensuite, avec l’outil <b>Cote</b>, cliquer un forage puis le trait : la cote se met à angle droit. Gomme pour effacer un trait.`+(l?` <button class="btn sm ghost danger" id="pl-ref1del">Supprimer ce trait</button>`:'')+(R.length?` <button class="btn sm ghost danger" id="pl-refclr">Effacer les ${R.length} trait${pl(R.length)}</button>`:'')}
   if(plTool==='gps'){const p=quote.plan||{},on=planGeoOn(),inp=(id,v,ph)=>`<input id="${id}" value="${esc(v||'')}" placeholder="${ph}" style="width:230px;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:4px 7px;color:var(--ink);font-family:var(--mono)">`;
@@ -1968,17 +1991,17 @@ function segDist(x,y,a,b){const dx=b.x-a.x,dy=b.y-a.y,L=dx*dx+dy*dy;let t=L?((x-
 function edgeDist(x,y,P){let d=Infinity;for(let i=0;i<P.length;i++)d=Math.min(d,segDist(x,y,P[i],P[(i+1)%P.length]));return d}
 /* essaie des réseaux carrés et en quinconce (pas = espacement), orientés tous les 5° et décalés, garde celui qui loge N forages au plus près du point d'ancrage */
 /* réseau carré ou en quinconce (pas E), orienté de ad degrés et décalé (fx, fy en quarts de pas) autour du centre c, rayon R */
-function zoneLattice(c,E,pat,ad,fx,fy,R){const dy=pat==='carre'?E:E*Math.sqrt(3)/2,a=ad*Math.PI/180,ca=Math.cos(a),sa=Math.sin(a),ox=fx*E/4,oy=fy*dy/4,n=Math.ceil(R/Math.min(E,dy))+1,out=[];
+function zoneLattice(c,E,pat,ad,fx,fy,R,ph){ph=ph||4;const dy=pat==='carre'?E:E*Math.sqrt(3)/2,a=ad*Math.PI/180,ca=Math.cos(a),sa=Math.sin(a),ox=fx*E/ph,oy=fy*dy/ph,n=Math.ceil(R/Math.min(E,dy))+1,out=[];
   for(let j=-n;j<=n;j++){const yy=j*dy+oy,sh=pat==='quinconce'&&(j&1)?E/2:0;for(let i=-n;i<=n;i++){const xx=i*E+sh+ox;out.push({x:c.x+xx*ca-yy*sa,y:c.y+xx*sa+yy*ca})}}return out}
 /* garde la disposition qui loge le plus de forages dans la zone, puis celle qui les met au plus près du point d'ancrage */
 const COLL_MIN=3,E_IMPL=10;/* espacement d'implantation : 10 m, ou plus si le dimensionnement le demande */
 const eImpl=()=>Math.max(E_IMPL,+quote.E>0?+quote.E:0);
 /* distance mini (m) entre un forage et le collecteur */
-function zoneLayout(P,E,marg,N,anchor,pats,excl){const c=P.reduce((a,q)=>({x:a.x+q.x/P.length,y:a.y+q.y/P.length}),{x:0,y:0});const R=Math.max(...P.map(q=>Math.hypot(q.x-c.x,q.y-c.y)))+E;let best=null;
-  for(const pat of (pats||['carre','quinconce']))for(let ad=0;ad<(pat==='carre'?90:180);ad+=5)for(let fx=0;fx<4;fx++)for(let fy=0;fy<4;fy++){
-    const pts=zoneLattice(c,E,pat,ad,fx,fy,R).filter(q=>inPoly(q.x,q.y,P)&&edgeDist(q.x,q.y,P)>=marg-1e-9&&!(excl||[]).some(c=>Math.hypot(q.x-c.x,q.y-c.y)<COLL_MIN-1e-6)).map(q=>({...q,d:Math.hypot(q.x-anchor.x,q.y-anchor.y)}));
+function zoneLayout(P,E,marg,N,anchor,pats,excl,near){const c=near?{x:anchor.x,y:anchor.y}:P.reduce((a,q)=>({x:a.x+q.x/P.length,y:a.y+q.y/P.length}),{x:0,y:0});const R=Math.max(...P.map(q=>Math.hypot(q.x-c.x,q.y-c.y)))+E;let best=null;const ph=near?8:4,dist=near?planDist:(u,w)=>Math.hypot(u.x-w.x,u.y-w.y);
+  for(const pat of (pats||['carre','quinconce']))for(let ad=0;ad<(pat==='carre'?90:180);ad+=5)for(let fx=0;fx<ph;fx++)for(let fy=0;fy<ph;fy++){
+    const pts=zoneLattice(c,E,pat,ad,fx,fy,R,ph).filter(q=>inPoly(q.x,q.y,P)&&edgeDist(q.x,q.y,P)>=marg-1e-9&&!(excl||[]).some(c=>Math.hypot(q.x-c.x,q.y-c.y)<COLL_MIN-1e-6)).map(q=>({...q,d:dist(q,anchor)}));
     let score;if(pts.length>=N){pts.sort((p,q)=>p.d-q.d);score=1e9-pts.slice(0,N).reduce((t,q)=>t+q.d,0)}else score=pts.length;
-    if(!best||score>best.score)best={score,pts,pat,ad,fx,fy,c,R}}
+    if(!best||score>best.score)best={score,pts,pat,ad,fx,fy,c,R,ph}}
   return best}
 function geoMedian(F){let m=F.reduce((a,q)=>({x:a.x+q.x/F.length,y:a.y+q.y/F.length}),{x:0,y:0});
   for(let k=0;k<60;k++){let sx=0,sy=0,sw=0;F.forEach(q=>{const d=Math.max(.01,Math.hypot(q.x-m.x,q.y-m.y));sx+=q.x/d;sy+=q.y/d;sw+=1/d});m={x:sx/sw,y:sy/sw}}return m}
@@ -1993,9 +2016,9 @@ function zoneImplant(){const p=planObj(),Z=p.zone;if(!Z||!Z.closed||Z.pts.length
   const anchor=(keepC&&oldC.find(i=>!(i.i||0)))||ch||zc;
   if(old.some(i=>i.k==='f'&&!i.ex)&&!confirm('Remplacer les forages déjà placés par une implantation automatique dans la zone ?'))return;
   toast('Calcul de l’implantation…');
-  setTimeout(()=>{const mode=Z.mode||'grille',pats=Z.pat==='quinconce'?['quinconce']:Z.pat==='auto'?['carre','quinconce']:['carre'];
+  setTimeout(()=>{const mode=Z.mode||'groupe',zp=Z.pat||(mode==='groupe'?'auto':'carre'),pats=zp==='quinconce'?['quinconce']:zp==='auto'?['carre','quinconce']:['carre'];
     /* quadrillage régulier : on cherche le plus grand espacement (≥ E) qui loge les N forages, centrés sur la zone */
-    const excl=keepC?oldC:[];let Eg=E+.02,best=zoneLayout(Z.pts,Eg,marg,N,mode==='grille'?zc:anchor,pats,excl);
+    const excl=keepC?oldC:[];let Eg=E+.02,best=zoneLayout(Z.pts,Eg,marg,N,mode==='grille'?zc:anchor,pats,excl,mode!=='grille');
     if(false&&mode==='grille'&&best&&best.pts.length>=N&&N>1){let lo=Eg,hi=Math.max(...Z.pts.flatMap(a=>Z.pts.map(b2=>Math.hypot(a.x-b2.x,a.y-b2.y))));
       for(let k=0;k<14&&hi-lo>.05;k++){const mid=(lo+hi)/2,r=zoneLayout(Z.pts,mid,marg,N,zc,pats,excl);if(r&&r.pts.length>=N){lo=mid;best=r}else hi=mid}
       Eg=Math.floor(lo*10)/10;if(Eg<E)Eg=E+.02;best=zoneLayout(Z.pts,Eg,marg,N,zc,pats,excl)}
@@ -2003,14 +2026,14 @@ function zoneImplant(){const p=planObj(),Z=p.zone;if(!Z||!Z.closed||Z.pts.length
     pts.sort((a,b)=>a.d-b.d);pts=pts.slice(0,N);
     /* zone trop petite : on continue le même réseau juste autour de la zone (forages à déplacer ensuite si besoin) */
     if(pts.length<N){const R2=best.R+Eg*(Math.ceil(Math.sqrt(N))+3);const taken=new Set(pts.map(q=>q.x.toFixed(2)+','+q.y.toFixed(2)));
-      const extra=zoneLattice(best.c,Eg,best.pat,best.ad,best.fx,best.fy,R2).filter(q=>!taken.has(q.x.toFixed(2)+','+q.y.toFixed(2))&&farX(q)&&!(inPoly(q.x,q.y,Z.pts)&&edgeDist(q.x,q.y,Z.pts)>=marg-1e-9)&&!excl.some(c=>Math.hypot(q.x-c.x,q.y-c.y)<COLL_MIN-1e-6))
+      const extra=zoneLattice(best.c,Eg,best.pat,best.ad,best.fx,best.fy,R2,best.ph).filter(q=>!taken.has(q.x.toFixed(2)+','+q.y.toFixed(2))&&farX(q)&&!(inPoly(q.x,q.y,Z.pts)&&edgeDist(q.x,q.y,Z.pts)>=marg-1e-9)&&!excl.some(c=>Math.hypot(q.x-c.x,q.y-c.y)<COLL_MIN-1e-6))
         .map(q=>({...q,o:inPoly(q.x,q.y,Z.pts)?0:edgeDist(q.x,q.y,Z.pts),d:Math.hypot(q.x-anchor.x,q.y-anchor.y)})).sort((a,b)=>(a.o-b.o)||(a.d-b.d));
       pts=pts.concat(extra.slice(0,N-pts.length))}
     const F=[...FX,...pts.map(q=>({k:'f',x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100}))];
     /* forages de secours : positions libres suivantes du même réseau, dans la zone d'abord, au plus près des forages ; sans nombre demandé, on garde ceux placés à la main s'ils restent à 10 m des forages */
     const nSec=Math.max(0,Math.round(+Z.sec||0));let SEC=[],secOut=0;
     if(nSec>0){const ky=q=>q.x.toFixed(2)+','+q.y.toFixed(2),tk=new Set(pts.map(ky)),cF=pts.reduce((a,q)=>({x:a.x+q.x/pts.length,y:a.y+q.y/pts.length}),{x:0,y:0});
-      const cand=zoneLattice(best.c,Eg,best.pat,best.ad,best.fx,best.fy,best.R+Eg*(Math.ceil(Math.sqrt(N+nSec))+3)).filter(q=>farX(q)&&!tk.has(ky(q))&&!excl.some(c=>Math.hypot(q.x-c.x,q.y-c.y)<COLL_MIN-1e-6))
+      const cand=zoneLattice(best.c,Eg,best.pat,best.ad,best.fx,best.fy,best.R+Eg*(Math.ceil(Math.sqrt(N+nSec))+3),best.ph).filter(q=>farX(q)&&!tk.has(ky(q))&&!excl.some(c=>Math.hypot(q.x-c.x,q.y-c.y)<COLL_MIN-1e-6))
         .map(q=>{const ins=inPoly(q.x,q.y,Z.pts),ok=ins&&edgeDist(q.x,q.y,Z.pts)>=marg-1e-9;return {...q,o:ok?0:ins?.001:edgeDist(q.x,q.y,Z.pts),d:Math.hypot(q.x-cF.x,q.y-cF.y)}}).sort((a,b)=>(a.o-b.o)||(a.d-b.d)).slice(0,nSec);
       secOut=cand.filter(q=>q.o>0).length;SEC=cand.map(q=>({k:'s',x:Math.round(q.x*100)/100,y:Math.round(q.y*100)/100}))}
     else SEC=old.filter(i=>i.k==='s'&&F.every(f=>Math.hypot(f.x-i.x,f.y-i.y)>=F_MIN-.005));
@@ -2027,7 +2050,7 @@ function zoneImplant(){const p=planObj(),Z=p.zone;if(!Z||!Z.closed||Z.pts.length
     p.items=[...(ch?[ch]:[]),...F,...SEC,...C];p.routes={};p.assign={};p.noLink={};p.via={};p.linked={};p.on=true;p.userOff=false;plTool='f';
     planChanged();{const V=planView();if(F.some(i=>i.x<V.x||i.x>V.x+V.w||i.y<V.y||i.y>V.y+V.h)){planFit(false);planDraw()}}
     const pat=best.pat==='carre'?'en carré':'en quinconce';
-    const esp=Math.round(Eg*10)/10;toast((inZ<N?`${N} forages implantés ${pat} à ${nf(E)} m : ${inZ} dans la zone, ${N-inZ} juste autour (à déplacer si besoin)`:`${N} forages implantés ${pat}, espacement ${nf(esp)} m${esp>E+.05?` (mini demandé ${nf(E)} m)`:''}, orientation ${best.ad}°${keepC?' (collecteur conservé)':''}`)+(nSec>0?` · ${SEC.length} forage${pl(SEC.length)} de secours${secOut?` (${secOut} hors zone, à déplacer si besoin)`:''}`:''))},30)}
+    const esp=Math.round(Eg*10)/10;toast((inZ<N?`${N} forages implantés ${pat} à ${nf(E)} m : ${inZ} dans la zone, ${N-inZ} juste autour (à déplacer si besoin)`:`${N} forages implantés ${pat}, espacement ${nf(esp)} m${esp>E+.05?` (mini demandé ${nf(E)} m)`:''}, orientation ${best.ad}°${mode==='groupe'?(keepC?', au plus près du collecteur':ch?', au plus près de la chaufferie':''):''}${keepC?' (collecteur conservé)':''}`)+(nSec>0?` · ${SEC.length} forage${pl(SEC.length)} de secours${secOut?` (${secOut} hors zone, à déplacer si besoin)`:''}`:''))},30)}
 /* place les forages en ligne depuis le dimensionnement (N, E, collecteur au bout / au milieu, L, 2 collecteurs) */
 function planGen(){const p=planObj();const FX=exList();const N=Math.max(0,(+quote.N||0)-FX.length);if(!N){toast(FX.length?'Tous les forages sont déjà réalisés : rien à implanter':'Indiquer d’abord le nombre de forages');return}
   const E=eImpl(),L=+quote.L||0,two=+quote.nc===2&&N>=2,mid=quote.coll==='milieu';
