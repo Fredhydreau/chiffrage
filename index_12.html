@@ -264,6 +264,17 @@ table.list tr.row:hover td{background:var(--panel2)}
 .pl-exp-t{font-weight:700;font-size:13px;margin-right:4px}.pl-exp-b{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-left:auto}
 .pl-exp select{color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:3px 6px;margin-left:4px}
 .pl-nord{display:inline-block;width:70px;margin-left:4px;vertical-align:middle}.pl-nord input{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:3px 22px 3px 6px;color:var(--ink);font-family:var(--mono)}
+.dp-sum{display:flex;flex-wrap:wrap;gap:10px 34px;padding:14px 18px;margin-bottom:14px}.dp-k{display:flex;flex-direction:column;gap:2px;min-width:0}.dp-k span{font-size:12px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em}.dp-k b{font-family:var(--mono);font-size:16px;overflow-wrap:anywhere}
+.dp-ok{color:var(--auto)}.dp-ko{color:var(--warn)}.banner.dp-info{background:var(--accent-soft)}
+.dp-opt{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center}.dp-ck{display:inline-flex;gap:7px;align-items:center;font-size:14px;cursor:pointer}
+.dp-t{width:100%;border-collapse:collapse;font-size:14px}.dp-t th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+.dp-t td{padding:7px 12px;border-bottom:1px solid var(--line);vertical-align:middle}.dp-t .dp-n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.dp-t .dp-des{min-width:260px;max-width:520px}.dp-t .dp-u{color:var(--ink2);white-space:nowrap}.dp-t select{background:var(--ground);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:13px;max-width:210px}
+.dp-t tr.dp-sec td{background:var(--panel2);font-weight:700;font-size:13px;padding:6px 12px}.dp-t tr.dp-sheet td{font-family:var(--display);font-stretch:85%;font-weight:800;font-size:16px;padding:14px 12px 6px;border-bottom:2px solid var(--accent)}
+.dp-t tr.dp-off td{color:var(--ink3)}.dp-t tfoot td{font-weight:700;padding:11px 12px;border-bottom:0}.dp-t tfoot td:first-child{text-align:right}
+.dp-warn{color:var(--warn);font-size:12.5px;margin-top:2px}.dp-note{color:var(--ink3);font-size:12.5px;margin-top:2px}
+.dp-sh{padding:10px 0;border-top:1px solid var(--line)}.dp-sh:first-of-type{border-top:0}.dp-sh-h{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.dp-cols{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:8px}.dp-cols label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--ink2)}.dp-cols select,.dp-cols input{background:var(--ground);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:4px 6px;font-size:13px;max-width:190px}.dp-cols input{width:90px}
 .banner{padding:10px 14px;border-radius:8px;background:var(--forage-soft);color:var(--ink);font-size:14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px}
 .deb-cfg{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.deb-cfg .help{margin:0}.deb-in{width:90px;background:var(--ground);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-family:var(--mono);text-align:right}
@@ -322,6 +333,7 @@ table.list tr.row:hover td{background:var(--panel2)}
   <section class="view" id="v-deb" hidden></section>
   <section class="view" id="v-tarifs" hidden></section>
   <section class="view" id="v-dvp" hidden></section>
+  <section class="view" id="v-dpgf" hidden></section>
   <section class="view" id="v-soc" hidden></section>
 </main>
 
@@ -2145,6 +2157,8 @@ function summaryHTML(t){
       <div class="objline"><span class="status" id="s-prixnote"></span></div>
       <span class="k">Écart vs calcul</span><span class="v" id="s-ecart"></span>
       <span class="k">Marge brute</span><span class="v strong" id="s-marge"></span>
+      <span class="k">Coefficient sur coûts</span><span class="v" id="s-coef"></span>
+      <div class="objline"><span class="status" id="s-coefnote"></span></div>
       <label class="k" for="q-stm">Marge sous-traitance</label><div class="unit-in"><input id="q-stm" inputmode="decimal" value="${quote.stm??''}" placeholder="15"><span>%</span></div>
       <label class="k" for="q-com">Commission apporteur</label><div class="unit-in"><input id="q-com" inputmode="decimal" value="${quote.com||''}" placeholder="0"><span>%</span></div>
       <label class="k" for="q-ffj">Frais fixes (1 ensemble)</label><div class="unit-in"><input id="q-ffj" inputmode="decimal" value="${quote.ffj??''}" placeholder="${ffCalc().day}"><span>€/j</span></div>
@@ -2182,6 +2196,9 @@ function updateSummary(t){
   if(pn){const low=stv>0&&pr<stv;pn.classList.toggle('bad',low);if(low)pn.textContent=`Attention : prix retenu inférieur à la sous-traitance refacturée (${eur(stv)}).`}
   const ec=pr-t.tp;const e=$('#s-ecart');e.textContent=Math.abs(ec)>0.005?(ec>=0?'+':'')+eur(ec):'–';e.className='v '+(Math.abs(ec)<=0.005?'':ec>=0?'good':'bad');
   const mg=pr-t.tc;$('#s-marge').textContent=`${eur(mg)} · ${pr?nf(100*mg/pr):0} %`;
+  {const so=socInfo(),cf=t.tc>0?pr/t.tc:0,cr=+so.coefReel||0,c1=+so.coefMin||0,c2=+so.coefMax||0,cm=+so.comMoy||0,f2=x=>x.toFixed(2).replace('.',',');
+   const ce=$('#s-coef');if(ce){ce.textContent=cf?'× '+f2(cf):'–';ce.className='v '+(cf&&c1?(cf<c1?'bad':'good'):'')}
+   const cn=$('#s-coefnote');if(cn){const b=[];if(cr)b.push('réel '+f2(cr));if(c1)b.push('à viser '+f2(c1)+(c2?' à '+f2(c2):''));if(cm)b.push('commission moyenne '+nf(cm)+' %');cn.textContent=b.length?'Dernier bilan : '+b.join(' · '):''}}
   $('#s-ttc').textContent=eur(pr*(1+(+quote.tva||0)/100));
   const po=pObj, so=$('#s-obj');
   so.textContent=po?eur(po):'–';
@@ -2223,6 +2240,7 @@ function renderDevis(){
     <button class="btn" id="b-pdfg" title="Une page à imprimer pour présenter le projet : titre, chantier, client, date, coordonnées. Sans prix.">Page de garde</button>
     <button class="btn" id="b-pdf1">PDF avec prix</button>
     <button class="btn" id="b-pdf0">PDF sans prix</button>
+    <button class="btn" id="b-dpgf" title="Remplir le DPGF Excel du bureau d’études d’après le prix retenu">DPGF…</button>
     <button class="btn" id="b-pdfm" title="Matières et locations, sans main-d’œuvre ni hébergement">PDF matériel + locations</button>
     <button class="btn" id="b-pdfmf" title="Matériel seul : sans main-d’œuvre, fioul, logistique ni locations">PDF liste de matériel</button>
     <button class="btn" id="b-pdfa" title="Usage interne : prix d’achat, marges et résultat">PDF prix d’achat</button>
@@ -2393,6 +2411,7 @@ function onDevisClick(e){
     case 'b-upd':for(const id of Object.keys(quote.snap)){const c=catalog.find(i=>i.id===id);if(c)quote.snap[id].price=c.price}markDirty();renderDevisKeepScroll();toast('Tarifs actuels appliqués');break;
     case 'b-csv':exportCSV();break;
     case 'b-pdf1':exportPDF('devis');break;
+    case 'b-dpgf':go('dpgf');break;
     case 'b-pdf0':exportPDF('descriptif');break;
     case 'b-pdfh':exportPDF('hydro');break;
     case 'b-pdfm':exportPDF('materiel');break;
@@ -2468,7 +2487,7 @@ Article 12 – Litiges
 Les parties recherchent d'abord une solution amiable. À défaut, pour les clients professionnels, le Tribunal de commerce de Saint-Brieuc est seul compétent ; pour les clients consommateurs, la juridiction compétente est déterminée selon les règles de droit commun.`;
 const SOC_DEF={raison:'SARL MILO / HYDREAU FORAGE',forme:'SARL',capital:'5 000 €',siret:'89166141500044',rcs:'RCS Saint-Brieuc 891 661 415',tva:'FR28891661415',ape:'4313Z',
   adr1:'ZA de Keranfeuillen, 22540 Tréglamus (siège social)',tel1:'02 96 40 12 85',adr2:'ZA des 3 Prés, 9 rue de la Plaine, 35890 Laillé',tel2:'02 99 52 43 09',mail:'contact@hydreau-forage.fr',web:'',
-  qualif:'',assureur:'',police:'',zone:'France métropolitaine',mediateur:'',validite:30,repOn:1,rp_declarations:400,rpFm:45,rpGl:4.5,rp_installation:850,rp_forage:9200,rp_sondes:9600,rp_collecteur:1560,rp_glycol:1971,rp_raccordement:1980,ffAn:'',joAn:210,nbEns:4,mAn:'',mpjAn:70,npPct:'',
+  qualif:'',assureur:'',police:'',zone:'France métropolitaine',mediateur:'',validite:30,repOn:1,rp_declarations:400,rpFm:45,rpGl:4.5,rp_installation:850,rp_forage:9200,rp_sondes:9600,rp_collecteur:1560,rp_glycol:1971,rp_raccordement:1980,ffAn:'',joAn:210,nbEns:4,mAn:'',mpjAn:70,npPct:'',coefReel:'',coefMin:'',coefMax:'',comMoy:'',
   miseDispo:"la fourniture d'eau et d'électricité et le plan des réseaux (Hydreau Forage n'est pas responsable de la casse éventuelle des réseaux non repérés).",
   nonCompris:"l'évacuation des déblais, les tranchées, le collecteur et les percements s'ils ne sont pas chiffrés dans le devis ; le gravillonnage éventuel des chemins d'accès et la réfection des pelouses.",
   paiement:"Acompte de 30 % à la commande, factures de situation à l'avancement des travaux. Paiement à réception de facture, sans escompte pour paiement anticipé. Rapport de forage et plan transmis à réception du règlement.",
@@ -2477,6 +2496,7 @@ const SOC_FIELDS=[['raison','Raison sociale'],['forme','Forme juridique'],['capi
   ['adr1','Adresse 1 (siège)'],['tel1','Téléphone 1'],['adr2','Adresse 2'],['tel2','Téléphone 2'],['mail','E-mail'],['web','Site internet'],['qualif','Qualifications (RGE, Qualit’EnR…)'],
   ['assureur','Assureur décennale (nom, adresse)'],['police','N° de contrat décennale'],['zone','Couverture géographique'],['mediateur','Médiateur de la consommation (nom, site)'],['validite','Validité des devis (jours)']];
 const SOC_FF=[['ffAn','Frais fixes annuels (€)'],['joAn','Jours ouvrés par an'],['nbEns','Ensembles de forage'],['mAn','Mètres forés par an'],['mpjAn','Avancement moyen (m/jour)'],['npPct','Non-production (%)']];
+const SOC_RB=[['coefReel','Coefficient réel du dernier bilan'],['coefMin','Coefficient à viser pour 5 % de résultat net'],['coefMax','Coefficient à viser pour 8 % de résultat net'],['comMoy','Commission moyenne (% du chiffre d’affaires)']];
 const FF_DEF_J=2000;
 /* répartition du prix dans le devis client : poids par poste (montants du devis type D-2026-10-31, 2 × 200 m) */
 const SOC_RP=[['declarations','Déclarations administratives (montant fixe)'],['installation','Mise en place chantier'],['forage','Forage'],['sondes','Sondes, fournitures et cimentation'],['collecteur','Collecteur'],['raccordement','Raccordement et mise en glycol']];
@@ -2568,6 +2588,8 @@ function renderSoc(){const el=$('#v-soc');const s=socDraft||socInfo();const miss
     <p class="help" style="margin:12px 0 0">Ces informations figurent dans l’en-tête, le pied de page et l’encadré « Informations légales » de chaque devis. L’assurance décennale (assureur, contrat, couverture géographique) est obligatoire sur les devis de travaux ; le médiateur de la consommation l’est pour les clients particuliers.</p></div></div>
   <div class="card" style="margin-top:18px"><div class="card-h"><h2>Frais fixes de l’entreprise</h2></div><div class="card-b"><div class="fields">${SOC_FF.map(([k,l])=>`<div class="f"><label for="s-${k}">${l}</label><input id="s-${k}" data-s="${k}" inputmode="decimal" value="${esc(s[k]??'')}"${k==='npPct'?` placeholder="${npAuto(s)?nf(Math.round(npAuto(s).np))+' (auto)':'30'}"`:''}></div>`).join('')}</div>
     <div id="s-ffres">${ffResHtml(s)}</div></div></div>
+  <div class="card" style="margin-top:18px"><div class="card-h"><h2>Repères de rentabilité (dernier bilan)</h2></div><div class="card-b"><div class="fields">${SOC_RB.map(([k,l])=>`<div class="f"><label for="s-${k}">${l}</label><input id="s-${k}" data-s="${k}" inputmode="decimal" value="${esc(String(s[k]??'').replace('.',','))}"></div>`).join('')}</div>
+    <p class="help" style="margin:12px 0 0">Coefficient = production de l’exercice ÷ coûts de chantier (matières, sous-traitance, carburant, locations ponctuelles, intérim, salaires et indemnités de chantier). Chaque chiffrage affiche son propre coefficient (prix retenu ÷ coût) à côté de ces repères. À mettre à jour à chaque bilan.</p></div></div>
   <div class="card" style="margin-top:18px"><div class="card-h"><h2>Répartition des prix dans le devis</h2></div><div class="card-b">
     <label class="xst" style="font-size:14px;color:var(--ink)"><input type="checkbox" data-s="repOn" ${+s.repOn?'checked':''}> Répartir le prix du devis selon ces montants de référence</label>
     <div class="fields" style="margin-top:10px"><div class="f"><label for="s-rpFm">Forage + sondes (€/m)</label><input id="s-rpFm" data-s="rpFm" inputmode="decimal" value="${esc(s.rpFm??'')}"></div><div class="f"><label for="s-rpGl">Glycol (€/L)</label><input id="s-rpGl" data-s="rpGl" inputmode="decimal" value="${esc(s.rpGl??'')}"></div>${SOC_RP.map(([k,l])=>`<div class="f"><label for="s-rp_${k}">${l} (€)</label><input id="s-rp_${k}" data-s="rp_${k}" inputmode="decimal" value="${esc(s['rp_'+k]??'')}"></div>`).join('')}</div>
@@ -2585,7 +2607,7 @@ function ffResHtml(s){const c=ffCalc(s);if(!c.ok)return `<p class="help" style="
   <div><span class="k">Jours de forage à vendre par an</span><b class="num">${nf(Math.round(c.prod))} j</b><small>≈ ${nf(Math.round(c.prod*mpj))} m à ${mpj} m/jour, soit ≈ ${nf(Math.round(c.prod/c.n))} j par ensemble</small></div></div>
   <div class="tbl-wrap" style="margin-top:12px"><table style="min-width:480px"><thead><tr><th>Mètres forés / an</th><th class="r">Jours de forage</th><th class="r">Non-production</th><th class="r">Frais fixes / jour</th></tr></thead><tbody>${sc.map(r=>`<tr${r.cur?' style="font-weight:600"':''}><td class="num">${nf(r.m)} m${r.cur?' (saisi)':''}</td><td class="r num">${nf(Math.round(r.jf))} j</td><td class="r num">${nf(Math.round(r.np))} %</td><td class="r num">${nf(r.day)} €</td></tr>`).join('')}</tbody></table></div>
   <p class="help" style="margin:12px 0 0">Chaque chiffrage paie ce montant par jour de forage (J). La non-production couvre les transferts de machines entre chantiers, l’entretien des machines et les jours sans chantier. Laissez la case vide pour qu’elle soit calculée d’après les mètres forés par an : les frais fixes sont alors couverts à l’euro près si l’activité est tenue. Le tableau montre l’effet du volume. Si l’entreprise fore moins de jours que prévu, une partie des frais fixes n’est pas couverte : comparez chaque année avec les jours de forage réels.</p>`}
-function onSocInput(e){const tg=e.target;if(!tg.dataset.s)return;const fresh=!socDraft;if(fresh)socDraft=socInfo();const k=tg.dataset.s;if(k==='repOn'){socDraft.repOn=tg.checked?1:0;const r=$('#s-rpres');if(r)r.innerHTML=rpResHtml(socDraft);if(fresh){const tb=$('#v-soc .toolbar');if(tb)tb.innerHTML=socToolbar()}return}socDraft[k]=(k==='validite'||k.startsWith('rp')||SOC_FF.some(x=>x[0]===k))?(pnum(tg.value)??''):tg.value;
+function onSocInput(e){const tg=e.target;if(!tg.dataset.s)return;const fresh=!socDraft;if(fresh)socDraft=socInfo();const k=tg.dataset.s;if(k==='repOn'){socDraft.repOn=tg.checked?1:0;const r=$('#s-rpres');if(r)r.innerHTML=rpResHtml(socDraft);if(fresh){const tb=$('#v-soc .toolbar');if(tb)tb.innerHTML=socToolbar()}return}socDraft[k]=(k==='validite'||k.startsWith('rp')||SOC_FF.some(x=>x[0]===k)||SOC_RB.some(x=>x[0]===k))?(pnum(tg.value)??''):tg.value;
   if(k.startsWith('rp')){const r=$('#s-rpres');if(r)r.innerHTML=rpResHtml(socDraft)}
   if(SOC_FF.some(x=>x[0]===k)){const r=$('#s-ffres');if(r)r.innerHTML=ffResHtml(socDraft);const npi=$('#s-npPct');if(npi){const au=npAuto(socDraft);npi.placeholder=au?nf(Math.round(au.np))+' (auto)':'30'}}
   if(fresh){const tb=$('#v-soc .toolbar');if(tb)tb.innerHTML=socToolbar()}}
@@ -3352,13 +3374,14 @@ async function onTarifsClick(e){
 /* ---------- nav ---------- */
 function go(v){view=v;store.set('view',v);
   for(const n of ['devis','dmd','liste','deb','tarifs','soc']){$('#v-'+n).hidden=n!==v;$('#tab-'+n).setAttribute('aria-selected',n===v)}
-  if(v==='devis')renderDevis();if(v==='liste')renderListe();if(v==='dmd')renderDmd();if(v==='deb')renderDeb();if(v==='tarifs')renderTarifs();if(v==='dvp'){dvpConfirm=false;renderDvp()}if(v==='soc')renderSoc();window.scrollTo(0,0)}
+  if(v==='devis')renderDevis();if(v==='liste')renderListe();if(v==='dmd')renderDmd();if(v==='deb')renderDeb();if(v==='tarifs')renderTarifs();if(v==='dvp'){dvpConfirm=false;renderDvp()}if(v==='soc')renderSoc();{const dp=$('#v-dpgf');if(dp){dp.hidden=v!=='dpgf';if(v==='dpgf'){$('#tab-devis').setAttribute('aria-selected',true);renderDpgf();dpEnsure().then(renderDpgf)}}}window.scrollTo(0,0)}
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>go(t.dataset.v)));
 const vd=$('#v-devis');vd.addEventListener('input',onDevisInput);vd.addEventListener('change',onDevisChange);vd.addEventListener('click',onDevisClick);
 $('#v-liste').addEventListener('click',onListeClick);dmdBind();
 {const vb=$('#v-deb');vb.addEventListener('input',onDebInput);vb.addEventListener('change',onDebChange);vb.addEventListener('click',onDebClick)}$('#v-liste').addEventListener('input',e=>{if(e.target.id==='l-filter'){listFilter=e.target.value;const p=e.target.selectionStart;renderListe();const i=$('#l-filter');i.focus();i.setSelectionRange(p,p)}});
 $('#v-tarifs').addEventListener('input',onTarifsInput);$('#v-tarifs').addEventListener('change',e=>{if(e.target.id==='t-import'&&e.target.files[0]){importTarifs(e.target.files[0]);e.target.value=''}});$('#v-tarifs').addEventListener('click',onTarifsClick);
 $('#v-dvp').addEventListener('input',onDvpInput);$('#v-dvp').addEventListener('change',onDvpInput);$('#v-dvp').addEventListener('click',onDvpClick);
+$('#v-dpgf').addEventListener('change',onDpgfChange);$('#v-dpgf').addEventListener('click',onDpgfClick);
 $('#v-soc').addEventListener('input',onSocInput);$('#v-soc').addEventListener('click',onSocClick);
 
 const $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -3562,6 +3585,312 @@ async function chPdf(c){if(!dlApi){toast('Téléchargement indisponible sur cett
     if(c.notes){need(30);T('Notes',mg,y-10,{s:10.5,f:B,col:ACC});y-=20;const words=pt(c.notes).split(/\s+/);let cur='';for(const w of words){const t=cur?cur+' '+w:w;if(F.widthOfTextAtSize(t,8.5)>PW-2*mg){need(12);T(cur,mg,y,{s:8.5});y-=11;cur=w}else cur=t}if(cur){need(12);T(cur,mg,y,{s:8.5})}}
     const bytes=await doc.save();await dlApi.save({filename:`debourse-${slug(c.nom)}.pdf`,data:new Blob([bytes],{type:'application/pdf'})})}
   catch(e){if(e&&(e.code==='cancelled'||e.code==='declined'))return;console.error(e);toast('Échec de la création du PDF')}}
+
+/* ---------- DPGF : cadre de prix du bureau d'études (.xlsx) rempli d'après le prix retenu ---------- */
+let dpg=null,dpBusy=false,dpColsOpen=false;
+const DPG_CLS=[['declarations','Déclarations, études, DOE'],['installation','Installation de chantier'],['forage','Forage'],['sondes','Sondes et cimentation'],['collecteur','Collecteur'],['raccordement','Raccordement'],['glycol','Glycol'],['terrassement','Terrassement'],['deblais','Déblais, bennes'],['trt','TRT'],['zero','Inclus (prix 0)'],['skip','Ne pas toucher']];
+const dpLab=c=>(DPG_CLS.find(x=>x[0]===c)||[c,c])[1];
+/* poste sans ligne dans le DPGF (ou ligne sans poste chiffré) : rattaché au premier poste voisin présent */
+const DP_CH={declarations:['installation','forage','sondes'],installation:['forage','declarations','sondes'],forage:['sondes','installation'],sondes:['forage'],collecteur:['raccordement','terrassement'],raccordement:['collecteur','terrassement','sondes','forage'],glycol:['raccordement','collecteur','sondes'],terrassement:['raccordement','collecteur','installation'],deblais:['installation','forage','terrassement'],trt:['declarations','installation']};
+const dpXml=s=>String(s).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&#x([0-9a-f]+);/gi,(m,n)=>String.fromCodePoint(parseInt(n,16))).replace(/&#(\d+);/g,(m,n)=>String.fromCodePoint(+n)).replace(/&amp;/g,'&');
+const dpEsc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const dpCol=s=>s.split('').reduce((a,c)=>a*26+c.charCodeAt(0)-64,0);
+const dpColName=n=>{let s='';while(n>0){const m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=(n-m-1)/26}return s};
+const dpNorm=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[\u2019\u2018]/g,"'").replace(/\s+/g,' ').trim();
+const dpNum=x=>String(Math.round(x*1e8)/1e8);
+function dpParseSheet(xml,ss){const rows=new Map();const reR=/<row\b([^>]*?)(\/>|>([\s\S]*?)<\/row>)/g;let m;
+  while((m=reR.exec(xml))){const rn=+((/\br="(\d+)"/.exec(m[1])||[])[1]);if(!rn)continue;
+    const R={n:rn,s:m.index,e:m.index+m[0].length,self:m[2]==='/>',cells:new Map()};
+    if(m[3]!=null){const base=m.index+m[0].indexOf('>')+1;const reC=/<c\b([^>]*?)(\/>|>([\s\S]*?)<\/c>)/g;let c;
+      while((c=reC.exec(m[3]))){const ref=/\br="([A-Z]+)\d+"/.exec(c[1]);if(!ref)continue;const col=dpCol(ref[1]);const inner=c[3]||'';
+        const t=(/\bt="([^"]*)"/.exec(c[1])||[])[1]||'';const f=/<f\b[^>]*?(\/>|>([\s\S]*?)<\/f>)/.exec(inner);const vm=/<v\b[^>\/]*>([\s\S]*?)<\/v>/.exec(inner);
+        let val=null;
+        if(t==='s')val=vm?(ss[+vm[1]]??''):'';
+        else if(t==='inlineStr')val=[...inner.matchAll(/<t\b[^>\/]*(?:\/>|>([\s\S]*?)<\/t>)/g)].map(x=>dpXml(x[1]||'')).join('');
+        else if(t==='str'||t==='e')val=vm?dpXml(vm[1]):'';
+        else val=vm&&vm[1].trim()!==''&&isFinite(+vm[1])?+vm[1]:null;
+        R.cells.set(col,{col,s:base+c.index,e:base+c.index+c[0].length,attrs:c[1],t,val,f:f?dpXml(f[2]||''):null,fTag:f?f[0]:null})}}
+    rows.set(rn,R)}
+  return rows}
+const DP_H={des:/^(designations?|libelles?|descriptions?|descriptifs?|travaux|ouvrages?|nature des (travaux|ouvrages|prestations)|intitules?|prestations?)\b/,
+  u:/^(u|un|unite|unites|u\.|unit\.?)$/,q:/^(q|qte|qtes|qt|quantite|quantites|quant\.?|nb|nbre|nombre)\b/,
+  pu:/^(p\.? ?u\.?\b|prix unitaires?|prix unit\.?|prix u\b|p\.u\.)|unitaire/,tot:/^(montants?|total|totaux|prix total|p\.? ?t\.?\b|sommes?)/};
+function dpDetect(rows){const ns=[...rows.keys()].sort((a,b)=>a-b).slice(0,120);
+  for(const n of ns){const R=rows.get(n),c={row:n};
+    for(const [col,cell] of R.cells){if(typeof cell.val!=='string')continue;const t=dpNorm(cell.val);if(!t||t.length>45)continue;
+      for(const k of ['pu','tot','u','q','des']){if(!DP_H[k].test(t))continue;
+        if(c[k]==null||(/\bent/.test(t)&&k!=='des'))c[k]=col;break}}
+    if(c.des&&c.pu&&(c.q||c.u))return c}
+  return null}
+const DP_ACC=/^(ecarteurs?|tetes? de sonde|marquage|lests?|vannes?|debitmetres?|accessoires?|lit de sable|grillage|tracabilite)\b|coffret/;
+const dpPM=/^(pm|p\.m\.?|p\.m|so|s\.o\.?|pour memoire|sans objet|inclus|compris)$/;
+function dpUnit(u){const n=dpNorm(u).replace(/\.$/,'');return /^(ml|m|m\.l|m lineaire|metre|metres|ml\.)$/.test(n)?'len':/^(l|litre|litres)$/.test(n)?'L':/^(m3|m\u00b3)$/.test(n)?'m3':'n'}
+function dpSheetLines(S,si,cfg){const out=[];if(!cfg||!cfg.des||!cfg.pu)return out;let sec='';
+  for(const n of [...S.rows.keys()].sort((a,b)=>a-b)){if(n<=(+cfg.row||0))continue;const R=S.rows.get(n);const g=k=>cfg[k]?R.cells.get(+cfg[k]):null;
+    const dc=g('des');const des=dc&&typeof dc.val==='string'?dc.val.replace(/\s+/g,' ').trim():'';if(!des)continue;const nd=dpNorm(des);
+    if(/^((sous[- ]?)?tota(l|ux)|tva|t\.v\.a|montant (total|ht|ttc|tva)|report)\b/.test(nd))continue;
+    const uc=g('u'),qc=g('q'),pc=g('pu');const u=uc&&uc.val!=null?String(uc.val).trim():'';let q=qc?(typeof qc.val==='number'?qc.val:pnum(qc.val)):null;
+    if(!u&&(q==null||(qc&&qc.f!=null))){if(q==null)sec=des;continue}
+    if(dpPM.test(dpNorm(u))||dpPM.test(nd))continue;
+    let qEmpty=false;if(q==null){q=1;qEmpty=true}if(!(q>0))continue;
+    out.push({key:si+':'+n,si,rn:n,des,sec,u,q,qEmpty,puF:!!(pc&&pc.f!=null),pu0:pc&&pc.f==null&&typeof pc.val==='number'?pc.val:null})}
+  return out}
+function dpClass(des,sec){const n=dpNorm(des);
+  const r=t=>{
+    if(/glycol|antigel|caloporteur|\bmpg\b/.test(t))return 'glycol';
+    if(/reponse thermique|\btrt\b/.test(t))return 'trt';
+    if(/^forages?\b/.test(t)&&!/abandon/.test(t))return 'forage';
+    if(/coulis|ciment|bentonite|ecarteur|tete de sonde|marquage|sonde double|double u|remplissage (integral|des forages)/.test(t))return 'sondes';
+    if(/^(tubes?|tuyaux?|conduites?|canalisations?|liaisons?) /.test(t))return 'raccordement';
+    if(/benne|cutting|deblai|terres? excedentaires?|evacuation des (terres|boues)|boues de forage/.test(t))return 'deblais';
+    if(/tranchee|terrassement|lit de sable|sablage|remblai|fouille|grillage avertisseur/.test(t))return 'terrassement';
+    if(/raccordement des sondes/.test(t))return 'raccordement';
+    if(/collecteur|chambre|regard|vanne|debitmetre|nourrice/.test(t))return 'collecteur';
+    if(/conduite|tube|tuyau|pehd|\bpe ?100\b|liaison|raccord|electro|accessoire|etancheite|pression|epreuve|essai|\btests?\b|rincage|purge|percement|penetration|carottage/.test(t)&&!/sonde double|tete de sonde/.test(t))return 'raccordement';
+    if(/\bdict\b|declaration|demarche|administrat|\bgmi\b|brgm|\bdoe\b|d\.o\.e|recolement|recollement|ouvrages executes|tracabilite|etude|note de calcul|plans? d'exe|rapport/.test(t))return 'declarations';
+    if(/installation|amenee|repli|deplacement|protection|limitation des degradations|coffret|balisage|cloture|remise en etat|nettoyage|base vie|atelier de forage|signalisation/.test(t))return 'installation';
+    if(/sonde|coulis|ciment|remplissage|injection|ecarteur|lest|marquage|double u/.test(t))return 'sondes';
+    if(/forage|foration|tubage|geolog|diagraph/.test(t))return 'forage';
+    return ''};
+  const a=r(n);if(a)return {c:a,sure:true};const b=r(dpNorm(sec));return {c:b||'installation',sure:false}}
+/* poids d'une ligne dans son poste : ordres de grandeur des devis Hydreau Forage, seulement pour partager un poste entre plusieurs lignes */
+function dpTyp(l,c,v){const n=dpNorm(l.des),k=dpUnit(l.u),q=l.q,M=+v.M||0,P=+v.P||0;
+  switch(c){
+    case 'forage':return k==='len'?23*q:/geolog|diagraph/.test(n)?200*q:23*(M||100)*q;
+    case 'sondes':if(/ecarteur/.test(n))return .5*q;if(/tete/.test(n))return 100*q;if(/marquage/.test(n))return 80*q;if(/lest/.test(n))return 60*q;
+      if(/coulis|ciment|remplissage|injection/.test(n))return k==='len'?6*q:6*(M||100)*q;return k==='len'?12*q:/^(u|un|unite|pce|pieces?)$/.test(dpNorm(l.u).replace(/\.$/,''))?9.3*(P||100)*q:24*(M||100)*q;
+    case 'declarations':return (/etude|note de calcul/.test(n)?600:/tracab/.test(n)?100:/doe|recol|plan/.test(n)?200:400)*q;
+    case 'installation':return (/amenee|repli|deplacement|installation|atelier/.test(n)?850:/coffret/.test(n)?100:/remise en etat/.test(n)?300:150)*q;
+    case 'deblais':return (/terres/.test(n)?200:400)*q;
+    case 'terrassement':return /sable/.test(n)?170*q:k==='len'?40*q:1600*q;
+    case 'collecteur':return (/^vanne/.test(n)?150:/^debitmetre/.test(n)?250:1560)*q;
+    case 'raccordement':return /etanch|pression|essai|\btests?\b|epreuve/.test(n)?300*q:/^accessoire/.test(n)?200*q:/electro/.test(n)?250*q:/installation|pose|raccordement des sondes/.test(n)?1000*q:k==='len'?8*q:720*q;
+    case 'glycol':return k==='L'?4.5*q:k==='m3'?1350*q:750*q;
+    case 'trt':return 4500*q}
+  return 100*q}
+function dpState(){if(!quote.dpgf)quote.dpgf={name:'',map:{},cols:{},keep:false,soc:true};const s=quote.dpgf;s.map=s.map||{};s.cols=s.cols||{};return s}
+function dpCfg(si){const st=quote.dpgf||{};const c=st.cols&&st.cols[si];return c!=null?(c.off?null:c):dpg.sheets[si].auto}
+function dpLines(){const out=[];dpg.sheets.forEach((S,si)=>{out.push(...dpSheetLines(S,si,dpCfg(si)))});
+  for(const l of out){const a=dpClass(l.des,l.sec);l.auto=a.c;l.sure=a.sure}return out}
+async function dpLoad(buf,name){const z=await zipEntries(buf);const order=Object.keys(z),files={};for(const k of order)files[k]=new Uint8Array(await z[k]());
+  const td=new TextDecoder(),txt=k=>files[k]?td.decode(files[k]):'';
+  if(!files['xl/workbook.xml'])throw new Error('Ce fichier n’est pas un classeur Excel .xlsx');
+  const ss=[];for(const m of txt('xl/sharedStrings.xml').matchAll(/<si\b[^>\/]*(?:\/>|>([\s\S]*?)<\/si>)/g))ss.push([...(m[1]||'').replace(/<rPh\b[\s\S]*?<\/rPh>/g,'').matchAll(/<t\b[^>\/]*(?:\/>|>([\s\S]*?)<\/t>)/g)].map(t=>dpXml(t[1]||'')).join(''));
+  const rel={};for(const m of txt('xl/_rels/workbook.xml.rels').matchAll(/<Relationship\b([^>]*)>/g)){const id=(/\bId="([^"]+)"/.exec(m[1])||[])[1],tg=(/\bTarget="([^"]+)"/.exec(m[1])||[])[1];if(id&&tg)rel[id]=tg.startsWith('/')?tg.slice(1):'xl/'+tg}
+  const sheets=[];for(const m of txt('xl/workbook.xml').matchAll(/<sheet\b([^>]*)>/g)){const nm=dpXml((/\bname="([^"]*)"/.exec(m[1])||[])[1]||''),id=(/\br:id="([^"]+)"/.exec(m[1])||[])[1];const path=rel[id];if(!path||!files[path])continue;
+    const xml=txt(path);const rows=dpParseSheet(xml,ss);sheets.push({name:nm,path,xml,rows,auto:dpDetect(rows)})}
+  if(!sheets.length)throw new Error('Classeur sans feuille lisible');
+  return {name,files,order,ss,sheets,size:buf.byteLength}}
+function dpB64(u){let s='';for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)}
+async function dpImport(file){const nm=file.name||'dpgf.xlsx',ext=(nm.split('.').pop()||'').toLowerCase();
+  if(ext==='xls'||ext==='ods'||ext==='numbers'||ext==='pdf'){toast(ext==='pdf'?'Un DPGF en PDF ne peut pas être rempli : demandez la version Excel au bureau d’études':'Ouvrez ce fichier et enregistrez-le au format Excel .xlsx, puis choisissez-le ici');return}
+  dpBusy=true;try{const buf=await file.arrayBuffer();const d=await dpLoad(buf,nm);const st=dpState();const same=st.name===nm;
+    st.name=nm;if(!same){st.map={};st.cols={};st.keep=false}
+    const b=dpB64(new Uint8Array(buf));if(b.length<=300000&&JSON.stringify(quote).length-(st.b64||'').length+b.length<850000)st.b64=b;else delete st.b64;
+    dpg=d;dpg.q=quote;dpg.lines=dpLines();markDirty();
+    if(!dpg.lines.length)toast('Aucun tableau de prix reconnu : indiquez les colonnes à la main');else toast(`${dpg.lines.length} ligne${pl(dpg.lines.length)} à chiffrer trouvée${pl(dpg.lines.length)}`)}
+  catch(e){console.error(e);toast(e&&e.message&&e.message.length<120?e.message:'Fichier illisible')}
+  dpBusy=false;renderDpgf()}
+async function dpEnsure(){const st=quote.dpgf;if(!st||!st.name){dpg=null;return}
+  if(dpg&&dpg.name===st.name&&dpg.q===quote){return}
+  if(dpg&&dpg.name===st.name&&!st.b64){dpg.q=quote;dpg.lines=dpLines();return}
+  if(!st.b64){dpg=null;return}
+  try{const u=b64u8(','+st.b64);dpg=await dpLoad(u.buffer,st.name);dpg.q=quote;dpg.lines=dpLines()}catch(e){console.error(e);dpg=null}}
+function dpCompute(){const t=totals(),v=t.v,PR=r2(prixEff(t));const st=dpState(),map=st.map,L=dpg.lines,al=[];
+  const A={};let other=0;for(const p of devisPostes(t)){let id=p.id;if(id==='zoneorange')id='declarations';if(DP_CH[id])A[id]=(A[id]||0)+p.tot;else other+=p.tot}
+  for(const l of L){const o=map[l.key]||{};l.cls=o.c||l.auto;l.lock=o.pu!=null&&o.pu!==''&&isFinite(+o.pu)?+o.pu:null;if(l.puF)l.cls='skip';l.w=Math.max(0,dpTyp(l,l.cls,v))||1;l.amt=0;l.note='';l.warn=''}
+  const act=L.filter(l=>l.cls!=='zero'&&l.cls!=='skip');const keep=!!st.keep&&act.some(l=>l.pu0>0);
+  if(keep){for(const l of act)l.amt=l.lock!=null?l.lock*l.q:(l.pu0>0?l.pu0*l.q:0)}
+  else{/* petites fournitures (écarteurs, têtes de sonde, vannes…) : prix d'usage ; le reste du poste va aux lignes principales */
+    for(const l of act)l.acc=DP_ACC.test(dpNorm(l.des));
+    const G=new Set(act.filter(l=>!l.acc).map(l=>l.cls)),GA=new Set(act.map(l=>l.cls)),pool={},tgt={};for(const c of GA){tgt[c]=c;pool[c]=A[c]||0}
+    let orphan=other;const NP=new Set();
+    for(const c of GA){if(G.has(c))continue;const f=(DP_CH[c]||[]).find(x=>G.has(x));if(f){tgt[c]=f;pool[f]+=pool[c];pool[c]=0}}
+    for(const id of Object.keys(A)){if(GA.has(id)||!(A[id]>0.005))continue;const f=(DP_CH[id]||[]).find(x=>G.has(x))||(DP_CH[id]||[]).find(x=>GA.has(x));if(f){pool[tgt[f]]+=A[id];al.push({k:'i',t:`${dpLab(id)} (${eur(A[id])}) n’a pas de ligne dans ce DPGF : montant reporté sur « ${dpLab(tgt[f])} ».`})}else orphan+=A[id]}
+    for(const c of GA){if(tgt[c]!==c||pool[c]>0.005)continue;const f=(DP_CH[c]||[]).find(x=>GA.has(x)&&tgt[x]===x&&pool[x]>0.005);if(f){tgt[c]=f;NP.add(c);al.push({k:'w',t:`« ${dpLab(c)} » figure dans le DPGF mais n’est pas chiffré dans le chiffrage : prix d’usage pris sur « ${dpLab(f)} ». Vérifiez que la prestation est bien prévue, puis fixez son prix.`})}
+      else al.push({k:'w',t:`« ${dpLab(c)} » figure dans le DPGF mais n’est pas chiffré : prix indicatif, à vérifier.`})}
+    for(const l of act)if(NP.has(l.cls))l.acc=true;
+    for(const c of GA){let g=0;while(tgt[tgt[c]]!==tgt[c]&&g++<5)tgt[c]=tgt[tgt[c]]}
+    const by={};for(const l of act)(by[tgt[l.cls]]=by[tgt[l.cls]]||[]).push(l);
+    for(const [p,ls] of Object.entries(by)){const S=pool[p]||0;if(!(S>0.005)){for(const l of ls)l.base=l.w;continue}
+      const mn=ls.filter(l=>!l.acc),ac=ls.filter(l=>l.acc);if(!mn.length){const sw=ls.reduce((a,l)=>a+l.w,0);for(const l of ls)l.base=S*l.w/sw;continue}
+      let sa=ac.reduce((a,l)=>a+l.w,0);const ka=sa>0.4*S?0.4*S/sa:1;for(const l of ac)l.base=l.w*ka;sa*=ka;const sw=mn.reduce((a,l)=>a+l.w,0);for(const l of mn)l.base=(S-sa)*l.w/sw}
+    if(orphan>0.005){const sb=act.reduce((a,l)=>a+l.base,0);if(sb>0)for(const l of act)l.base+=orphan*l.base/sb}
+    for(const ls of Object.values(by)){const S=ls.reduce((a,l)=>a+l.base,0),lk=ls.filter(l=>l.lock!=null),fr=ls.filter(l=>l.lock==null);
+      const SL=lk.reduce((a,l)=>a+l.lock*l.q,0),sf=fr.reduce((a,l)=>a+l.base,0),rem=S-SL;for(const l of lk)l.amt=l.lock*l.q;
+      const frm=fr.filter(l=>!l.acc),sfm=frm.reduce((a,l)=>a+l.base,0),sfa=sf-sfm;
+      if(frm.length&&sfm>0&&rem-sfa>0){for(const l of fr)l.amt=l.acc?l.base:(rem-sfa)*l.base/sfm}
+      else for(const l of fr)l.amt=sf>0&&rem>0?rem*l.base/sf:l.base}}
+  for(const l of L){if(l.cls==='skip')l.amt=(l.pu0||0)*l.q}
+  const free=act.filter(l=>l.lock==null);const fixed=L.reduce((a,l)=>a+(l.cls==='skip'||(l.cls!=='zero'&&l.lock!=null)?l.amt:0),0);
+  const sf=free.reduce((a,l)=>a+l.amt,0);
+  if(free.length&&sf>0&&PR-fixed>0){const k=(PR-fixed)/sf;for(const l of free)l.amt*=k}
+  else if(PR>0&&fixed-PR>0.005)al.push({k:'w',t:`Les prix fixés à la main (${eur(fixed)}) dépassent le prix retenu.`});
+  /* prix unitaires arrondis : au centime, ou moins fin si la quantité a des décimales, pour que quantité × PU tombe au centime */
+  for(const l of L){if(l.cls==='zero'){l.pu=0;l.tot=0;continue}if(l.cls==='skip'){l.pu=l.pu0;l.tot=l.amt;continue}
+    if(l.lock!=null){l.pu=l.lock}else{const d=Math.min(2,(String(l.q).split('.')[1]||'').length),f=Math.pow(10,2-d);l.pu=Math.round(l.amt/l.q*f)/f}
+    l.tot=l.q*l.pu}
+  let total=L.reduce((a,l)=>a+l.tot,0);const diff=r2(PR-total);
+  if(Math.abs(diff)>=0.01&&free.length){const c1=free.filter(l=>l.q===1&&l.pu>0);const pref=c1.filter(l=>!['declarations','glycol'].includes(l.cls));
+    const ab=(pref.length?pref:c1).sort((a,b)=>b.tot-a.tot)[0]||free.filter(l=>l.pu>0).sort((a,b)=>a.q-b.q)[0];
+    if(ab){ab.pu=r2(ab.pu+diff/ab.q);ab.tot=ab.q*ab.pu;total=L.reduce((a,l)=>a+l.tot,0)}}
+  /* contrôles de cohérence avec le chiffrage */
+  const M=+v.M||0,NF=+v.NF||+v.N||0;
+  for(const l of L){if(l.cls==='skip'||l.cls==='zero')continue;const n=dpNorm(l.des),k=dpUnit(l.u);
+    if((l.cls==='forage'||l.cls==='sondes')&&k==='len'&&M>0&&Math.abs(l.q-M)>0.5)l.warn=`${nf(l.q)} m au DPGF, ${nf(M)} m forés au chiffrage`;
+    else if(l.cls==='sondes'&&k==='n'&&/sonde/.test(n)&&!/tete|marquage|ecarteur|lest|vanne|debit/.test(n)&&l.q>1&&NF>0&&l.q!==NF)l.warn=`${nf(l.q)} sondes au DPGF, ${nf(NF)} forages au chiffrage`;
+    const m=/(\d+)\s*(?:forages?|sondes?)[^0-9]{0,40}?de\s*(\d+(?:[.,]\d+)?)\s*(?:m\b|metres?|ml)/.exec(n);
+    if(m&&(l.cls==='forage'||l.cls==='sondes')&&NF>0&&(+m[1]!==NF||Math.abs(pnum(m[2])-(+v.P||0))>0.5))l.warn=`DPGF : ${m[1]} × ${m[2]} m ; chiffrage : ${nf(NF)} × ${nf(v.P)} m`;
+    if(!l.sure&&!(map[l.key]&&map[l.key].c))l.note='classement à vérifier'}
+  const nw=L.filter(l=>l.warn).length;if(nw)al.unshift({k:'w',t:`${nw} ligne${pl(nw)} dont la quantité ne correspond pas au chiffrage (repérée${pl(nw)} ci-dessous). Les quantités du DPGF sont conservées ; le total reste le prix retenu.`});
+  return {L,PR,total:r2(total),ecart:r2(total-PR),al,keep,hasP0:L.some(l=>l.pu0>0)}}
+/* --- relecture des formules simples (produits, SUM, SUBTOTAL) pour écrire des totaux justes dans le fichier --- */
+function dpEval(D,over){const memo=new Map(),busy=new Set();
+  const cellOf=(si,col,row)=>{const R=D.sheets[si].rows.get(row);return R?R.cells.get(col):null};
+  const val=(si,col,row)=>{const k=si+':'+col+':'+row;if(over.has(k))return over.get(k);const c=cellOf(si,col,row);if(!c)return 0;
+    if(c.f!=null){if(memo.has(k))return memo.get(k);if(busy.has(k))throw new Error('cycle');busy.add(k);const r=ev(c.f,si);busy.delete(k);memo.set(k,r);return r}
+    return typeof c.val==='number'?c.val:0};
+  const sIdx=nm=>{nm=nm.replace(/^'|'$/g,'').replace(/''/g,"'");const i=D.sheets.findIndex(s=>s.name===nm);if(i<0)throw new Error('feuille');return i};
+  function ev(src,si0){if(!src)throw new Error('vide');let i=0;const s=src;
+    const ws=()=>{while(s[i]===' ')i++};
+    const ref=()=>{const m=/^(?:((?:'(?:[^']|'')+'|[A-Za-z0-9_.\u00C0-\u024F]+))!)?\$?([A-Z]{1,3})\$?(\d+)(?::\$?([A-Z]{1,3})\$?(\d+))?/.exec(s.slice(i));if(!m)return null;
+      const nx=s[i+m[0].length];if(nx&&/[A-Za-z0-9_(]/.test(nx))return null;i+=m[0].length;const si=m[1]?sIdx(m[1]):si0;
+      return {si,c1:dpCol(m[2]),r1:+m[3],c2:m[4]?dpCol(m[4]):null,r2:m[5]?+m[5]:null}};
+    const cells=(r,skipSub)=>{const out=[];if(r.c2==null){out.push(val(r.si,r.c1,r.r1));return out}
+      for(let R=Math.min(r.r1,r.r2);R<=Math.max(r.r1,r.r2);R++)for(let C=Math.min(r.c1,r.c2);C<=Math.max(r.c1,r.c2);C++){const c=cellOf(r.si,C,R);if(!c&&!over.has(r.si+':'+C+':'+R))continue;
+        if(skipSub&&c&&c.f&&/SUBTOTAL|SOUS\.TOTAL/i.test(c.f))continue;out.push(val(r.si,C,R))}return out};
+    const arg=(sub)=>{ws();const save=i;const r=ref();if(r){ws();if(s[i]===','||s[i]===';'||s[i]===')')return cells(r,sub);i=save}return [expr()]};
+    function prim(){ws();const ch=s[i];
+      if(ch==='('){i++;const x=expr();ws();if(s[i]!==')')throw new Error(')');i++;return x}
+      if(ch==='-'){i++;return -prim()}if(ch==='+'){i++;return prim()}
+      const nm=/^\d+(?:\.\d+)?(?:[eE][-+]?\d+)?/.exec(s.slice(i));
+      const fn=/^([A-Za-z.]+)\(/.exec(s.slice(i));
+      if(fn){i+=fn[0].length;const name=fn[1].toUpperCase();const args=[];ws();if(s[i]===')'){i++}else for(;;){args.push(arg(name==='SUBTOTAL'&&args.length>0));ws();if(s[i]===','||s[i]===';'){i++;continue}if(s[i]===')'){i++;break}throw new Error('args')}
+        const flat=args.flat();const sum=a=>a.reduce((x,y)=>x+y,0);
+        switch(name){case 'SUM':case 'SOMME':return sum(flat);
+          case 'SUBTOTAL':{const code=args[0][0];if(code!==9&&code!==109)throw new Error('subtotal');return sum(args.slice(1).flat())}
+          case 'ROUND':case 'ARRONDI':{const f=Math.pow(10,args[1]?args[1][0]:0);return Math.round(args[0][0]*f)/f}
+          case 'PRODUCT':case 'PRODUIT':return flat.reduce((x,y)=>x*y,1);case 'ABS':return Math.abs(flat[0]);case 'MAX':return Math.max(...flat);case 'MIN':return Math.min(...flat)}
+        throw new Error('fonction '+name)}
+      const r=ref();if(r){if(r.c2!=null)throw new Error('plage');return val(r.si,r.c1,r.r1)}
+      if(nm){i+=nm[0].length;let x=+nm[0];ws();if(s[i]==='%'){i++;x/=100}return x}
+      throw new Error('?')}
+    function pow(){let x=prim();ws();while(s[i]==='^'){i++;x=Math.pow(x,prim());ws()}return x}
+    function term(){let x=pow();for(;;){ws();if(s[i]==='*'){i++;x*=pow()}else if(s[i]==='/'){i++;x/=pow()}else return x}}
+    function expr(){let x=term();for(;;){ws();if(s[i]==='+'){i++;x+=term()}else if(s[i]==='-'){i++;x-=term()}else return x}}
+    const x=expr();ws();if(i<s.length)throw new Error('reste');if(!isFinite(x))throw new Error('nan');return x}
+  return {val,try:(si,col,row)=>{try{return val(si,col,row)}catch(e){return null}}}}
+const dpAttr=(a,drop)=>a.replace(new RegExp('\\s+(?:'+drop.join('|')+')="[^"]*"','g'),'');
+function dpSocFill(val,soc){if(typeof val!=='string'||!/:\s*$/.test(val)||val.length>140)return null;const n=dpNorm(val);
+  if(/e-?mail|courriel/.test(n))return soc.mail||null;
+  if(/siret|siren/.test(n))return soc.siret?String(soc.siret).replace(/\s/g,'').replace(/^(\d{3})(\d{3})(\d{3})(\d{5})$/,'$1 $2 $3 $4'):null;
+  if(/telephone|^tel\b/.test(n))return soc.tel1||null;
+  if(/coordonnees|^adresse/.test(n))return [String(soc.adr1||'').replace(/\s*\(si[eè]ge social\)/i,''),soc.tel1?'Tél. '+soc.tel1:''].filter(Boolean).join(' – ')||null;
+  if(/(nom|raison sociale|denomination)[^:]{0,45}(entreprise|societe|candidat|titulaire)|^(l')?(entreprise|societe|raison sociale|candidat) ?:$/.test(n))return soc.raison||null;
+  return null}
+async function dpBuild(){const R=dpCompute(),st=dpState(),soc=socInfo();const over=new Map(),edits=dpg.sheets.map(()=>[]);const te=new TextEncoder();
+  const styleNear=(S,col,rn)=>{for(const l of R.L){if(dpg.sheets[l.si]!==S||l.rn===rn)continue;const c=S.rows.get(l.rn).cells.get(col);const m=c&&/\bs="(\d+)"/.exec(c.attrs);if(m)return ` s="${m[1]}"`}return ''};
+  const setNum=(si,col,rn,x)=>{const S=dpg.sheets[si],Rw=S.rows.get(rn),c=Rw.cells.get(col);over.set(si+':'+col+':'+rn,x);
+    if(c){edits[si].push({s:c.s,e:c.e,col,x:`<c${dpAttr(c.attrs,['t','cm'])}><v>${dpNum(x)}</v></c>`});return}
+    const cell=`<c r="${dpColName(col)}${rn}"${styleNear(S,col,rn)}><v>${dpNum(x)}</v></c>`;
+    if(Rw.self){Rw.pend=(Rw.pend||[]);Rw.pend.push({col,cell});return}
+    const nx=[...Rw.cells.values()].filter(k=>k.col>col).sort((a,b)=>a.col-b.col)[0];const pos=nx?nx.s:Rw.e-6;edits[si].push({s:pos,e:pos,col,x:cell})};
+  for(const l of R.L){if(l.cls==='skip')continue;const cfg=dpCfg(l.si);setNum(l.si,+cfg.pu,l.rn,l.pu);
+    if(l.qEmpty&&cfg.q)setNum(l.si,+cfg.q,l.rn,l.q);
+    if(cfg.tot){const tc=dpg.sheets[l.si].rows.get(l.rn).cells.get(+cfg.tot);if(!tc||tc.f==null)setNum(l.si,+cfg.tot,l.rn,r2(l.q*l.pu))}}
+  dpg.sheets.forEach((S,si)=>{for(const Rw of S.rows.values()){if(Rw.pend){const a=Rw.pend.sort((x,y)=>x.col-y.col).map(p=>p.cell).join('');edits[si].push({s:Rw.s,e:Rw.e,col:0,x:S.xml.slice(Rw.s,Rw.e-2)+'>'+a+'</row>'});delete Rw.pend}}});
+  /* coordonnées de l'entreprise dans les cases « à compléter » */
+  let nSoc=0;if(st.soc!==false)dpg.sheets.forEach((S,si)=>{for(const Rw of S.rows.values())for(const c of Rw.cells.values()){if(c.f!=null)continue;const add=dpSocFill(c.val,soc);if(!add)continue;nSoc++;
+    edits[si].push({s:c.s,e:c.e,col:c.col,x:`<c${dpAttr(c.attrs,['t','cm'])} t="inlineStr"><is><t xml:space="preserve">${dpEsc(c.val.replace(/\s+$/,'')+' '+add)}</t></is></c>`})}});
+  /* valeurs des formules : recalculées ici quand c'est possible, sinon laissées à Excel */
+  const E=dpEval(dpg,over);let nF=0,nU=0;
+  dpg.sheets.forEach((S,si)=>{for(const Rw of S.rows.values())for(const c of Rw.cells.values()){if(c.f==null||c.t==='str'||c.t==='b')continue;if(over.has(si+':'+c.col+':'+Rw.n))continue;
+    const x=c.f?E.try(si,c.col,Rw.n):null;if(x==null){nU++;if(/<v\b/.test(S.xml.slice(c.s,c.e)))edits[si].push({s:c.s,e:c.e,col:c.col,x:`<c${dpAttr(c.attrs,['t'])}>${c.fTag}</c>`});continue}
+    nF++;edits[si].push({s:c.s,e:c.e,col:c.col,x:`<c${dpAttr(c.attrs,['t'])}>${c.fTag}<v>${dpNum(x)}</v></c>`})}});
+  const out=[];for(const name of dpg.order){let data=dpg.files[name];const si=dpg.sheets.findIndex(S=>S.path===name);
+    if(si>=0&&edits[si].length){let x=dpg.sheets[si].xml;for(const e of edits[si].sort((a,b)=>b.s-a.s||b.col-a.col))x=x.slice(0,e.s)+e.x+x.slice(e.e);data=te.encode(x)}
+    else if(name==='xl/workbook.xml'){let x=new TextDecoder().decode(data);
+      if(/<calcPr\b/.test(x))x=x.replace(/<calcPr\b([^>]*?)(\/?)>/,(m,a,sl)=>`<calcPr${a.replace(/\s+fullCalcOnLoad="[^"]*"/,'')} fullCalcOnLoad="1"${sl}>`);
+      else{const tag='<calcPr fullCalcOnLoad="1"/>';const k=['</definedNames>','</externalReferences>','</sheets>'].find(t=>x.includes(t));if(k)x=x.replace(k,k+tag)}
+      data=te.encode(x)}
+    out.push({name,data})}
+  return {blob:await dpZip(out),R,nSoc,nF,nU}}
+const DP_CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function dpCrc(u){let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=DP_CRC[(c^u[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+async function dpDeflate(u){if(typeof CompressionStream==='undefined')return null;try{return new Uint8Array(await new Response(new Blob([u]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer())}catch(e){return null}}
+async function dpZip(files){const enc=new TextEncoder(),parts=[],cd=[];let off=0;
+  for(const f of files){const nm=enc.encode(f.name),crc=dpCrc(f.data);let comp=await dpDeflate(f.data),meth=8;if(!comp||comp.length>=f.data.length){comp=f.data;meth=0}
+    const h=new DataView(new ArrayBuffer(30));h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(8,meth,true);h.setUint16(12,0x21,true);h.setUint32(14,crc,true);h.setUint32(18,comp.length,true);h.setUint32(22,f.data.length,true);h.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(h.buffer),nm,comp);
+    const c=new DataView(new ArrayBuffer(46));c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(10,meth,true);c.setUint16(14,0x21,true);c.setUint32(16,crc,true);c.setUint32(20,comp.length,true);c.setUint32(24,f.data.length,true);c.setUint16(28,nm.length,true);c.setUint32(42,off,true);
+    cd.push(new Uint8Array(c.buffer),nm);off+=30+nm.length+comp.length}
+  const cds=cd.reduce((a,x)=>a+x.length,0),e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cds,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...cd,new Uint8Array(e.buffer)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})}
+async function dpExport(){if(!dlApi){toast('Téléchargement indisponible sur cette vue');return}if(!dpg||!dpg.lines.length)return;
+  try{const o=await dpBuild();const base=dpg.name.replace(/\.[^.]+$/,'');
+    await dlApi.save({filename:base+'-rempli.xlsx',data:o.blob});
+    toast(`DPGF rempli : ${eur(o.R.total)} HT`+(o.nSoc?` · coordonnées complétées (${o.nSoc})`:''))}
+  catch(e){if(e&&(e.code==='cancelled'||e.code==='declined'))return;console.error(e);toast('Échec de la création du fichier')}}
+/* --- écran --- */
+function dpColsHTML(){const st=dpState();return dpg.sheets.map((S,si)=>{const c=dpCfg(si)||{},off=st.cols[si]&&st.cols[si].off;const maxC=Math.min(40,Math.max(8,...[...S.rows.values()].slice(0,150).map(R=>Math.max(0,...[...R.cells.values()].filter(x=>x.val!=null&&x.val!=='').map(x=>x.col)))));
+    const hr=S.rows.get(+c.row);const lab=k=>{const x=hr&&hr.cells.get(k);const t=x&&typeof x.val==='string'?x.val.replace(/\s+/g,' ').trim().slice(0,22):'';return dpColName(k)+(t?' — '+t:'')};
+    const sel=(k,l)=>`<label>${l}<select data-dpc="${si}:${k}"><option value="">–</option>${Array.from({length:maxC},(_,i)=>i+1).map(i=>`<option value="${i}" ${+c[k]===i?'selected':''}>${esc(lab(i))}</option>`).join('')}</select></label>`;
+    const n=dpg.lines.filter(l=>l.si===si).length;
+    return `<div class="dp-sh"><div class="dp-sh-h"><b>${esc(S.name)}</b><span class="status">${off?'feuille ignorée':n?`${n} ligne${pl(n)} lue${pl(n)}`:(S.auto?'aucune ligne à chiffrer':'pas de tableau de prix reconnu')}</span>
+      <label class="dp-ck"><input type="checkbox" data-dpoff="${si}" ${off?'':'checked'}> lire cette feuille</label></div>
+      ${off?'':`<div class="dp-cols"><label>Ligne des titres<input type="number" min="0" data-dpc="${si}:row" value="${c.row??''}"></label>${sel('des','Désignation')}${sel('u','Unité')}${sel('q','Quantité')}${sel('pu','Prix unitaire')}${sel('tot','Montant')}</div>`}</div>`}).join('')}
+function renderDpgf(){const el=$('#v-dpgf');if(!el)return;const st=quote.dpgf||{};
+  const head=`<div class="toolbar"><button class="btn ghost" id="dp-back">← Chiffrage</button><div class="title">DPGF${quote.nom?' – '+esc(quote.nom):''}</div>
+    <span class="status ${dirty?'dirty':''}" id="st2">${dirty?'Modifications non enregistrées':''}</span>
+    <label class="btn" for="dp-file">${dpg?'Changer de fichier':'Choisir le DPGF (.xlsx)'}</label><input type="file" id="dp-file" accept=".xlsx,.xlsm,.xls,.ods,.numbers" hidden>
+    <button class="btn primary" id="dp-dl" ${dpg&&dpg.lines.length?'':'disabled'}>Télécharger le DPGF rempli</button></div>`;
+  if(dpBusy){el.innerHTML=head+'<div class="card"><div class="empty">Lecture du fichier…</div></div>';return}
+  if(!dpg){el.innerHTML=head+`<div class="card"><div class="empty">${st.name?`Le fichier « ${esc(st.name)} » n’est plus en mémoire : choisissez-le de nouveau, vos réglages sont conservés.`:'Choisissez le DPGF envoyé par le bureau d’études, au format Excel .xlsx.'}
+      <p class="help" style="max-width:620px;margin:14px auto 0">Le logiciel repère les lignes à chiffrer, les rattache aux postes du chiffrage et remplit les prix unitaires pour que le total HT soit exactement le prix retenu. Le fichier rendu est celui du bureau d’études, avec sa mise en page : seules les cases de prix sont écrites. Un fichier .xls, Numbers ou OpenOffice doit d’abord être enregistré en .xlsx.</p></div></div>`;return}
+  const R=dpCompute(),L=R.L;const ok=Math.abs(R.ecart)<0.005;
+  const opts=c=>DPG_CLS.map(([k,l])=>`<option value="${k}" ${k===c?'selected':''}>${l}</option>`).join('');
+  let body='',lastS=-1,lastSec=null;
+  for(const l of L){if(l.si!==lastS){lastS=l.si;lastSec=null;if(dpg.sheets.filter((S,i)=>L.some(x=>x.si===i)).length>1)body+=`<tr class="dp-sheet"><td colspan="6">${esc(dpg.sheets[l.si].name)}</td></tr>`}
+    if(l.sec!==lastSec){lastSec=l.sec;if(l.sec)body+=`<tr class="dp-sec"><td colspan="6">${esc(l.sec)}</td></tr>`}
+    const fx=l.lock!=null,dis=l.cls==='skip'||l.cls==='zero';
+    body+=`<tr class="${dis?'dp-off':''}"><td class="dp-des">${esc(l.des)}${l.warn?`<div class="dp-warn">${esc(l.warn)}</div>`:''}${l.note?`<div class="dp-note">${esc(l.note)}</div>`:''}${l.puF?'<div class="dp-note">prix calculé par une formule du fichier : non modifié</div>':''}</td>
+      <td class="dp-u">${esc(l.u)}</td><td class="dp-n">${nf(l.q)}</td>
+      <td><select data-dpk="${l.key}" ${l.puF?'disabled':''}>${opts(l.cls)}</select></td>
+      <td class="dp-pu"><div class="qwrap"><input class="qin ${fx?'is-over':'is-auto'}" data-dpp="${l.key}" inputmode="decimal" value="${dis?(l.cls==='zero'?'0':(l.pu0??'')):String(l.pu).replace('.',',')}" ${dis?'disabled':''} title="${fx?'Prix fixé à la main':'Prix calculé : tapez un prix pour le fixer'}">${fx?`<button class="reset" data-dpr="${l.key}" title="Revenir au prix calculé">↺</button>`:''}</div></td>
+      <td class="dp-n">${eur(l.tot)}</td></tr>`}
+  const nfx=L.filter(l=>l.lock!=null).length;
+  el.innerHTML=head+`
+    <div class="card dp-sum"><div class="dp-k"><span>Fichier</span><b>${esc(dpg.name)}</b></div><div class="dp-k"><span>Prix retenu HT</span><b>${eur(R.PR)}</b></div><div class="dp-k"><span>Total du DPGF HT</span><b>${eur(R.total)}</b></div>
+      <div class="dp-k"><span>Écart</span><b class="${ok?'dp-ok':'dp-ko'}">${ok?'0,00 € ✓':eur(R.ecart)}</b></div></div>
+    ${R.al.map(a=>`<div class="banner ${a.k==='i'?'dp-info':''}"><span>${esc(a.t)}</span></div>`).join('')}
+    ${st.b64?'':'<div class="banner dp-info"><span>Fichier trop lourd pour être enregistré avec le chiffrage : vos réglages sont gardés, mais il faudra choisir de nouveau le fichier à la prochaine ouverture.</span></div>'}
+    <div class="card"><div class="card-b dp-opt">
+      ${R.hasP0?`<label class="dp-ck"><input type="checkbox" id="dp-keep" ${st.keep?'checked':''}> Garder les proportions des prix déjà présents dans le fichier (simple remise à l’échelle sur le prix retenu)</label>`:''}
+      <label class="dp-ck"><input type="checkbox" id="dp-soc" ${st.soc!==false?'checked':''}> Compléter les cases « nom, adresse, e-mail, SIRET de l’entreprise » restées vides</label>
+      ${nfx?`<button class="btn sm" id="dp-unfix">Revenir aux prix calculés (${nfx} fixé${pl(nfx)})</button>`:''}
+      <button class="btn sm ghost" id="dp-colsb">${dpColsOpen?'Masquer':'Feuilles et colonnes lues'}</button></div>
+      ${dpColsOpen||!L.length?`<div class="card-b" style="border-top:1px solid var(--line)"><p class="help" style="margin:0 0 10px">Si le tableau n’est pas lu correctement, indiquez ici la ligne des titres et les colonnes de chaque feuille.</p>${dpColsHTML()}</div>`:''}</div>
+    ${L.length?`<div class="card" style="margin-top:18px;overflow-x:auto"><table class="dp-t"><thead><tr><th>Désignation</th><th>U</th><th class="dp-n">Qté</th><th>Poste du chiffrage</th><th class="dp-n">PU HT</th><th class="dp-n">Montant HT</th></tr></thead><tbody>${body}</tbody>
+      <tfoot><tr><td colspan="5">Total HT</td><td class="dp-n">${eur(R.total)}</td></tr></tfoot></table></div>
+    <p class="help" style="margin-top:12px">Chaque poste du chiffrage (au prix du devis) est partagé entre les lignes du DPGF qui lui sont rattachées. Un prix tapé à la main reste fixé : les autres lignes du même poste s’ajustent pour garder le total. « Inclus » écrit 0, « Ne pas toucher » laisse la case comme dans le fichier.</p>`:''}`}
+function dpRerender(){const y=window.scrollY;renderDpgf();window.scrollTo(0,y)}
+function onDpgfChange(e){const tg=e.target;
+  if(tg.id==='dp-file'){const f=tg.files&&tg.files[0];tg.value='';if(f){dpBusy=true;renderDpgf();dpImport(f)}return}
+  if(!dpg)return;const st=dpState();
+  if(tg.dataset.dpk){const o=st.map[tg.dataset.dpk]||(st.map[tg.dataset.dpk]={});o.c=tg.value;if(tg.value==='zero'||tg.value==='skip')delete o.pu;markDirty();dpRerender();return}
+  if(tg.dataset.dpp){const o=st.map[tg.dataset.dpp]||(st.map[tg.dataset.dpp]={});const x=pnum(tg.value);if(x==null||x<0)delete o.pu;else o.pu=r2(x);markDirty();dpRerender();return}
+  if(tg.id==='dp-keep'){st.keep=tg.checked;markDirty();dpRerender();return}
+  if(tg.id==='dp-soc'){st.soc=tg.checked;markDirty();return}
+  if(tg.dataset.dpoff){const si=+tg.dataset.dpoff;if(tg.checked)delete st.cols[si];else st.cols[si]={off:1};dpg.lines=dpLines();markDirty();dpRerender();return}
+  if(tg.dataset.dpc){const [si,k]=tg.dataset.dpc.split(':');const c=st.cols[si]&&!st.cols[si].off?st.cols[si]:{...(dpg.sheets[+si].auto||{row:0})};const x=parseInt(tg.value,10);if(isFinite(x))c[k]=x;else delete c[k];st.cols[si]=c;dpg.lines=dpLines();markDirty();dpRerender();return}}
+function onDpgfClick(e){const b=e.target.closest('button');if(!b)return;
+  if(b.id==='dp-back'){go('devis');return}
+  if(b.id==='dp-dl'){dpExport();return}
+  if(!dpg)return;const st=dpState();
+  if(b.dataset.dpr){const o=st.map[b.dataset.dpr];if(o)delete o.pu;markDirty();dpRerender();return}
+  if(b.id==='dp-unfix'){for(const o of Object.values(st.map))delete o.pu;markDirty();dpRerender();return}
+  if(b.id==='dp-colsb'){dpColsOpen=!dpColsOpen;dpRerender();return}}
+async function openDpgf(){go('dpgf')}
 
 /* ---------- boot ---------- */
 (function boot(){
